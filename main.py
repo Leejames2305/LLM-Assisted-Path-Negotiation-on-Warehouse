@@ -78,7 +78,10 @@ def print_system_info():
     
     for package in required_packages:
         try:
-            __import__(package.replace('-', '_'))
+            if package == 'python-dotenv':
+                __import__('dotenv')
+            else:
+                __import__(package.replace('-', '_'))
             print(f"✅ {package}")
         except ImportError:
             print(f"❌ {package} - Please install: pip install {package}")
