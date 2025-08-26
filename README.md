@@ -31,6 +31,35 @@ This project implements a hybrid multi-agent system (HMAS-2) where multiple robo
    OPENROUTER_API_KEY=your_actual_api_key_here
    ```
 
+## 🧪 Testing & Verification
+
+Before running the main simulation, you can verify everything works with these smoke tests:
+
+### Quick Structure Test (No Dependencies)
+```cmd
+python quick_test.py
+```
+Verifies project structure and file syntax without requiring any external packages.
+
+### Simple Demo Test (Basic Dependencies)
+```cmd
+python demo_test.py
+```
+Runs a comprehensive offline demonstration of core functionality:
+- Map generation with visual display
+- Agent creation and pathfinding  
+- Conflict detection
+- Basic simulation logic
+- State logging
+
+### Full Smoke Test (All Features)
+```cmd
+python smoke_test.py
+```
+Tests all components including LLM fallback functionality (works without API keys).
+
+**💡 Tip**: Start with `demo_test.py` to see the system in action immediately!
+
 ## 🎮 Usage
 
 Run the simulation:
