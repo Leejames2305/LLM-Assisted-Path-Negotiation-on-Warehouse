@@ -17,7 +17,7 @@ class OpenRouterClient:
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/your-repo",  # Replace with actual repo
+            "HTTP-Referer": "https://github.com/Leejames2305/LLM-Assisted-Path-Negotiation-on-Warehouse",  # Replace with actual repo
             "X-Title": "LLM Multi-Robot Navigation"
         }
     

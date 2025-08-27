@@ -7,7 +7,7 @@ This project implements a hybrid multi-agent system (HMAS-2) where multiple robo
 - **Random Warehouse Map Generation**: Creates 8x6 warehouse maps with agents, boxes, targets, and obstacles
 - **HMAS-2 Framework**: Hybrid system with:
   - Central LLM (GLM-4.5-Air) for complex conflict negotiation
-  - Agent LLMs (Gemma-2-9B) for action validation
+  - Agent LLMs (Gemma-3n-e4b) for action validation
 - **Real-time Conflict Detection**: Identifies path conflicts and triggers LLM negotiation
 - **Interactive Terminal Interface**: Step-by-step simulation with colored display
 - **Comprehensive Logging**: Saves detailed simulation logs for analysis
@@ -15,10 +15,6 @@ This project implements a hybrid multi-agent system (HMAS-2) where multiple robo
 ## 🛠️ Installation
 
 1. **Clone the repository**:
-   ```cmd
-   git clone <your-repo-url>
-   cd CodeBase
-   ```
 
 2. **Install dependencies**:
    ```cmd
@@ -33,7 +29,6 @@ This project implements a hybrid multi-agent system (HMAS-2) where multiple robo
 
 ## 🧪 Testing & Verification
 
-Before running the main simulation, you can verify everything works with these smoke tests:
 
 ### Quick Structure Test (No Dependencies)
 ```cmd
