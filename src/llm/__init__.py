@@ -34,7 +34,7 @@ class OpenRouterClient:
         }
         
         try:
-            response = requests.post(self.base_url, headers=self.headers, json=payload, timeout=30)
+            response = requests.post(self.base_url, headers=self.headers, data=json.dumps(payload), timeout=30)
             response.raise_for_status()
             
             data = response.json()
@@ -42,6 +42,12 @@ class OpenRouterClient:
         
         except requests.RequestException as e:
             print(f"Error making request to OpenRouter: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_details = e.response.json()
+                    print(f"Error details: {error_details}")
+                except:
+                    print(f"Response content: {e.response.text}")
             return None
         except KeyError as e:
             print(f"Unexpected response format: {e}")
