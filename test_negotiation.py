@@ -7,6 +7,8 @@ import sys
 import os
 import json
 import time
+import signal
+import atexit
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -14,6 +16,38 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.simulation.game_engine import GameEngine
 from src.map_generator import WarehouseMap
+
+# Global variable to store the tester instance for signal handling
+_global_tester = None
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C and other interruption signals"""
+    print(f"\n\n🛑 PROCESS INTERRUPTED! (Signal {signum})")
+    print("💾 Saving negotiation data before exit...")
+    
+    if _global_tester is not None:
+        try:
+            log_file = _global_tester.save_negotiation_log()
+            print(f"✅ Emergency save completed: {log_file}")
+        except Exception as e:
+            print(f"❌ Error during emergency save: {e}")
+    else:
+        print("❌ No negotiation data to save")
+    
+    print("👋 Exiting gracefully...")
+    sys.exit(0)
+
+def cleanup_on_exit():
+    """Cleanup function called on normal exit"""
+    if _global_tester is not None and hasattr(_global_tester, '_unsaved_data'):
+        if _global_tester._unsaved_data:
+            print("💾 Auto-saving negotiation data on exit...")
+            _global_tester.save_negotiation_log()
+
+# Register signal handlers and exit cleanup
+signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Termination request
+atexit.register(cleanup_on_exit)               # Normal exit cleanup
 
 class NegotiationTester:
     """Test class for forcing conflicts and logging LLM negotiations"""
@@ -28,6 +62,26 @@ class NegotiationTester:
             'negotiations': [],
             'conflict_scenarios': []
         }
+        self._unsaved_data = False  # Track if we have unsaved data
+        self._auto_save_count = 0   # Counter for auto-saves
+        
+        # Set global reference for signal handling
+        global _global_tester
+        _global_tester = self
+        
+        print("🛡️  Emergency save protection enabled (Ctrl+C safe)")
+    
+    def _mark_data_changed(self):
+        """Mark that we have unsaved data"""
+        self._unsaved_data = True
+    
+    def _auto_save_check(self):
+        """Auto-save every few negotiations to prevent data loss"""
+        self._auto_save_count += 1
+        if self._auto_save_count % 3 == 0:  # Auto-save every 3 negotiations
+            print("💾 Auto-saving progress...")
+            self.save_negotiation_log(auto_save=True)
+            self._unsaved_data = False
     
     def create_forced_conflict_map(self, scenario_type: str = "single_corridor") -> WarehouseMap:
         """Create maps designed to guarantee conflicts"""
@@ -339,6 +393,10 @@ class NegotiationTester:
             scenario_data['negotiations'].append(negotiation_entry)
             self.negotiation_log['negotiations'].append(negotiation_entry)
             
+            # Mark data as changed and check for auto-save
+            self._mark_data_changed()
+            self._auto_save_check()
+            
             return response
         
         game_engine.central_negotiator.negotiate_path_conflict = capture_negotiate
@@ -378,6 +436,7 @@ class NegotiationTester:
         scenario_data['turns_completed'] = turn_completed + 1
         
         self.negotiation_log['conflict_scenarios'].append(scenario_data)
+        self._mark_data_changed()  # Mark that we have new scenario data
         
         print(f"\n📊 SCENARIO RESULTS:")
         print(f"   Total conflicts detected: {conflicts_detected}")
@@ -436,11 +495,14 @@ class NegotiationTester:
         
         print("\n" + "=" * 70)
     
-    def save_negotiation_log(self, filename: str | None = None) -> str:
+    def save_negotiation_log(self, filename: str | None = None, auto_save: bool = False) -> str:
         """Save all negotiation data to logs folder"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"negotiation_test_{timestamp}.json"
+            if auto_save:
+                filename = f"negotiation_test_{timestamp}_autosave.json"
+            else:
+                filename = f"negotiation_test_{timestamp}.json"
         
         # Ensure logs directory exists
         logs_dir = "logs"
@@ -453,40 +515,26 @@ class NegotiationTester:
             'total_scenarios': len(self.negotiation_log['conflict_scenarios']),
             'total_negotiations': len(self.negotiation_log['negotiations']),
             'total_conflicts': sum(s.get('total_conflicts', 0) for s in self.negotiation_log['conflict_scenarios']),
-            'success_rate': len([n for n in self.negotiation_log['negotiations'] if 'error' not in n]) / max(len(self.negotiation_log['negotiations']), 1)
+            'success_rate': len([n for n in self.negotiation_log['negotiations'] if 'error' not in n]) / max(len(self.negotiation_log['negotiations']), 1),
+            'saved_at': datetime.now().isoformat(),
+            'auto_save': auto_save
         }
         
-        with open(filepath, 'w') as f:
-            json.dump(self.negotiation_log, f, indent=2)
-        
-        print(f"\n💾 Negotiation log saved to: {filepath}")
-        print(f"📊 Summary: {self.negotiation_log['summary']}")
-        
-        return filepath
-        """Save all negotiation data to logs folder"""
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"negotiation_test_{timestamp}.json"
-        
-        # Ensure logs directory exists
-        logs_dir = "logs"
-        os.makedirs(logs_dir, exist_ok=True)
-        
-        filepath = os.path.join(logs_dir, filename)
-        
-        # Add summary statistics
-        self.negotiation_log['summary'] = {
-            'total_scenarios': len(self.negotiation_log['conflict_scenarios']),
-            'total_negotiations': len(self.negotiation_log['negotiations']),
-            'total_conflicts': sum(s.get('total_conflicts', 0) for s in self.negotiation_log['conflict_scenarios']),
-            'success_rate': len([n for n in self.negotiation_log['negotiations'] if 'error' not in n]) / max(len(self.negotiation_log['negotiations']), 1)
-        }
-        
-        with open(filepath, 'w') as f:
-            json.dump(self.negotiation_log, f, indent=2)
-        
-        print(f"\n💾 Negotiation log saved to: {filepath}")
-        print(f"📊 Summary: {self.negotiation_log['summary']}")
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(self.negotiation_log, f, indent=2)
+            
+            if not auto_save:  # Only print detailed info for manual saves
+                print(f"\n💾 Negotiation log saved to: {filepath}")
+                print(f"📊 Summary: {self.negotiation_log['summary']}")
+            else:
+                print(f"   ✅ Auto-saved to: {os.path.basename(filepath)}")
+            
+            self._unsaved_data = False  # Mark as saved
+            
+        except Exception as e:
+            print(f"❌ Error saving negotiation log: {e}")
+            raise
         
         return filepath
 
@@ -513,37 +561,51 @@ def main():
         print(f"  {i}. {scenario}: {description}")
     print()
     
-    preview_choice = input("Would you like to preview all scenarios first? (y/N): ").strip().lower()
-    if preview_choice == 'y':
-        tester.preview_all_scenarios()
-        print()
-    
-    choice = input("Enter scenario number (1-4) or 'all' for all scenarios: ").strip()
-    
-    if choice.lower() == 'all':
-        print("🚀 Running ALL negotiation scenarios...")
-        for scenario, _ in scenarios:
-            tester.run_forced_conflict_test(scenario)
-    else:
-        try:
-            scenario_idx = int(choice) - 1
-            if 0 <= scenario_idx < len(scenarios):
-                scenario, _ = scenarios[scenario_idx]
-                print(f"🚀 Running {scenario} negotiation test...")
+    try:
+        preview_choice = input("Would you like to preview all scenarios first? (y/N): ").strip().lower()
+        if preview_choice == 'y':
+            tester.preview_all_scenarios()
+            print()
+        
+        choice = input("Enter scenario number (1-4) or 'all' for all scenarios: ").strip()
+        
+        if choice.lower() == 'all':
+            print("🚀 Running ALL negotiation scenarios...")
+            for scenario, _ in scenarios:
                 tester.run_forced_conflict_test(scenario)
-            else:
+        else:
+            try:
+                scenario_idx = int(choice) - 1
+                if 0 <= scenario_idx < len(scenarios):
+                    scenario, _ = scenarios[scenario_idx]
+                    print(f"🚀 Running {scenario} negotiation test...")
+                    tester.run_forced_conflict_test(scenario)
+                else:
+                    print("❌ Invalid choice!")
+                    return
+            except ValueError:
                 print("❌ Invalid choice!")
                 return
-        except ValueError:
-            print("❌ Invalid choice!")
-            return
-    
-    # Save all negotiation data
-    log_file = tester.save_negotiation_log()
-    
-    print(f"\n🎉 NEGOTIATION TESTING COMPLETED!")
-    print(f"📁 All data saved to: {log_file}")
-    print("🔍 Analyze the logs to see how LLMs handle conflict resolution!")
+        
+        # Save all negotiation data
+        log_file = tester.save_negotiation_log()
+        
+        print(f"\n🎉 NEGOTIATION TESTING COMPLETED!")
+        print(f"📁 All data saved to: {log_file}")
+        print("🔍 Analyze the logs to see how LLMs handle conflict resolution!")
+        
+    except KeyboardInterrupt:
+        # This should be handled by the signal handler, but just in case
+        print("\n🛑 Test interrupted by user")
+    except Exception as e:
+        print(f"\n❌ Unexpected error during testing: {e}")
+        print("💾 Attempting to save any collected data...")
+        try:
+            log_file = tester.save_negotiation_log()
+            print(f"✅ Emergency save completed: {log_file}")
+        except:
+            print("❌ Could not save data")
+        raise
 
 if __name__ == "__main__":
     main()
