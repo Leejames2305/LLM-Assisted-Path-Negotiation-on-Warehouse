@@ -54,6 +54,62 @@ class NegotiationTester:
             warehouse.targets = {0: (width-3, 1), 1: (2, 1)}  # Crossed targets!
             warehouse.agent_goals = {0: 0, 1: 1}
             
+        elif scenario_type == "s_shaped_corridor":
+            # Create S-shaped corridor exactly as user specified with strategic wiggle room
+            width, height = 10, 8
+            warehouse = WarehouseMap(width, height)
+            
+            # Start with all walls
+            warehouse.grid.fill('#')
+            
+            # Implement user's exact design pattern:
+            # Row 0: # # # # # # # # # #
+            # Row 1: # . . . . . . . # #
+            # Row 2: # # # # # # # . . #  
+            # Row 3: # # # # # # # . . #
+            # Row 4: # # . . . . . . # #
+            # Row 5: # . . # # # # # # #
+            # Row 6: # # . . . . . . . #
+            # Row 7: # # # # # # # # # #
+            
+            # Row 1: Top horizontal corridor
+            for x in range(1, 8):
+                warehouse.grid[1, x] = '.'
+            
+            # Row 2: Right area with wiggle space
+            warehouse.grid[2, 7] = '.'
+            warehouse.grid[2, 8] = '.'
+            
+            # Row 3: Right area with wiggle space  
+            warehouse.grid[3, 7] = '.'
+            warehouse.grid[3, 8] = '.'
+            
+            # Row 4: Middle horizontal corridor with wiggle space at end
+            for x in range(2, 8):
+                warehouse.grid[4, x] = '.'
+            # Note: Row 4 ends at column 7 to match user's pattern (# #)
+            
+            # Row 5: Left wiggle space and connection
+            warehouse.grid[5, 1] = '.'
+            warehouse.grid[5, 2] = '.'
+            
+            # Row 6: Bottom horizontal corridor  
+            for x in range(2, 9):
+                warehouse.grid[6, x] = '.'
+            
+            # Place agents to GUARANTEE conflict requiring negotiation
+            # Agent 0: Top area, needs to traverse S to bottom-right  
+            # Agent 1: Bottom area, needs to traverse S to top-left
+            # Their paths WILL block each other, requiring LLM negotiation to resolve
+            warehouse.agents = {0: (4, 1), 1: (5, 6)}
+            
+            # Place boxes near agents
+            warehouse.boxes = {0: (3, 1), 1: (6, 6)}
+            
+            # Targets require full S-traversal creating GUARANTEED negotiation scenario
+            warehouse.targets = {0: (8, 6), 1: (2, 1)}
+            warehouse.agent_goals = {0: 0, 1: 1}
+            
         elif scenario_type == "bottleneck_chamber":
             # Two chambers connected by single cell bottleneck
             width, height = 7, 5
@@ -122,6 +178,35 @@ class NegotiationTester:
         # Create the forced conflict map
         warehouse = self.create_forced_conflict_map(scenario_type)
         
+        # Display the scenario IMMEDIATELY after creation
+        print("🗺️  GENERATED SCENARIO MAP:")
+        print("=" * 50)
+        print(warehouse.display())
+        
+        print(f"\n📋 Initial Scenario Setup:")
+        print(f"   Map size: {warehouse.width} x {warehouse.height}")
+        print(f"   Agent positions: {dict(warehouse.agents)}")
+        print(f"   Box positions: {dict(warehouse.boxes)}")
+        print(f"   Target positions: {dict(warehouse.targets)}")
+        print(f"   Agent goals: {dict(warehouse.agent_goals)}")
+        
+        # Show expected agent paths
+        print(f"\n📍 Agent Movement Plan:")
+        for agent_id, start_pos in warehouse.agents.items():
+            goal_id = warehouse.agent_goals.get(agent_id)
+            if goal_id is not None and goal_id in warehouse.targets:
+                target_pos = warehouse.targets[goal_id]
+                print(f"   Agent {agent_id}: {start_pos} → {target_pos}")
+        
+        print(f"\n⚔️  Expected Conflicts: GUARANTEED (agents must navigate through same bottlenecks)")
+        print("=" * 50)
+        
+        # Confirm before proceeding
+        proceed = input("\n🤔 Does this scenario look good? Press Enter to proceed or 'q' to quit: ").strip().lower()
+        if proceed == 'q':
+            print("Test cancelled by user.")
+            return {'cancelled': True}
+        
         # Create game engine with this specific map
         game_engine = GameEngine(width=warehouse.width, height=warehouse.height, num_agents=len(warehouse.agents))
         game_engine.warehouse_map = warehouse
@@ -139,17 +224,42 @@ class NegotiationTester:
                     agent.set_target(target_pos)
             game_engine.agents[agent_id] = agent
         
-        # Display initial scenario
-        print("🗺️  FORCED CONFLICT SCENARIO:")
-        warehouse.display()
+        # CRITICAL: Plan initial paths for all agents (ignoring other agents for initial planning)
+        print("🧠 Planning initial paths for all agents...")
+        map_state = warehouse.get_state_dict()
         
-        print(f"\n📋 Scenario Details:")
+        # Create a temporary pathfinder for initial planning
+        from src.navigation import SimplePathfinder
+        temp_pathfinder = SimplePathfinder(warehouse.width, warehouse.height)
+        
+        # Get wall positions
+        wall_positions = set()
+        for y, row in enumerate(map_state['grid']):
+            for x, cell in enumerate(row):
+                if cell == '#':
+                    wall_positions.add((x, y))
+        
         for agent_id, agent in game_engine.agents.items():
-            start_pos = warehouse.agents[agent_id] 
-            target_pos = agent.target_position
-            print(f"   Agent {agent_id}: {start_pos} → {target_pos}")
-        
-        print(f"\n⚔️  Expected Conflicts: GUARANTEED (all agents must use same path)")
+            if agent.target_position:
+                # Plan path WITHOUT avoiding other agents (for initial planning)
+                path = temp_pathfinder.find_path_with_obstacles(
+                    start=agent.position,
+                    goal=agent.target_position,
+                    walls=wall_positions,
+                    agent_positions={},  # Empty - don't avoid other agents initially
+                    exclude_agent=agent_id
+                )
+                
+                # Set the planned path directly
+                agent.planned_path = path
+                print(f"   Agent {agent_id}: Planned path with {len(path)} steps")
+                if len(path) == 0:
+                    print(f"   ⚠️  WARNING: Agent {agent_id} has NO PATH to target!")
+                elif len(path) <= 10:  # Show short paths
+                    print(f"      Path: {path}")
+            else:
+                print(f"   ⚠️  WARNING: Agent {agent_id} has NO TARGET!")
+        print("🧠 Path planning completed.")
         
         # Store scenario info
         scenario_data = {
@@ -276,7 +386,83 @@ class NegotiationTester:
         
         return scenario_data
     
+    def preview_all_scenarios(self):
+        """Show a quick preview of all available scenarios"""
+        print("🔍 SCENARIO PREVIEW - Quick look at all available maps:")
+        print("=" * 70)
+        
+        scenarios = [
+            ("single_corridor", "Two agents must cross paths in narrow corridor"),
+            ("s_shaped_corridor", "S-shaped path like user diagram - solvable with negotiations"),
+            ("bottleneck_chamber", "Three agents must pass through single bottleneck"),
+            ("triple_intersection", "Three agents converge at single intersection")
+        ]
+        
+        for i, (scenario_type, description) in enumerate(scenarios, 1):
+            print(f"\n{i}. {scenario_type.upper()}: {description}")
+            print("-" * 40)
+            
+            # Create and display the scenario map
+            try:
+                warehouse = self.create_forced_conflict_map(scenario_type)
+                
+                # Show compact map
+                for y in range(warehouse.height):
+                    row = f"{y}: "
+                    for x in range(warehouse.width):
+                        cell = warehouse.grid[y, x]
+                        
+                        # Show agents and targets on map
+                        if (x, y) in warehouse.agents.values():
+                            agent_id = [k for k, v in warehouse.agents.items() if v == (x, y)][0]
+                            row += f"A{agent_id}"
+                        elif (x, y) in warehouse.targets.values():
+                            target_id = [k for k, v in warehouse.targets.items() if v == (x, y)][0]
+                            row += f"T{target_id}"
+                        elif (x, y) in warehouse.boxes.values():
+                            box_id = [k for k, v in warehouse.boxes.items() if v == (x, y)][0]
+                            row += f"B{box_id}"
+                        elif cell == '#':
+                            row += "##"
+                        else:
+                            row += " ."
+                    print(row)
+                
+                print(f"   Agents: {dict(warehouse.agents)}")
+                print(f"   Targets: {dict(warehouse.targets)}")
+                
+            except Exception as e:
+                print(f"   Error creating scenario: {e}")
+        
+        print("\n" + "=" * 70)
+    
     def save_negotiation_log(self, filename: str | None = None) -> str:
+        """Save all negotiation data to logs folder"""
+        if filename is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"negotiation_test_{timestamp}.json"
+        
+        # Ensure logs directory exists
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        filepath = os.path.join(logs_dir, filename)
+        
+        # Add summary statistics
+        self.negotiation_log['summary'] = {
+            'total_scenarios': len(self.negotiation_log['conflict_scenarios']),
+            'total_negotiations': len(self.negotiation_log['negotiations']),
+            'total_conflicts': sum(s.get('total_conflicts', 0) for s in self.negotiation_log['conflict_scenarios']),
+            'success_rate': len([n for n in self.negotiation_log['negotiations'] if 'error' not in n]) / max(len(self.negotiation_log['negotiations']), 1)
+        }
+        
+        with open(filepath, 'w') as f:
+            json.dump(self.negotiation_log, f, indent=2)
+        
+        print(f"\n💾 Negotiation log saved to: {filepath}")
+        print(f"📊 Summary: {self.negotiation_log['summary']}")
+        
+        return filepath
         """Save all negotiation data to logs folder"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -317,6 +503,7 @@ def main():
     # Test scenarios in order of complexity
     scenarios = [
         ("single_corridor", "Two agents must cross paths in narrow corridor"),
+        ("s_shaped_corridor", "S-shaped path like user diagram - solvable with negotiations"),
         ("bottleneck_chamber", "Three agents must pass through single bottleneck"),
         ("triple_intersection", "Three agents converge at single intersection")
     ]
@@ -326,7 +513,12 @@ def main():
         print(f"  {i}. {scenario}: {description}")
     print()
     
-    choice = input("Enter scenario number (1-3) or 'all' for all scenarios: ").strip()
+    preview_choice = input("Would you like to preview all scenarios first? (y/N): ").strip().lower()
+    if preview_choice == 'y':
+        tester.preview_all_scenarios()
+        print()
+    
+    choice = input("Enter scenario number (1-4) or 'all' for all scenarios: ").strip()
     
     if choice.lower() == 'all':
         print("🚀 Running ALL negotiation scenarios...")
