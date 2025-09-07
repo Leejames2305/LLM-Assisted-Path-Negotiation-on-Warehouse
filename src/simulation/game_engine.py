@@ -44,9 +44,16 @@ class GameEngine:
         """Initialize a new simulation"""
         print(f"{Fore.CYAN}Initializing Multi-Robot Warehouse Simulation...{Style.RESET_ALL}")
         
-        # Generate map
-        self.warehouse_map.generate_map(num_agents=self.num_agents, wall_density=0.1)
-        print(f"Generated {self.width}x{self.height} warehouse map with {self.num_agents} agents")
+        # Get layout type from environment or default to tunnel
+        layout_type = os.getenv('MAP_LAYOUT_TYPE', 'tunnel')
+        
+        # Generate map with tunnel layout for better conflict scenarios
+        self.warehouse_map.generate_map(
+            num_agents=self.num_agents, 
+            wall_density=0.1,
+            layout_type=layout_type
+        )
+        print(f"Generated {self.width}x{self.height} warehouse map with {self.num_agents} agents ({layout_type} layout)")
         
         # Create agents
         self.agents = {}
@@ -54,11 +61,13 @@ class GameEngine:
             position = self.warehouse_map.agents[agent_id]
             agent = RobotAgent(agent_id, position)
             
-            # Assign target (simplified: each agent goes to a target)
+            # Assign box to pick up (proper warehouse task: box → target)
             if agent_id in self.warehouse_map.agent_goals:
-                target_id = self.warehouse_map.agent_goals[agent_id]
-                target_pos = self.warehouse_map.targets[target_id]
-                agent.set_target(target_pos)
+                box_id = agent_id  # Each agent gets their own box
+                if box_id in self.warehouse_map.boxes:
+                    box_pos = self.warehouse_map.boxes[box_id]
+                    agent.set_target(box_pos)  # First go to the box
+                    print(f"Agent {agent_id}: Assigned to pickup box at {box_pos}")
             
             self.agents[agent_id] = agent
         
@@ -99,9 +108,16 @@ class GameEngine:
         # Get planned moves for all active agents
         planned_moves = self._get_planned_moves()
         
+        # Always check for deliveries, even if agents don't move
+        for agent_id in self.agents.keys():
+            self._check_box_delivery(agent_id)
+        
         if not planned_moves:
-            print("No agents have planned moves. Simulation complete!")
-            self.simulation_complete = True
+            print("No agents have planned moves.")
+            # Check if all tasks are complete
+            if self._check_completion():
+                print("🎉 All tasks completed! Simulation complete!")
+                self.simulation_complete = True
             return False
         
         # Check for conflicts
@@ -143,8 +159,11 @@ class GameEngine:
         
         for agent_id, agent in self.agents.items():
             if not agent.is_waiting and agent.target_position:
-                # Get or update path
-                if not agent.planned_path:
+                # Check if we need to re-plan (no path, or path doesn't lead to current target)
+                needs_replan = (not agent.planned_path or 
+                              (agent.planned_path and agent.planned_path[-1] != agent.target_position))
+                
+                if needs_replan:
                     map_state = self.warehouse_map.get_state_dict()
                     agent.plan_path(map_state)
                 
@@ -198,6 +217,12 @@ class GameEngine:
                 
                 if success:
                     print(f"✅ Agent {agent_id}: {action_type} executed successfully")
+                    
+                    # Check for box interactions after successful move
+                    if action_type == 'move':
+                        self._check_box_pickup(agent_id)
+                        self._check_box_delivery(agent_id)
+                        
                 else:
                     print(f"❌ Agent {agent_id}: {action_type} execution failed")
     
@@ -213,18 +238,76 @@ class GameEngine:
                 
                 if success:
                     print(f"✅ Agent {agent_id}: Moved to {next_pos}")
+                    
+                    # Check for box pickup
+                    self._check_box_pickup(agent_id)
+                    
+                    # Check for box delivery
+                    self._check_box_delivery(agent_id)
+                    
                 else:
                     print(f"❌ Agent {agent_id}: Move to {next_pos} failed")
     
+    def _check_box_pickup(self, agent_id: int):
+        """Check if agent can pick up a box at current position"""
+        agent = self.agents[agent_id]
+        
+        # Only pick up if not already carrying and at box position
+        if not agent.carrying_box:
+            box_id = agent_id  # Each agent has their own box
+            if box_id in self.warehouse_map.boxes:
+                box_pos = self.warehouse_map.boxes[box_id]
+                if agent.position == box_pos:
+                    # Pick up the box
+                    success = self.warehouse_map.pickup_box(agent_id, box_id)
+                    if success:
+                        agent.pickup_box(box_id)
+                        print(f"📦 Agent {agent_id}: Picked up box {box_id}")
+                        
+                        # Set new target to delivery location
+                        target_id = self.warehouse_map.agent_goals.get(agent_id)
+                        if target_id is not None and target_id in self.warehouse_map.targets:
+                            target_pos = self.warehouse_map.targets[target_id]
+                            agent.set_target(target_pos)
+                            print(f"🎯 Agent {agent_id}: New target set to delivery point {target_pos}")
+                            
+                            # Force immediate path re-planning after target change
+                            map_state = self.warehouse_map.get_state_dict()
+                            agent.plan_path(map_state)
+                            print(f"🗺️  Agent {agent_id}: Re-planned path to new target ({len(agent.planned_path)} steps)")
+    
+    def _check_box_delivery(self, agent_id: int):
+        """Check if agent can deliver box at current position"""
+        agent = self.agents[agent_id]
+        
+        # Only deliver if carrying box and at target position
+        if agent.carrying_box and agent.box_id is not None:
+            target_id = self.warehouse_map.agent_goals.get(agent_id)
+            if target_id is not None and target_id in self.warehouse_map.targets:
+                target_pos = self.warehouse_map.targets[target_id]
+                if agent.position == target_pos:
+                    # Deliver the box
+                    success = self.warehouse_map.drop_box(agent_id, target_id)
+                    if success:
+                        delivered_box_id = agent.drop_box()
+                        print(f"🎉 Agent {agent_id}: Delivered box {delivered_box_id} to target {target_id}")
+                        agent.set_target(None)  # Task complete
+    
     def _update_map_state(self):
         """Update warehouse map with current agent positions"""
-        # Clear agent positions on map
+        # Clear agent positions on map, but preserve other elements
         for y in range(self.height):
             for x in range(self.width):
-                if self.warehouse_map.grid[y, x] in [CellType.AGENT.value, CellType.AGENT_WITH_BOX.value]:
+                cell_type = self.warehouse_map.grid[y, x]
+                if cell_type in [CellType.AGENT.value, CellType.AGENT_WITH_BOX.value]:
                     self.warehouse_map.grid[y, x] = CellType.EMPTY.value
         
-        # Place agents at new positions
+        # Restore targets that might have been overwritten
+        for target_id, (target_x, target_y) in self.warehouse_map.targets.items():
+            if self.warehouse_map.grid[target_y, target_x] == CellType.EMPTY.value:
+                self.warehouse_map.grid[target_y, target_x] = CellType.TARGET.value
+        
+        # Place agents at new positions (this will overwrite targets if agent is on them)
         for agent_id, agent in self.agents.items():
             x, y = agent.position
             if agent.carrying_box:
@@ -236,10 +319,16 @@ class GameEngine:
             self.warehouse_map.agents[agent_id] = agent.position
     
     def _check_completion(self) -> bool:
-        """Check if all agents have reached their targets"""
+        """Check if all warehouse tasks are completed (all boxes delivered)"""
+        # Check if all boxes have been delivered (removed from the map)
+        if self.warehouse_map.boxes:
+            return False  # Still boxes to be delivered
+        
+        # Alternative check: all agents have no active targets (completed their tasks)
         for agent in self.agents.values():
-            if agent.target_position and agent.position != agent.target_position:
-                return False
+            if agent.target_position is not None:
+                return False  # Agent still has work to do
+                
         return True
     
     def display_map(self):
@@ -259,7 +348,7 @@ class GameEngine:
                 if cell == CellType.AGENT.value:
                     row += f"{Fore.BLUE}{cell}{Style.RESET_ALL} "
                 elif cell == CellType.AGENT_WITH_BOX.value:
-                    row += f"{Fore.MAGENTA}{cell}{Style.RESET_ALL}"
+                    row += f"{Fore.MAGENTA}{cell}{Style.RESET_ALL} "
                 elif cell == CellType.BOX.value:
                     row += f"{Fore.YELLOW}{cell}{Style.RESET_ALL} "
                 elif cell == CellType.TARGET.value:
@@ -278,13 +367,29 @@ class GameEngine:
             status = agent.get_status()
             target_dist = agent.distance_to_target()
             
+            # Determine task phase
+            if agent.carrying_box:
+                task_phase = "📦→🎯 (Delivering) [@]"
+                target_type = "delivery"
+            elif agent.target_position:
+                task_phase = "🚶→📦 (Pickup) [A]"
+                target_type = "pickup"
+            else:
+                task_phase = "✅ (Complete)"
+                target_type = "none"
+            
             status_color = Fore.GREEN if status['position'] == status['target'] else Fore.WHITE
+            
             print(f"{status_color}Agent {agent_id}: {status['position']} → {status['target']} (dist: {target_dist:.0f}){Style.RESET_ALL}")
+            print(f"  {task_phase}")
+            
+            if status['carrying_box']:
+                print(f"  📦 Carrying box {status['box_id']}")
             
             if status['is_waiting']:
                 print(f"  ⏳ Waiting {status['wait_turns_remaining']} more turns")
             
-            if status['planned_path']:
+            if status['planned_path'] and len(status['planned_path']) > 1:
                 print(f"  🗺️  Path: {status['planned_path'][:5]}{'...' if len(status['planned_path']) > 5 else ''}")
     
     def _log_turn_state(self, event_type: str):

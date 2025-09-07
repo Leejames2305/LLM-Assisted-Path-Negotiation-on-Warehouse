@@ -64,45 +64,32 @@ class AgentValidator:
             bool: True if move is safe, False otherwise
         """
         
-        system_prompt = """You are a safety validator for robot movements. Check if a move is valid and safe.
-
-Rules:
-- Can only move to adjacent cells (not diagonal)
-- Cannot move into walls (#)
-- Cannot move into cells occupied by other agents
-- Must stay within map bounds
-
-Respond with JSON: {"safe": true/false, "reason": "explanation"}"""
+        # First do basic validation - this should be deterministic, not LLM-based
+        to_x, to_y = to_pos
+        from_x, from_y = from_pos
         
-        user_prompt = f"""Validate move for Agent {agent_id}:
-From: {from_pos}
-To: {to_pos}
-
-Map state: {map_state}
-
-Is this move safe?"""
+        # Check if target position is within map bounds
+        grid = map_state.get('grid', [])
+        if not grid or to_y < 0 or to_y >= len(grid) or to_x < 0 or to_x >= len(grid[0]):
+            return False
         
-        messages = [
-            self.client.create_system_message(system_prompt),
-            self.client.create_user_message(user_prompt)
-        ]
+        # Check if target position is a wall
+        if grid[to_y][to_x] == '#':
+            return False
         
-        response = self.client.send_request(
-            model=self.model,
-            messages=messages,
-            max_tokens=200,
-            temperature=0.0
-        )
+        # Check if move is to adjacent cell (no diagonal moves)
+        dx = abs(to_x - from_x)
+        dy = abs(to_y - from_y)
+        if dx + dy != 1:  # Not adjacent
+            return False
         
-        if response:
-            try:
-                result = json.loads(response.strip())
-                return result.get('safe', False)
-            except:
-                # If parsing fails, do basic validation
-                return self._basic_move_validation(from_pos, to_pos, map_state)
+        # Check if another agent is at target position
+        other_agents = map_state.get('agents', {})
+        for other_agent_id, other_pos in other_agents.items():
+            if other_agent_id != agent_id and other_pos == to_pos:
+                return False
         
-        return self._basic_move_validation(from_pos, to_pos, map_state)
+        return True
     
     def suggest_alternative_action(self, agent_id: int, failed_action: Dict, current_state: Dict) -> Optional[Dict]:
         """

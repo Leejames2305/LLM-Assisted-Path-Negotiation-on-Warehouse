@@ -16,7 +16,7 @@ class RobotAgent:
         self.planned_path = []
         self.current_action = None
         self.validator = AgentValidator()
-        self.pathfinder = SimplePathfinder()
+        self.pathfinder = None  # Will be initialized with map size
         
         # Agent state
         self.is_waiting = False
@@ -33,13 +33,31 @@ class RobotAgent:
         if not self.target_position:
             return []
         
+        # Initialize pathfinder with map dimensions if not already done
+        grid = map_state.get('grid', [])
+        if grid and not self.pathfinder:
+            map_height = len(grid)
+            map_width = len(grid[0]) if grid else 0
+            self.pathfinder = SimplePathfinder(map_width, map_height)
+        
+        if not self.pathfinder:
+            return []  # No valid map state
+        
         # Get other agent positions to avoid
         other_agents = {aid: pos for aid, pos in map_state.get('agents', {}).items() 
                        if aid != self.agent_id}
         
-        path = self.pathfinder.find_path_avoiding_agents(
+        # Get wall positions from the grid
+        wall_positions = set()
+        for y, row in enumerate(grid):
+            for x, cell in enumerate(row):
+                if cell == '#':  # Wall cell
+                    wall_positions.add((x, y))
+        
+        path = self.pathfinder.find_path_with_obstacles(
             start=self.position,
             goal=self.target_position,
+            walls=wall_positions,
             agent_positions=other_agents,
             exclude_agent=self.agent_id
         )
@@ -206,7 +224,7 @@ class RobotAgent:
                 abs(self.position[1] - self.target_position[1]))
     
     def __str__(self) -> str:
-        status = "A*" if self.carrying_box else "A"
+        status = "@" if self.carrying_box else "A"
         return f"Agent{self.agent_id}({status})@{self.position}"
     
     def __repr__(self) -> str:

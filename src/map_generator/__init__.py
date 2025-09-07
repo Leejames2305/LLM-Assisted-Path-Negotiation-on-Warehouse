@@ -12,7 +12,7 @@ class CellType(Enum):
     EMPTY = '.'
     WALL = '#'
     AGENT = 'A'
-    AGENT_WITH_BOX = 'A*'
+    AGENT_WITH_BOX = '@'
     BOX = 'B'
     TARGET = 'T'
 
@@ -44,6 +44,177 @@ class WarehouseMap:
             if self.is_empty_position(x, y):
                 self.grid[y, x] = CellType.WALL.value
                 walls_placed += 1
+    
+    def create_tunnel_layout(self):
+        """Create a tunnel-based layout with strategic bottlenecks and single-lane paths"""
+        # Fill the entire map with walls first
+        self.grid = np.full((self.height, self.width), CellType.WALL.value, dtype=str)
+        
+        # Create main horizontal tunnel through the middle
+        middle_y = self.height // 2
+        for x in range(self.width):
+            self.grid[middle_y, x] = CellType.EMPTY.value
+        
+        # Create vertical connecting tunnels (bottlenecks)
+        tunnel_positions = []
+        
+        if self.width >= 6:
+            # Create 2-3 vertical tunnels at strategic positions
+            tunnel_x_positions = [
+                self.width // 4,
+                self.width // 2,
+                3 * self.width // 4
+            ]
+            
+            for tunnel_x in tunnel_x_positions:
+                if tunnel_x < self.width:
+                    tunnel_positions.append(tunnel_x)
+                    # Create vertical tunnel
+                    for y in range(self.height):
+                        self.grid[y, tunnel_x] = CellType.EMPTY.value
+        else:
+            # For smaller maps, create one central vertical tunnel
+            tunnel_x = self.width // 2
+            tunnel_positions.append(tunnel_x)
+            for y in range(self.height):
+                self.grid[y, tunnel_x] = CellType.EMPTY.value
+        
+        # Create small chambers at tunnel intersections
+        for tunnel_x in tunnel_positions:
+            # Top chamber
+            if middle_y > 1:
+                chamber_y = middle_y - 2
+                if chamber_y >= 0:
+                    for dx in [-1, 0, 1]:
+                        if 0 <= tunnel_x + dx < self.width:
+                            self.grid[chamber_y, tunnel_x + dx] = CellType.EMPTY.value
+            
+            # Bottom chamber  
+            if middle_y < self.height - 2:
+                chamber_y = middle_y + 2
+                if chamber_y < self.height:
+                    for dx in [-1, 0, 1]:
+                        if 0 <= tunnel_x + dx < self.width:
+                            self.grid[chamber_y, tunnel_x + dx] = CellType.EMPTY.value
+        
+        # Add some additional single-cell passages to create more complexity
+        if self.height >= 4:
+            # Top horizontal mini-tunnel
+            top_y = 0
+            start_x = max(1, tunnel_positions[0] - 1)
+            end_x = min(self.width - 1, tunnel_positions[-1] + 1)
+            for x in range(start_x, end_x + 1):
+                self.grid[top_y, x] = CellType.EMPTY.value
+            
+            # Bottom horizontal mini-tunnel
+            bottom_y = self.height - 1
+            for x in range(start_x, end_x + 1):
+                self.grid[bottom_y, x] = CellType.EMPTY.value
+
+    def create_extreme_single_corridor(self):
+        """Create an EXTREME single corridor layout that forces constant negotiation"""
+        # Fill the entire map with walls
+        self.grid = np.full((self.height, self.width), CellType.WALL.value, dtype=str)
+        
+        # Create a single serpentine corridor that covers the entire map
+        # This forces ALL agents to use the same path, guaranteeing conflicts
+        
+        # Strategy: Create a snake-like pattern that touches every area
+        corridor_cells = []
+        
+        # Start from top-left, go right
+        y = 0
+        for x in range(self.width):
+            corridor_cells.append((x, y))
+        
+        # Go down on the right side
+        x = self.width - 1
+        for y in range(1, self.height):
+            corridor_cells.append((x, y))
+        
+        # Go left on the bottom
+        y = self.height - 1
+        for x in range(self.width - 2, -1, -1):
+            corridor_cells.append((x, y))
+        
+        # Go up on the left side (but not all the way to avoid loop)
+        x = 0
+        for y in range(self.height - 2, 0, -1):
+            corridor_cells.append((x, y))
+        
+        # Create horizontal connector in the middle if there's space
+        if self.height > 2:
+            middle_y = self.height // 2
+            for x in range(1, self.width - 1):
+                corridor_cells.append((x, middle_y))
+        
+        # Apply the corridor to the grid
+        for x, y in corridor_cells:
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self.grid[y, x] = CellType.EMPTY.value
+    
+    def create_narrow_bridge_layout(self):
+        """Create multiple chambers connected by single-cell bridges"""
+        # Fill with walls
+        self.grid = np.full((self.height, self.width), CellType.WALL.value, dtype=str)
+        
+        # Create chambers (2x2 or 3x3 areas)
+        chambers = []
+        
+        # Top-left chamber
+        if self.width >= 4 and self.height >= 4:
+            for y in range(2):
+                for x in range(2):
+                    self.grid[y, x] = CellType.EMPTY.value
+            chambers.append((0, 0, 2, 2))  # x, y, width, height
+        
+        # Top-right chamber
+        if self.width >= 4:
+            start_x = self.width - 2
+            for y in range(2):
+                for x in range(start_x, self.width):
+                    self.grid[y, x] = CellType.EMPTY.value
+            chambers.append((start_x, 0, 2, 2))
+        
+        # Bottom-left chamber
+        if self.height >= 4:
+            start_y = self.height - 2
+            for y in range(start_y, self.height):
+                for x in range(2):
+                    self.grid[y, x] = CellType.EMPTY.value
+            chambers.append((0, start_y, 2, 2))
+        
+        # Bottom-right chamber
+        if self.width >= 4 and self.height >= 4:
+            start_x = self.width - 2
+            start_y = self.height - 2
+            for y in range(start_y, self.height):
+                for x in range(start_x, self.width):
+                    self.grid[y, x] = CellType.EMPTY.value
+            chambers.append((start_x, start_y, 2, 2))
+        
+        # Create single-cell bridges between chambers
+        # Horizontal bridge in the middle
+        middle_y = self.height // 2
+        for x in range(2, self.width - 2):
+            self.grid[middle_y, x] = CellType.EMPTY.value
+        
+        # Vertical bridges
+        middle_x = self.width // 2
+        for y in range(2, self.height - 2):
+            self.grid[y, middle_x] = CellType.EMPTY.value
+        
+        # Connect chambers to main corridors
+        # Top chambers to horizontal bridge
+        self.grid[2, 1] = CellType.EMPTY.value  # Top-left to bridge
+        if self.width > 4:
+            self.grid[2, self.width - 2] = CellType.EMPTY.value  # Top-right to bridge
+        
+        # Bottom chambers to horizontal bridge
+        if self.height > 4:
+            self.grid[self.height - 3, 1] = CellType.EMPTY.value  # Bottom-left to bridge
+            if self.width > 4:
+                self.grid[self.height - 3, self.width - 2] = CellType.EMPTY.value  # Bottom-right to bridge
     
     def place_agents(self, num_agents: int = 2):
         """Place agents randomly on the map"""
@@ -93,13 +264,33 @@ class WarehouseMap:
             if i < len(target_ids):
                 self.agent_goals[agent_id] = target_ids[i]
     
-    def generate_map(self, num_agents: int = 2, wall_density: float = 0.1):
-        """Generate a complete warehouse map"""
+    def generate_map(self, num_agents: int = 2, wall_density: float = 0.1, layout_type: str = "tunnel"):
+        """
+        Generate a complete warehouse map
+        
+        Args:
+            num_agents: Number of agents to place
+            wall_density: Density of walls (only used for random layout)
+            layout_type: Layout types available:
+                - "tunnel": Strategic bottlenecks and chambers
+                - "extreme": Single serpentine corridor (MAXIMUM conflicts)
+                - "bridge": Chambers connected by single-cell bridges
+                - "random": Random wall placement
+        """
         # Reset grid
         self.grid = np.full((self.height, self.width), CellType.EMPTY.value, dtype=str)
         
+        # Place walls based on layout type
+        if layout_type == "extreme":
+            self.create_extreme_single_corridor()
+        elif layout_type == "bridge":
+            self.create_narrow_bridge_layout()
+        elif layout_type == "tunnel":
+            self.create_tunnel_layout()
+        else:  # random
+            self.place_walls(wall_density)
+        
         # Place elements
-        self.place_walls(wall_density)
         self.place_agents(num_agents)
         self.place_boxes(num_agents)  # Same number of boxes as agents
         self.place_targets(num_agents)  # Same number of targets as boxes

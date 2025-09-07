@@ -178,6 +178,32 @@ class SimplePathfinder:
         
         return self.find_path(start, goal, obstacles)
     
+    def find_path_with_obstacles(self, start: Tuple[int, int], goal: Tuple[int, int],
+                                walls: Set[Tuple[int, int]], 
+                                agent_positions: Dict[int, Tuple[int, int]], 
+                                exclude_agent: Optional[int] = None) -> List[Tuple[int, int]]:
+        """
+        Find path while avoiding walls and other agents
+        
+        Args:
+            start: Starting position
+            goal: Goal position
+            walls: Set of wall positions to avoid
+            agent_positions: {agent_id: (x, y)}
+            exclude_agent: Agent ID to exclude from obstacles
+            
+        Returns:
+            Path avoiding walls and other agents
+        """
+        obstacles = set(walls)  # Start with walls
+        
+        # Add other agents as obstacles
+        for agent_id, pos in agent_positions.items():
+            if exclude_agent is None or agent_id != exclude_agent:
+                obstacles.add(pos)
+        
+        return self.find_path(start, goal, obstacles)
+    
     def get_path_cost(self, path: List[Tuple[int, int]]) -> int:
         """Calculate the cost (length) of a path"""
         return len(path) - 1 if len(path) > 1 else 0
