@@ -113,43 +113,79 @@ class WarehouseMap:
 
     def create_extreme_single_corridor(self):
         """Create an EXTREME single corridor layout that forces constant negotiation"""
-        # Fill the entire map with walls
+        # Fill the entire map with walls first
         self.grid = np.full((self.height, self.width), CellType.WALL.value, dtype=str)
         
-        # Create a single serpentine corridor that covers the entire map
-        # This forces ALL agents to use the same path, guaranteeing conflicts
+        # Strategy: Create internal maze with no edge paths
+        # All navigation must go through narrow internal corridors
         
-        # Strategy: Create a snake-like pattern that touches every area
-        corridor_cells = []
+        corridor_cells = set()
         
-        # Start from top-left, go right
-        y = 0
-        for x in range(self.width):
-            corridor_cells.append((x, y))
+        # Create main internal corridors (avoid all edges completely)
+        # Main horizontal corridor in the center
+        center_y = self.height // 2
+        for x in range(2, self.width - 2):  # Stay away from edges
+            corridor_cells.add((x, center_y))
         
-        # Go down on the right side
-        x = self.width - 1
-        for y in range(1, self.height):
-            corridor_cells.append((x, y))
+        # Default positions for corridors
+        left_x = max(1, self.width // 4)
+        right_x = min(self.width - 2, 3 * self.width // 4)
+        upper_y = max(1, center_y - 1)
+        lower_y = min(self.height - 2, center_y + 1)
         
-        # Go left on the bottom
-        y = self.height - 1
-        for x in range(self.width - 2, -1, -1):
-            corridor_cells.append((x, y))
+        # Create two vertical corridors that connect areas but avoid edges
+        if self.width > 6 and self.height > 4:
+            # Left internal corridor
+            for y in range(1, self.height - 1):  # Avoid top/bottom edges
+                corridor_cells.add((left_x, y))
+            
+            # Right internal corridor  
+            for y in range(1, self.height - 1):  # Avoid top/bottom edges
+                corridor_cells.add((right_x, y))
         
-        # Go up on the left side (but not all the way to avoid loop)
-        x = 0
-        for y in range(self.height - 2, 0, -1):
-            corridor_cells.append((x, y))
+        # Create narrow connecting passages between the main corridors
+        if self.height > 3:
+            # Upper connecting corridor
+            for x in range(left_x + 1, right_x):
+                if x % 2 == 0:  # Every other cell to create bottlenecks
+                    corridor_cells.add((x, upper_y))
+            
+            # Lower connecting corridor
+            for x in range(left_x + 1, right_x):
+                if x % 2 == 1:  # Offset pattern for bottlenecks
+                    corridor_cells.add((x, lower_y))
         
-        # Create horizontal connector in the middle if there's space
-        if self.height > 2:
-            middle_y = self.height // 2
-            for x in range(1, self.width - 1):
-                corridor_cells.append((x, middle_y))
+        # Add critical single-cell bottlenecks at intersections
+        critical_points = [
+            (left_x, center_y),   # Left intersection
+            (right_x, center_y),  # Right intersection
+        ]
         
-        # Apply the corridor to the grid
-        for x, y in corridor_cells:
+        # Add some internal branching paths (but still no edges)
+        if self.width > 8 and self.height > 5:
+            mid_x = self.width // 2
+            # Short vertical branches from center
+            for dy in [-1, 1]:
+                branch_y = center_y + dy
+                if 1 < branch_y < self.height - 1:
+                    corridor_cells.add((mid_x, branch_y))
+        
+        # Create a few small dead-end chambers to add complexity (only if we have space)
+        if self.width > 10 and self.height > 6:
+            # Small chambers connected by single cells
+            chamber_positions = [
+                (left_x - 1, upper_y),
+                (left_x - 1, upper_y + 1),
+                (right_x + 1, lower_y),
+                (right_x + 1, lower_y + 1),
+            ]
+            for x, y in chamber_positions:
+                if 1 <= x < self.width - 1 and 1 <= y < self.height - 1:
+                    corridor_cells.add((x, y))
+        
+        # Apply all corridors to the grid
+        all_cells = corridor_cells.union(set(critical_points))
+        for x, y in all_cells:
             if 0 <= x < self.width and 0 <= y < self.height:
                 self.grid[y, x] = CellType.EMPTY.value
     
