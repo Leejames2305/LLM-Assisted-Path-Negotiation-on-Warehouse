@@ -1,28 +1,5 @@
 # LLM Negotiation Testing System
 
-
-
-### 1. `test_negotiation.py` - Main Test Suite
-**Purpose**: Comprehensive negotiation testing with detailed logging
-
-**Features**:
-- ✅ **Forces 100% conflict rate** with artificial scenarios
-- ✅ **Captures both prompts and responses** from LLM negotiations  
-- ✅ **Saves all data to logs/** folder with timestamps
-- ✅ **Interactive testing** with step-by-step control
-- ✅ **Multiple conflict scenarios** to test different situations
-
-
-**Scenarios Available**:
-1. **Single Corridor**: Two agents must cross paths in narrow corridor
-2. **Bottleneck Chamber**: Three agents must pass through single bottleneck  
-3. **Triple Intersection**: Three agents converge at single intersection
-
-### 2. `test_negotiation_auto.py` - Automated Demo
-**Purpose**: Quick automatic test without manual input
-
-
-
 ## What Gets Logged
 
 Each negotiation captures:
