@@ -99,7 +99,7 @@ CodeBase/
 ## 🗺️ Map Symbols
 
 - `A`: Agent (robot)
-- `A*`: Agent carrying a box
+- `@`: Agent carrying a box
 - `B`: Box
 - `T`: Target location
 - `#`: Wall/Obstacle
@@ -134,7 +134,7 @@ OPENROUTER_API_KEY=your_key_here
 
 # LLM Models
 CENTRAL_LLM_MODEL=zai/glm-4.5-air:free
-AGENT_LLM_MODEL=google/gemma-2-9b-it:free
+AGENT_LLM_MODEL=google/gemma-3n-e4b-it:free
 
 # Simulation Settings
 MAP_WIDTH=8
@@ -152,14 +152,3 @@ LOG_SIMULATION=true
 
 ### Map Display Issues
 - Windows: Install colorama for colored output
-
-## 📈 Future Enhancements
-
-- [ ] Box pickup/delivery mechanics
-- [ ] More complex warehouse layouts
-- [ ] Performance metrics and statistics
-- [ ] Web interface for visualization
-- [ ] Multi-warehouse scenarios
-- [ ] Custom map designer
-
-
