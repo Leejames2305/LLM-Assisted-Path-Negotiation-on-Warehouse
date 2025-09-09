@@ -1,0 +1,195 @@
+{
+  "test_info": {
+    "timestamp": "2025-09-09T19:21:55.722243",
+    "test_type": "forced_conflict_negotiation",
+    "description": "Artificial scenarios designed to force 100% conflict rate"
+  },
+  "negotiations": [
+    {
+      "turn": 0,
+      "timestamp": "2025-09-09T19:22:04.757909",
+      "hmas2_stages": {
+        "central_negotiation": {
+          "system_prompt": "You are a robot conflict resolver. Respond ONLY with valid JSON.\n\nRULES: Robots deliver boxes, one per cell, avoid collisions.\n\nRESPONSE FORMAT:\n{\n    \"resolution\": \"priority|reroute|wait\",\n    \"agent_actions\": {\n        \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n    },\n    \"reasoning\": \"Brief explanation\"\n}\n\nKeep reasoning under 50 words. Always respond with complete JSON.",
+          "user_prompt": "TURN 0 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (1, 1), going to (4, 3)\n  Planned path: [(1, 1), (2, 1), (3, 1), (4, 1), (4, 2), (4, 3)]\n- Agent 1: At (4, 1), going to (1, 1)\n  Planned path: [(4, 1), (3, 1), (2, 1), (1, 1)]\n\nCONFLICT POINTS: [(3, 1), (2, 1)]\n\nMAP CONTEXT:\nAll agents: {0: (1, 1), 1: (4, 1)}\nRemaining boxes: {0: (2, 1), 1: (3, 1)}\nRemaining targets: {0: (4, 3), 1: (1, 1)}\n\nPlease provide a negotiation solution in JSON format.",
+          "llm_response": {
+            "resolution": "priority",
+            "agent_actions": {},
+            "reasoning": "Failed to parse LLM response, using default priority resolution"
+          },
+          "model_used": "qwen/qwen3-235b-a22b:free"
+        },
+        "agent_validations": {},
+        "final_actions": {},
+        "validation_overrides": {}
+      },
+      "conflict_data": {
+        "agents": [
+          {
+            "id": 0,
+            "current_pos": [
+              1,
+              1
+            ],
+            "target_pos": [
+              4,
+              3
+            ],
+            "planned_path": [
+              [
+                1,
+                1
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                4,
+                2
+              ],
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          {
+            "id": 1,
+            "current_pos": [
+              4,
+              1
+            ],
+            "target_pos": [
+              1,
+              1
+            ],
+            "planned_path": [
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                1,
+                1
+              ]
+            ]
+          }
+        ],
+        "conflict_points": [
+          [
+            3,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "map_state": {
+          "agents": {
+            "0": [
+              1,
+              1
+            ],
+            "1": [
+              4,
+              1
+            ]
+          },
+          "boxes": {
+            "0": [
+              2,
+              1
+            ],
+            "1": [
+              3,
+              1
+            ]
+          },
+          "targets": {
+            "0": [
+              4,
+              3
+            ],
+            "1": [
+              1,
+              1
+            ]
+          },
+          "agent_goals": {
+            "0": 0,
+            "1": 1
+          },
+          "grid": [
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              "#"
+            ]
+          ]
+        },
+        "turn": 0
+      }
+    }
+  ],
+  "conflict_scenarios": [],
+  "summary": {
+    "total_scenarios": 0,
+    "total_negotiations": 1,
+    "total_conflicts": 0,
+    "success_rate": 1.0,
+    "hmas2_metrics": {
+      "total_agent_validations": 0,
+      "validation_approvals": 0,
+      "validation_rejections": 0,
+      "agent_alternatives_suggested": 0,
+      "central_vs_agent_disagreement_rate": 0.0
+    },
+    "saved_at": "2025-09-09T19:23:29.987470",
+    "auto_save": false
+  }
+}

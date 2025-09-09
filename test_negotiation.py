@@ -449,18 +449,23 @@ class NegotiationTester:
                 
                 if isinstance(actions, dict):
                     for agent_id, action_data in actions.items():
-                        if agent_id in game_engine.agents:
-                            agent = game_engine.agents[agent_id]
+                        # Convert string agent_id to int if needed for lookup
+                        agent_id_key = int(agent_id) if isinstance(agent_id, str) and agent_id.isdigit() else agent_id
+                        
+                        print(f"🔍 DEBUG: Looking for agent {agent_id} (converted to {agent_id_key}) in agents: {list(game_engine.agents.keys())}")
+                        
+                        if agent_id_key in game_engine.agents:
+                            agent = game_engine.agents[agent_id_key]
                             
-                            print(f"\n🔍 Agent {agent_id}: Validating action {action_data}")
+                            print(f"\n🔍 Agent {agent_id_key}: Validating action {action_data}")
                             
                             # Get the actual agent model being used (no hardcoding!)
                             agent_model = getattr(agent.validator, 'model', 'unknown') if hasattr(agent, 'validator') else 'unknown'
-                            print(f"🔍 DEBUG: Agent {agent_id} validator using model: {agent_model}")
+                            print(f"🔍 DEBUG: Agent {agent_id_key} validator using model: {agent_model}")
                             
                             # Capture the validation process
                             validation_entry = {
-                                'agent_id': agent_id,
+                                'agent_id': agent_id_key,
                                 'proposed_action': action_data,
                                 'validation_model': agent_model,  # Dynamic model detection!
                                 'validation_result': None,
@@ -518,6 +523,8 @@ class NegotiationTester:
                                 validation_entry['final_action_executed'] = fallback_action
                                 negotiation_entry['hmas2_stages']['agent_validations'][agent_id] = validation_entry
                                 negotiation_entry['hmas2_stages']['final_actions'][agent_id] = fallback_action
+                        else:
+                            print(f"⚠️  Agent {agent_id} (key: {agent_id_key}) not found in game_engine.agents: {list(game_engine.agents.keys())}")
                 
                 print("\n🏁 HMAS-2 NEGOTIATION COMPLETE:")
                 print(f"   Central LLM: {'✅' if 'error' not in negotiation_entry['hmas2_stages']['central_negotiation'] else '❌'}")

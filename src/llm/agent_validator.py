@@ -37,7 +37,7 @@ class AgentValidator:
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=500,
+            max_tokens=20000,
             temperature=0.1  # Very low temperature for consistent validation
         )
         
@@ -118,7 +118,7 @@ Suggest a safe alternative action."""
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=300,
+            max_tokens=20000,
             temperature=0.3
         )
         

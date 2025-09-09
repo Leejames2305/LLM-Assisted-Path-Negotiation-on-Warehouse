@@ -44,7 +44,7 @@ class CentralNegotiator:
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=1500,
+            max_tokens=20000,  # Increased from 1500 to handle longer responses
             temperature=0.3  # Lower temperature for more consistent reasoning
         )
         
@@ -52,41 +52,29 @@ class CentralNegotiator:
             try:
                 return self._parse_negotiation_response(response)
             except Exception as e:
-                print(f"Error parsing negotiation response: {e}")
+                print(f"❌ Error parsing negotiation response: {e}")
+                print(f"🔍 Raw response: {response}")
                 return self._create_fallback_resolution(conflict_data)
         else:
+            print("❌ No response from LLM API")
             return self._create_fallback_resolution(conflict_data)
     
     def _create_negotiation_system_prompt(self) -> str:
         """Create system prompt for negotiation"""
-        return """You are a Central Negotiator for a multi-robot warehouse navigation system. Your role is to resolve path conflicts between robots efficiently and fairly.
+        return """You are a robot conflict resolver. Respond ONLY with valid JSON.
 
-WAREHOUSE RULES:
-- Robots must deliver boxes to targets
-- Only one robot can occupy a cell at a time
-- Robots can carry one box at a time
-- Minimize total time and distance for all robots
+RULES: Robots deliver boxes, one per cell, avoid collisions.
 
-CONFLICT RESOLUTION STRATEGIES:
-1. PRIORITY: Assign movement priority based on urgency/distance to goal
-2. REROUTE: Find alternative paths for conflicting robots
-3. WAIT: Have some robots wait while others pass
-
-RESPONSE FORMAT (JSON):
+RESPONSE FORMAT:
 {
     "resolution": "priority|reroute|wait",
     "agent_actions": {
-        "agent_id": {
-            "action": "move|wait",
-            "path": [[x, y], [x, y], ...],
-            "priority": 1-10,
-            "wait_turns": 0-3
-        }
+        "0": {"action": "move|wait", "path": [[x,y]...], "priority": 1}
     },
-    "reasoning": "Brief explanation of decision"
+    "reasoning": "Brief explanation"
 }
 
-Always respond with valid JSON. Consider efficiency, fairness, and deadlock prevention."""
+Keep reasoning under 50 words. Always respond with complete JSON."""
     
     def _create_conflict_description(self, conflict_data: Dict) -> str:
         """Create human-readable conflict description"""
@@ -119,9 +107,12 @@ Always respond with valid JSON. Consider efficiency, fairness, and deadlock prev
         return description
     
     def _parse_negotiation_response(self, response: str) -> Dict:
-        """Parse LLM response into structured format"""
+        """Parse LLM response into structured format with truncation handling"""
         # Try to extract JSON from response
         response = response.strip()
+        
+        print(f"🔍 DEBUG: Response length: {len(response)} chars")
+        print(f"🔍 DEBUG: Response preview: {response[:200]}...")
         
         # Look for JSON in the response
         start_idx = response.find('{')
@@ -130,16 +121,54 @@ Always respond with valid JSON. Consider efficiency, fairness, and deadlock prev
         if start_idx != -1 and end_idx > start_idx:
             json_str = response[start_idx:end_idx]
             try:
-                return json.loads(json_str)
-            except json.JSONDecodeError:
-                pass
+                result = json.loads(json_str)
+                print("✅ Successfully parsed JSON response")
+                return result
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parsing failed: {e}")
+                print(f"🔧 Attempting truncation recovery...")
+                
+                # Try to recover from truncated JSON
+                recovered_json = self._attempt_json_recovery(json_str)
+                if recovered_json:
+                    print("✅ Successfully recovered from truncated JSON!")
+                    return recovered_json
+                else:
+                    print("❌ Could not recover truncated JSON")
         
-        # If JSON parsing fails, create a simple resolution
+        # If all parsing fails, create a simple resolution
+        print("🔄 Using fallback JSON structure")
         return {
             "resolution": "priority",
             "agent_actions": {},
             "reasoning": "Failed to parse LLM response, using default priority resolution"
         }
+    
+    def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
+        """Attempt to recover from truncated JSON"""
+        try:
+            # Common truncation fixes
+            fixed_json = json_str.rstrip()
+            
+            # If it ends with a comma, remove it and add closing brace
+            if fixed_json.endswith(','):
+                fixed_json = fixed_json.rstrip(',') + '}'
+            
+            # If it doesn't end with closing brace, add one
+            elif not fixed_json.endswith('}'):
+                fixed_json += '}'
+            
+            # Try to fix incomplete string values
+            if fixed_json.count('"') % 2 != 0:
+                fixed_json += '"'
+                if not fixed_json.endswith('}'):
+                    fixed_json += '}'
+            
+            print(f"🔧 Recovery attempt: {fixed_json[:100]}...")
+            return json.loads(fixed_json)
+            
+        except json.JSONDecodeError:
+            return None
     
     def _create_fallback_resolution(self, conflict_data: Dict) -> Dict:
         """Create a simple fallback resolution when LLM fails"""
@@ -200,7 +229,7 @@ Provide optimal path as JSON."""
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=800,
+            max_tokens=20000,
             temperature=0.2
         )
         

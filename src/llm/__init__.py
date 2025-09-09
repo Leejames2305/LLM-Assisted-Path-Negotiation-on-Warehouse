@@ -38,16 +38,26 @@ class OpenRouterClient:
             response.raise_for_status()
             
             data = response.json()
-            return data['choices'][0]['message']['content']
+            content = data['choices'][0]['message']['content']
+            finish_reason = data['choices'][0].get('finish_reason', 'unknown')
+            
+            # Log finish reason for debugging
+            print(f"🔍 DEBUG: OpenRouter finish_reason: {finish_reason}")
+            
+            if finish_reason == 'length':
+                print("⚠️  WARNING: Response was truncated due to token limit!")
+                print(f"🔍 Truncated content: {content[:200]}...")
+            
+            return content
         
         except requests.RequestException as e:
-            print(f"Error making request to OpenRouter: {e}")
+            print(f"❌ Error making request to OpenRouter: {e}")
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_details = e.response.json()
-                    print(f"Error details: {error_details}")
+                    print(f"🔍 Error details: {error_details}")
                 except:
-                    print(f"Response content: {e.response.text}")
+                    print(f"🔍 Response content: {e.response.text}")
             return None
         except KeyError as e:
             print(f"Unexpected response format: {e}")
