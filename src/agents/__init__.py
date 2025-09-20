@@ -27,6 +27,10 @@ class RobotAgent:
         """Set the agent's target position"""
         self.target_position = target_position
         self.planned_path = []  # Reset path when target changes
+        
+        # Clear negotiated path flag when getting new target
+        if hasattr(self, '_has_negotiated_path'):
+            self._has_negotiated_path = False
     
     def plan_path(self, map_state: Dict) -> List[Tuple[int, int]]:
         """Plan a path to the target using pathfinding"""
@@ -64,6 +68,10 @@ class RobotAgent:
         
         self.planned_path = path
         return path
+    
+    def set_path(self, path: List[Tuple[int, int]]):
+        """Directly set the planned path (used for negotiated paths)"""
+        self.planned_path = path
     
     def get_next_move(self) -> Optional[Tuple[int, int]]:
         """Get the next position to move to"""
@@ -160,15 +168,20 @@ class RobotAgent:
         if is_safe:
             self.position = new_position
             
-            # Update planned path
-            if self.planned_path and new_position in self.planned_path:
-                idx = self.planned_path.index(new_position)
-                self.planned_path = self.planned_path[idx:]
+            # Update planned path - but don't interfere with negotiated paths managed by game engine
+            if not (hasattr(self, '_has_negotiated_path') and getattr(self, '_has_negotiated_path', False)):
+                # Only update path if this is NOT a negotiated path (let game engine handle negotiated paths)
+                if self.planned_path and new_position in self.planned_path:
+                    idx = self.planned_path.index(new_position)
+                    self.planned_path = self.planned_path[idx:]
             
             # Check if reached target
             if self.position == self.target_position:
                 print(f"Agent {self.agent_id}: Reached target {self.target_position}")
                 self.planned_path = []
+                # Clear negotiated path flag when target is reached
+                if hasattr(self, '_has_negotiated_path'):
+                    self._has_negotiated_path = False
             
             return True
         else:
@@ -188,6 +201,13 @@ class RobotAgent:
             if self.wait_turns_remaining <= 0:
                 self.is_waiting = False
                 self.current_action = None
+        
+        # Only clear negotiated path flag if agent has definitely reached their target
+        if hasattr(self, '_has_negotiated_path') and self._has_negotiated_path:
+            if self.position == self.target_position:
+                self._has_negotiated_path = False
+                self.planned_path = []
+                print(f"🔄 Agent {self.agent_id}: Cleared negotiated path flag (reached target)")
     
     def pickup_box(self, box_id: int):
         """Agent picks up a box"""

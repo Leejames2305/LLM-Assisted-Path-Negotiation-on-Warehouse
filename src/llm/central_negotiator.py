@@ -329,6 +329,30 @@ class CentralNegotiator:
         
         return None
     
+    def _is_valid_coordinate(self, x: int, y: int, grid: List[List[str]]) -> bool:
+        """
+        Validate that a coordinate is within bounds and accessible (not a wall)
+        
+        Args:
+            x, y: Coordinates to check
+            grid: The warehouse grid
+            
+        Returns:
+            bool: True if coordinate is valid and accessible
+        """
+        if not grid:
+            return False
+            
+        height, width = len(grid), len(grid[0]) if grid else 0
+        
+        # Check bounds
+        if not (0 <= x < width and 0 <= y < height):
+            return False
+            
+        # Check if position is accessible (not a wall)
+        cell = grid[y][x]
+        return cell == '.'  # Only empty floor is valid for wiggle rooms
+    
     def _analyze_wiggle_rooms(self, conflict_data: Dict) -> List[Dict]:
         """Identify potential wiggle rooms/waiting areas for rerouting"""
         # Only analyze if spatial hints are enabled
@@ -368,8 +392,8 @@ class CentralNegotiator:
             for x in range(width):
                 pos = (x, y)
                 
-                # Must be empty floor
-                if grid[y][x] != '.':
+                # Enhanced validation using coordinate validator
+                if not self._is_valid_coordinate(x, y, grid):
                     continue
                 
                 # Must not be occupied by agents or boxes
@@ -407,12 +431,12 @@ class CentralNegotiator:
         height, width = len(grid), len(grid[0])
         pos = (x, y)
         
-        # Count adjacent open spaces (connectivity)
+        # Count adjacent open spaces (connectivity) with enhanced validation
         adjacent_open = 0
         adjacent_positions = [(x-1,y), (x+1,y), (x,y-1), (x,y+1)]
         
         for ax, ay in adjacent_positions:
-            if 0 <= ax < width and 0 <= ay < height and grid[ay][ax] == '.':
+            if self._is_valid_coordinate(ax, ay, grid):
                 adjacent_open += 1
         
         # Get conflict points and calculate minimum distance
