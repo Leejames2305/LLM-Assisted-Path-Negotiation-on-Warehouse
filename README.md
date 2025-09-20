@@ -123,6 +123,9 @@ Run the visualization on logged files:
 ```cmd
 python visualization.py logs/simulation_logs....
 ```
+```cmd
+python visualization.py logs/negotiation_simulation_logs....
+```
 
 ## 🔧 Configuration
 
