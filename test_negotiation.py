@@ -248,7 +248,7 @@ class NegotiationTester:
         
         return warehouse
     
-    def run_forced_conflict_test(self, scenario_type: str, max_turns: int = 20, enable_spatial_hints: bool = True) -> Dict[str, Any]:
+    def run_forced_conflict_test(self, scenario_type: str, max_turns: int = 100, enable_spatial_hints: bool = True) -> Dict[str, Any]:
         """Run a single conflict scenario and capture all negotiations"""
         
         print(f"\n🎯 TESTING SCENARIO: {scenario_type.upper()}")
@@ -752,7 +752,9 @@ class NegotiationTester:
         
         conflicts_detected = 0
         turn_completed = 0
-        for turn_completed in range(max_turns):
+        
+        # CRITICAL FIX: Let simulation run until completion OR max turns, whichever comes first
+        while turn_completed < max_turns:
             print(f"\n=== TURN {turn_completed + 1} ===")
             
             # Reset negotiation flag at start of each turn for clean state
@@ -776,6 +778,7 @@ class NegotiationTester:
                     conflicts_detected += turn_conflicts
                     print(f"🔥 Conflicts this turn: {turn_conflicts}")
                 
+                # IMPORTANT: Break if simulation signals completion
                 if not continue_sim:
                     print("🏁 Simulation completed!")
                     break
@@ -784,10 +787,11 @@ class NegotiationTester:
                 print(f"❌ Simulation error: {e}")
                 break
             
+            turn_completed += 1
             input("Press Enter for next turn...")
         
         scenario_data['total_conflicts'] = conflicts_detected
-        scenario_data['turns_completed'] = turn_completed + 1
+        scenario_data['turns_completed'] = turn_completed
         
         self.negotiation_log['conflict_scenarios'].append(scenario_data)
         self._mark_data_changed()  # Mark that we have new scenario data
@@ -850,7 +854,7 @@ class NegotiationTester:
         
         print("\n" + "=" * 70)
     
-    def run_benchmark_comparison(self, scenario_type: str, max_turns: int = 20):
+    def run_benchmark_comparison(self, scenario_type: str, max_turns: int = 100):
         """Run the same scenario with and without spatial hints for comparison"""
         print(f"\n🔬 BENCHMARK COMPARISON: {scenario_type.upper()}")
         print("=" * 70)
