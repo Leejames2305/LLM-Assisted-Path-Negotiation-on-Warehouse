@@ -131,7 +131,7 @@ class RobotAgent:
         elif action == 'move':
             path = action_data.get('path', [])
             if path and len(path) > 1:
-                next_pos = path[1]  # First position is current, second is next
+                next_pos = tuple(path[1])  # Convert list to tuple for position
                 return self.move_to(next_pos, map_state)
             else:
                 next_move = self.get_next_move()

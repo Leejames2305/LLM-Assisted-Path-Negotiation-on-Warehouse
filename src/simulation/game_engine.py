@@ -295,23 +295,28 @@ class GameEngine:
         agent_actions = resolution.get('agent_actions', {})
         
         for agent_id, action_data in agent_actions.items():
-            if agent_id in self.agents:
-                agent = self.agents[agent_id]
+            # Convert string agent_id to int if needed for lookup
+            agent_id_key = int(agent_id) if isinstance(agent_id, str) and agent_id.isdigit() else agent_id
+            
+            if agent_id_key in self.agents:
+                agent = self.agents[agent_id_key]
                 map_state = self.warehouse_map.get_state_dict()
                 
                 success = agent.execute_negotiated_action(action_data, map_state)
                 action_type = action_data.get('action', 'unknown')
                 
                 if success:
-                    print(f"✅ Agent {agent_id}: {action_type} executed successfully")
+                    print(f"✅ Agent {agent_id_key}: {action_type} executed successfully")
                     
                     # Check for box interactions after successful move
                     if action_type == 'move':
-                        self._check_box_pickup(agent_id)
-                        self._check_box_delivery(agent_id)
+                        self._check_box_pickup(agent_id_key)
+                        self._check_box_delivery(agent_id_key)
                         
                 else:
-                    print(f"❌ Agent {agent_id}: {action_type} execution failed")
+                    print(f"❌ Agent {agent_id_key}: {action_type} execution failed")
+            else:
+                print(f"⚠️  Agent {agent_id} (converted to {agent_id_key if 'agent_id_key' in locals() else 'failed conversion'}) not found in agents: {list(self.agents.keys())}")
     
     def _execute_planned_moves(self, planned_moves: Dict):
         """Execute planned moves without conflicts"""
