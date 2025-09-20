@@ -7,7 +7,7 @@ import os
 import sys
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 def run_simple_demo():
     """Run a simple demonstration of the system"""

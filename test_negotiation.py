@@ -360,7 +360,22 @@ class NegotiationTester:
         for agent_id, agent in game_engine.agents.items():
             agent_original_execute[agent_id] = agent.execute_negotiated_action
         
+        # Initialize negotiation capture flag using setattr to avoid linter warnings
+        setattr(game_engine, '_negotiation_captured', False)
+        
         def capture_negotiate(conflict_data):
+            # Prevent double-negotiation with flag check
+            if getattr(game_engine, '_negotiation_captured', False):
+                print("🔄 Skipping duplicate negotiation call - already captured this turn")
+                return {
+                    'resolution': 'already_handled',
+                    'agent_actions': {},
+                    'reasoning': 'Negotiation already captured by HMAS-2 test'
+                }
+            
+            # Set flag to prevent re-negotiation
+            setattr(game_engine, '_negotiation_captured', True)
+            
             print(f"\n🤖 CONFLICT DETECTED! Initiating HMAS-2 Negotiation...")
             print(f"   🏢 CENTRAL LLM: Analyzing conflict between agents {[a.get('id') for a in conflict_data.get('agents', [])]}")
             print(f"   📍 Conflict points: {conflict_data.get('conflict_points', [])}")
@@ -530,6 +545,14 @@ class NegotiationTester:
                 print(f"   Central LLM: {'✅' if 'error' not in negotiation_entry['hmas2_stages']['central_negotiation'] else '❌'}")
                 print(f"   Agent Validations: {len(negotiation_entry['hmas2_stages']['agent_validations'])} agents processed")
                 print(f"   Validation Overrides: {len(negotiation_entry['hmas2_stages']['validation_overrides'])} rejections")
+                
+                # Flag all agents as HMAS-2 validated to skip redundant game engine validation
+                print(f"\n🏷️  Flagging agents as HMAS-2 validated:")
+                for agent_id_str, validation_data in negotiation_entry['hmas2_stages']['agent_validations'].items():
+                    agent_id_int = int(agent_id_str) if isinstance(agent_id_str, str) and agent_id_str.isdigit() else agent_id_str
+                    if agent_id_int in game_engine.agents:
+                        setattr(game_engine.agents[agent_id_int], '_hmas2_validated', True)
+                        print(f"   🏷️  Agent {agent_id_int}: Flagged as HMAS-2 validated")
             
             else:
                 print(f"\n⚠️  Central LLM response format doesn't contain agent actions")
@@ -650,6 +673,11 @@ class NegotiationTester:
             self._mark_data_changed()
             self._auto_save_check()
             
+            print(f"\n🏁 HMAS-2 CAPTURE COMPLETE - Returning to game engine...")
+            
+            # Reset flag after processing to allow next turn's negotiation
+            setattr(game_engine, '_negotiation_captured', False)
+            
             return response
         
         game_engine.central_negotiator.negotiate_path_conflict = capture_negotiate
@@ -663,6 +691,16 @@ class NegotiationTester:
         turn_completed = 0
         for turn_completed in range(max_turns):
             print(f"\n=== TURN {turn_completed + 1} ===")
+            
+            # Reset negotiation flag at start of each turn for clean state
+            if hasattr(game_engine, '_negotiation_captured'):
+                setattr(game_engine, '_negotiation_captured', False)
+            
+            # Reset all agent HMAS-2 validation flags for new turn
+            for agent_id, agent in game_engine.agents.items():
+                if hasattr(agent, '_hmas2_validated'):
+                    setattr(agent, '_hmas2_validated', False)
+                    print(f"🔄 Agent {agent_id}: Reset HMAS-2 validation flag for new turn")
             
             try:
                 # Run one simulation step

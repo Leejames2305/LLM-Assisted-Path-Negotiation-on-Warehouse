@@ -1,21 +1,29 @@
 """
 Central LLM Negotiator for Multi-Agent Conflict Resolution
-Uses powerful model (glm-4.5-air) for complex reasoning and negotiation
+Uses powerful model for complex reasoning and negotiation
 """
 
 import json
 import os
 from typing import Dict, List, Tuple, Optional
 from ..llm import OpenRouterClient
+from .openrouter_config import OpenRouterConfig
 
 class CentralNegotiator:
     def __init__(self, model: Optional[str] = None):
         self.client = OpenRouterClient()
         self.model = model or os.getenv('CENTRAL_LLM_MODEL', 'zai/glm-4.5-air:free')
         
+        # Use dynamic reasoning detection
+        self.is_reasoning_model = OpenRouterConfig.is_reasoning_model(self.model)
+        
+    def _is_reasoning_model(self, model: str) -> bool:
+        """Check if the model supports reasoning features (delegated to config)"""
+        return OpenRouterConfig.is_reasoning_model(model)
+        
     def negotiate_path_conflict(self, conflict_data: Dict) -> Dict:
         """
-        Negotiate path conflicts between agents
+        Negotiate path conflicts between agents with enhanced reasoning
         
         Args:
             conflict_data: {
@@ -36,16 +44,24 @@ class CentralNegotiator:
         system_prompt = self._create_negotiation_system_prompt()
         user_prompt = self._create_conflict_description(conflict_data)
         
+        # Add reasoning-specific instructions if using reasoning model
+        if self.is_reasoning_model:
+            user_prompt = self._add_reasoning_instructions(user_prompt)
+        
         messages = [
             self.client.create_system_message(system_prompt),
             self.client.create_user_message(user_prompt)
         ]
         
+        # Adjust parameters for reasoning models
+        max_tokens = 30000 if self.is_reasoning_model else 20000
+        temperature = 0.1 if self.is_reasoning_model else 0.3
+        
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=20000,  # Increased from 1500 to handle longer responses
-            temperature=0.3  # Lower temperature for more consistent reasoning
+            max_tokens=max_tokens,
+            temperature=temperature
         )
         
         if response:
@@ -105,6 +121,21 @@ Keep reasoning under 50 words. Always respond with complete JSON."""
         
         description += "\nPlease provide a negotiation solution in JSON format."
         return description
+    
+    def _add_reasoning_instructions(self, base_prompt: str) -> str:
+        """Add specific instructions for reasoning models"""
+        reasoning_instructions = """
+REASONING APPROACH:
+1. Analyze the spatial configuration and movement constraints
+2. Consider each agent's priority and current objective
+3. Evaluate potential collision points and timing
+4. Reason through multiple resolution strategies
+5. Select the most efficient solution
+
+Please think through this step-by-step before providing your JSON response.
+
+"""
+        return reasoning_instructions + base_prompt
     
     def _parse_negotiation_response(self, response: str) -> Dict:
         """Parse LLM response into structured format with truncation handling"""

@@ -10,7 +10,7 @@ import traceback
 from typing import Dict, List, Tuple
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 def test_imports():
     """Test that all required modules can be imported"""

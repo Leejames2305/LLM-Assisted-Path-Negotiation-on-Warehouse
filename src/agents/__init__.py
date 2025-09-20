@@ -93,7 +93,13 @@ class RobotAgent:
             bool: True if action was executed successfully
         """
         
-        # First validate the action
+        # Check if this agent was already validated by HMAS-2
+        if getattr(self, '_hmas2_validated', False):
+            print(f"✅ Agent {self.agent_id}: Executing HMAS-2 pre-validated action (skipping redundant validation)")
+            return self._execute_action(action_data, map_state)
+        
+        # Otherwise, perform normal validation
+        print(f"🔍 Agent {self.agent_id}: Performing game engine validation (no HMAS-2 flag)")
         validation_result = self.validator.validate_negotiated_action(
             self.agent_id, action_data, map_state
         )

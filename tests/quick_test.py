@@ -13,8 +13,7 @@ def check_file_structure():
         "main.py",
         "requirements.txt",
         ".env.example",
-        "README.md",
-        "smoke_test.py"
+        "README.md"
     ]
     
     required_dirs = [
@@ -73,7 +72,6 @@ def check_basic_syntax():
     
     python_files = [
         "main.py",
-        "smoke_test.py",
         "src/__init__.py",
         "src/map_generator/__init__.py",
         "src/agents/__init__.py",

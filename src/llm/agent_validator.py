@@ -1,17 +1,25 @@
 """
 Agent LLM Validator for Action Validation
-Uses smaller model (gemma-2-9b) for quick validation checks
+Uses smaller model for quick validation checks
 """
 
 import json
 import os
 from typing import Dict, List, Tuple, Optional, Union
 from ..llm import OpenRouterClient
+from .openrouter_config import OpenRouterConfig
 
 class AgentValidator:
     def __init__(self, model: Optional[str] = None):
         self.client = OpenRouterClient()
         self.model = model or os.getenv('AGENT_LLM_MODEL', 'google/gemma-2-9b-it:free')
+        
+        # Check if we're using a reasoning model for validation
+        self.is_reasoning_model = OpenRouterConfig.is_reasoning_model(self.model)
+    
+    def _is_reasoning_model(self, model: str) -> bool:
+        """Check if the model supports reasoning features (delegated to config)"""
+        return OpenRouterConfig.is_reasoning_model(model)
     
     def validate_negotiated_action(self, agent_id: int, proposed_action: Dict, current_state: Dict) -> Dict:
         """
@@ -29,16 +37,24 @@ class AgentValidator:
         system_prompt = self._create_validation_system_prompt()
         user_prompt = self._create_validation_query(agent_id, proposed_action, current_state)
         
+        # Enhanced validation for reasoning models
+        if self.is_reasoning_model:
+            user_prompt = self._add_validation_reasoning_instructions(user_prompt)
+        
         messages = [
             self.client.create_system_message(system_prompt),
             self.client.create_user_message(user_prompt)
         ]
         
+        # Adjust parameters for reasoning models
+        max_tokens = 25000 if self.is_reasoning_model else 20000
+        temperature = 0.05 if self.is_reasoning_model else 0.1  # Very low temperature for consistent validation
+        
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=20000,
-            temperature=0.1  # Very low temperature for consistent validation
+            max_tokens=max_tokens,
+            temperature=temperature
         )
         
         if response:
@@ -166,6 +182,21 @@ Targets: {current_state.get('targets', {})}
 Is this action valid and safe to execute?"""
         
         return query
+    
+    def _add_validation_reasoning_instructions(self, base_prompt: str) -> str:
+        """Add reasoning instructions for validation"""
+        reasoning_instructions = """
+VALIDATION REASONING:
+1. Check physical constraints (walls, boundaries, adjacent movement only)
+2. Verify no collision with other agents or obstacles
+3. Ensure the action aligns with the agent's current capabilities
+4. Consider timing and sequential dependencies
+5. Evaluate safety margins and potential edge cases
+
+Please reason through each validation step before providing your JSON response.
+
+"""
+        return reasoning_instructions + base_prompt
     
     def _parse_validation_response(self, response: str) -> Dict:
         """Parse validation response"""
