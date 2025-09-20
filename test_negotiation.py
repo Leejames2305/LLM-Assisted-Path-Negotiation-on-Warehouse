@@ -733,12 +733,12 @@ class NegotiationTester:
             if isinstance(response, dict):
                 # If response has 'actions' but not 'agent_actions', fix it
                 if 'actions' in response and 'agent_actions' not in response:
-                    response['agent_actions'] = response['actions']
+                    response['agent_actions'] = response['actions']  # type: ignore
                     print(f"🔧 Fixed response format: moved 'actions' to 'agent_actions'")
                 
                 # Ensure agent_actions exists (fallback)
                 if 'agent_actions' not in response:
-                    response['agent_actions'] = {}
+                    response['agent_actions'] = {}  # type: ignore
                     print(f"🔧 Added missing 'agent_actions' to response")
             
             return response
