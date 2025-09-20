@@ -248,10 +248,12 @@ class NegotiationTester:
         
         return warehouse
     
-    def run_forced_conflict_test(self, scenario_type: str, max_turns: int = 20) -> Dict[str, Any]:
+    def run_forced_conflict_test(self, scenario_type: str, max_turns: int = 20, enable_spatial_hints: bool = True) -> Dict[str, Any]:
         """Run a single conflict scenario and capture all negotiations"""
         
         print(f"\n🎯 TESTING SCENARIO: {scenario_type.upper()}")
+        hints_status = "WITH SPATIAL HINTS" if enable_spatial_hints else "BASELINE (NO HINTS)"
+        print(f"📊 Mode: {hints_status}")
         print("=" * 60)
         
         # Create the forced conflict map
@@ -290,6 +292,9 @@ class NegotiationTester:
         game_engine = GameEngine(width=warehouse.width, height=warehouse.height, num_agents=len(warehouse.agents))
         game_engine.warehouse_map = warehouse
         game_engine.agents = {}
+        
+        # Configure spatial hints on the central negotiator
+        game_engine.central_negotiator.set_spatial_hints(enable_spatial_hints)
         
         # Initialize agents with the pre-set positions
         from src.agents import RobotAgent  # Use RobotAgent instead of Agent
@@ -787,6 +792,74 @@ class NegotiationTester:
         
         print("\n" + "=" * 70)
     
+    def run_benchmark_comparison(self, scenario_type: str, max_turns: int = 20):
+        """Run the same scenario with and without spatial hints for comparison"""
+        print(f"\n🔬 BENCHMARK COMPARISON: {scenario_type.upper()}")
+        print("=" * 70)
+        
+        # Run without spatial hints (baseline)
+        print("\n📊 PHASE 1: Running BASELINE (no spatial hints)...")
+        baseline_results = self.run_forced_conflict_test(scenario_type, max_turns, enable_spatial_hints=False)
+        
+        if baseline_results.get('cancelled'):
+            print("Benchmark cancelled during baseline phase.")
+            return baseline_results
+        
+        print("\n⏱️  Waiting 3 seconds before next phase...")
+        import time
+        time.sleep(3)
+        
+        # Run with spatial hints (enhanced)
+        print("\n📊 PHASE 2: Running ENHANCED (with spatial hints)...")
+        enhanced_results = self.run_forced_conflict_test(scenario_type, max_turns, enable_spatial_hints=True)
+        
+        if enhanced_results.get('cancelled'):
+            print("Benchmark cancelled during enhanced phase.")
+            return enhanced_results
+        
+        # Compare results
+        print(f"\n📈 COMPARISON RESULTS:")
+        print("=" * 50)
+        print(f"BASELINE (no hints):")
+        print(f"  - Conflicts: {baseline_results.get('total_conflicts', 0)}")
+        print(f"  - Negotiations: {len(baseline_results.get('negotiations', []))}")
+        print(f"  - Turns: {baseline_results.get('turns_completed', 0)}")
+        
+        print(f"\nENHANCED (with hints):")
+        print(f"  - Conflicts: {enhanced_results.get('total_conflicts', 0)}")
+        print(f"  - Negotiations: {len(enhanced_results.get('negotiations', []))}")
+        print(f"  - Turns: {enhanced_results.get('turns_completed', 0)}")
+        
+        # Analyze resolution strategies
+        baseline_strategies = self._count_resolution_strategies(baseline_results.get('negotiations', []))
+        enhanced_strategies = self._count_resolution_strategies(enhanced_results.get('negotiations', []))
+        
+        print(f"\nSTRATEGY USAGE:")
+        print(f"BASELINE: {baseline_strategies}")
+        print(f"ENHANCED: {enhanced_strategies}")
+        
+        return {
+            'baseline': baseline_results,
+            'enhanced': enhanced_results,
+            'comparison': {
+                'baseline_strategies': baseline_strategies,
+                'enhanced_strategies': enhanced_strategies
+            }
+        }
+    
+    def _count_resolution_strategies(self, negotiations: List[Dict]) -> Dict[str, int]:
+        """Count how often each resolution strategy was used"""
+        strategy_counts = {'priority': 0, 'reroute': 0, 'wait': 0, 'other': 0}
+        
+        for neg in negotiations:
+            resolution = neg.get('llm_response', {}).get('resolution', 'other')
+            if resolution in strategy_counts:
+                strategy_counts[resolution] += 1
+            else:
+                strategy_counts['other'] += 1
+        
+        return strategy_counts
+    
     def save_negotiation_log(self, filename: str | None = None, auto_save: bool = False) -> str:
         """Save all negotiation data to logs folder"""
         if filename is None:
@@ -854,65 +927,71 @@ def main():
     
     tester = NegotiationTester()
     
-    # Test scenarios in order of complexity
-    scenarios = [
-        ("single_corridor", "Two agents must cross paths in narrow corridor"),
-        ("s_shaped_corridor", "S-shaped path like user diagram - solvable with negotiations"),
-        ("bottleneck_chamber", "Three agents must pass through single bottleneck"),
-        ("triple_intersection", "Three agents converge at single intersection"),
-        ("validation_stress_test", "HMAS-2 validation test - agents reject central decisions")
-    ]
-    
-    print("Available test scenarios:")
-    for i, (scenario, description) in enumerate(scenarios, 1):
-        print(f"  {i}. {scenario}: {description}")
-    print()
+    # Test mode selection
+    print("📊 TEST MODES:")
+    print("1. Standard test (with spatial hints)")
+    print("2. Baseline test (no spatial hints)")  
+    print("3. Benchmark comparison (both modes)")
+    print("4. Preview all scenarios")
     
     try:
-        preview_choice = input("Would you like to preview all scenarios first? (y/N): ").strip().lower()
-        if preview_choice == 'y':
+        mode = input("\nSelect mode (1-4): ").strip()
+        
+        if mode == "4":
             tester.preview_all_scenarios()
-            print()
+            return
         
-        choice = input("Enter scenario number (1-5) or 'all' for all scenarios: ").strip()
+        # Scenario selection
+        scenarios = [
+            ("single_corridor", "Two agents must cross paths in narrow corridor"),
+            ("s_shaped_corridor", "S-shaped path like user diagram - solvable with negotiations"),
+            ("bottleneck_chamber", "Three agents must pass through single bottleneck"),
+            ("triple_intersection", "Three agents converge at single intersection"),
+            ("validation_stress_test", "HMAS-2 validation test - agents reject central decisions")
+        ]
         
-        if choice.lower() == 'all':
-            print("🚀 Running ALL negotiation scenarios...")
-            for scenario, _ in scenarios:
-                tester.run_forced_conflict_test(scenario)
+        print("\nAvailable test scenarios:")
+        for i, (scenario, description) in enumerate(scenarios, 1):
+            print(f"{i}. {scenario}: {description}")
+        
+        scenario_choice = input("\nSelect scenario (1-5): ").strip()
+        try:
+            scenario_idx = int(scenario_choice) - 1
+            scenario_type = scenarios[scenario_idx][0]
+        except (ValueError, IndexError):
+            print("❌ Invalid scenario choice")
+            return
+        
+        # Run based on selected mode
+        if mode == "1":
+            # Standard with hints
+            result = tester.run_forced_conflict_test(scenario_type, enable_spatial_hints=True)
+        elif mode == "2": 
+            # Baseline without hints
+            result = tester.run_forced_conflict_test(scenario_type, enable_spatial_hints=False)
+        elif mode == "3":
+            # Benchmark comparison
+            result = tester.run_benchmark_comparison(scenario_type)
         else:
-            try:
-                scenario_idx = int(choice) - 1
-                if 0 <= scenario_idx < len(scenarios):
-                    scenario, _ = scenarios[scenario_idx]
-                    print(f"🚀 Running {scenario} negotiation test...")
-                    tester.run_forced_conflict_test(scenario)
-                else:
-                    print("❌ Invalid choice!")
-                    return
-            except ValueError:
-                print("❌ Invalid choice!")
-                return
+            print("❌ Invalid mode choice")
+            return
         
-        # Save all negotiation data
-        log_file = tester.save_negotiation_log()
-        
-        print(f"\n🎉 NEGOTIATION TESTING COMPLETED!")
-        print(f"📁 All data saved to: {log_file}")
-        print("🔍 Analyze the logs to see how LLMs handle conflict resolution!")
+        # Save results (skip if cancelled)
+        if not result.get('cancelled'):
+            filename = tester.save_negotiation_log()
+            print(f"\n💾 Results saved to: {filename}")
+        else:
+            print("Test was cancelled - no results to save.")
         
     except KeyboardInterrupt:
-        # This should be handled by the signal handler, but just in case
-        print("\n🛑 Test interrupted by user")
+        print(f"\n🛑 Test interrupted!")
+        filename = tester.save_negotiation_log(auto_save=True)
+        print(f"💾 Partial results saved to: {filename}")
     except Exception as e:
-        print(f"\n❌ Unexpected error during testing: {e}")
-        print("💾 Attempting to save any collected data...")
-        try:
-            log_file = tester.save_negotiation_log()
-            print(f"✅ Emergency save completed: {log_file}")
-        except:
-            print("❌ Could not save data")
-        raise
+        print(f"❌ Unexpected error: {e}")
+        filename = tester.save_negotiation_log(auto_save=True)
+        print(f"💾 Emergency save completed: {filename}")
+
 
 if __name__ == "__main__":
     main()
