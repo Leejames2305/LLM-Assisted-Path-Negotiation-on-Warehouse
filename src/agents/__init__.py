@@ -150,7 +150,7 @@ class RobotAgent:
     
     def move_to(self, new_position: Tuple[int, int], map_state: Dict) -> bool:
         """
-        Move agent to new position with safety checks
+        Move agent to new position with safety checks and detailed logging
         
         Args:
             new_position: Target position (x, y)
@@ -160,33 +160,83 @@ class RobotAgent:
             bool: True if move was successful
         """
         
-        # Additional safety check using validator
+        # Log detailed validation info
+        print(f"🔍 Agent {self.agent_id}: Validating move {self.position} → {new_position}")
+        
+        # Check if position is the same (waiting in place)
+        if new_position == self.position:
+            print(f"✅ Agent {self.agent_id}: Staying in place (valid wait)")
+            return True
+        
+        # Basic adjacency check
+        dx = abs(new_position[0] - self.position[0])
+        dy = abs(new_position[1] - self.position[1])
+        if dx + dy != 1:
+            print(f"❌ Agent {self.agent_id}: Move not adjacent (dx={dx}, dy={dy})")
+            return False
+        
+        # Detailed safety check using validator
         is_safe = self.validator.check_move_safety(
             self.agent_id, self.position, new_position, map_state
         )
         
-        if is_safe:
-            self.position = new_position
-            
-            # Update planned path - but don't interfere with negotiated paths managed by game engine
-            if not (hasattr(self, '_has_negotiated_path') and getattr(self, '_has_negotiated_path', False)):
-                # Only update path if this is NOT a negotiated path (let game engine handle negotiated paths)
-                if self.planned_path and new_position in self.planned_path:
-                    idx = self.planned_path.index(new_position)
-                    self.planned_path = self.planned_path[idx:]
-            
-            # Check if reached target
-            if self.position == self.target_position:
-                print(f"Agent {self.agent_id}: Reached target {self.target_position}")
-                self.planned_path = []
-                # Clear negotiated path flag when target is reached
-                if hasattr(self, '_has_negotiated_path'):
-                    self._has_negotiated_path = False
-            
-            return True
-        else:
-            print(f"Agent {self.agent_id}: Move to {new_position} is not safe")
+        if not is_safe:
+            print(f"❌ Agent {self.agent_id}: Safety check failed for {new_position}")
+            # Log WHY it failed
+            self._log_move_failure_reason(new_position, map_state)
             return False
+        
+        # If safe, make the move
+        self.position = new_position
+        print(f"✅ Agent {self.agent_id}: Moved to {new_position}")
+        
+        # Update planned path - but don't interfere with negotiated paths managed by game engine
+        if not (hasattr(self, '_has_negotiated_path') and getattr(self, '_has_negotiated_path', False)):
+            # Only update path if this is NOT a negotiated path (let game engine handle negotiated paths)
+            if self.planned_path and new_position in self.planned_path:
+                idx = self.planned_path.index(new_position)
+                self.planned_path = self.planned_path[idx:]
+        
+        # Check if reached target
+        if self.position == self.target_position:
+            print(f"Agent {self.agent_id}: Reached target {self.target_position}")
+            self.planned_path = []
+            # Clear negotiated path flag when target is reached
+            if hasattr(self, '_has_negotiated_path'):
+                self._has_negotiated_path = False
+        
+        return True
+    
+    def _log_move_failure_reason(self, new_position: Tuple[int, int], map_state: Dict):
+        """Log detailed reasons why a move failed"""
+        x, y = new_position
+        grid = map_state.get('grid', [])
+        
+        # Check bounds
+        if y < 0 or y >= len(grid) or x < 0 or x >= len(grid[0]) if grid else True:
+            print(f"   📏 Reason: Position ({x}, {y}) is out of bounds")
+            return
+        
+        # Check wall collision
+        if grid and grid[y][x] == '#':
+            print(f"   🧱 Reason: Position ({x}, {y}) is a wall")
+            return
+        
+        # Check agent collisions
+        agents = map_state.get('agents', {})
+        for other_id, other_pos in agents.items():
+            if other_id != self.agent_id and other_pos == new_position:
+                print(f"   🤖 Reason: Collision with Agent {other_id} at {other_pos}")
+                return
+        
+        # Check box collisions
+        boxes = map_state.get('boxes', {})
+        for box_id, box_pos in boxes.items():
+            if box_pos == new_position:
+                print(f"   📦 Reason: Collision with Box {box_id} at {box_pos}")
+                return
+        
+        print(f"   ❓ Reason: Unknown safety check failure")
     
     def wait(self, turns: int = 1):
         """Make agent wait for specified turns"""

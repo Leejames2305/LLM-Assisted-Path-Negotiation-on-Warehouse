@@ -44,16 +44,22 @@ class CentralNegotiator:
                 'agents': [{'id': 0, 'current_pos': (x, y), 'target_pos': (x, y), 'planned_path': [(x,y), ...]}, ...],
                 'conflict_points': [(x, y), ...],
                 'map_state': {...},
-                'turn': int
+                'turn': int,
+                'deadlock_breaking': bool (optional)
             }
         
         Returns:
             negotiation_result: {
-                'resolution': 'priority'/'reroute'/'wait',
+                'resolution': 'priority'/'reroute'/'wait'/'deadlock_breaking',
                 'agent_actions': {agent_id: {'action': 'move'/'wait', 'path': [...], 'priority': int}},
                 'reasoning': str
             }
         """
+        
+        # Check if this is a deadlock situation requiring special handling
+        if conflict_data.get('deadlock_breaking', False) or conflict_data.get('conflict_type') in ['deadlock', 'stagnation']:
+            print("🔧 DEADLOCK BREAKING MODE: Using specialized resolution")
+            return self._create_deadlock_breaking_resolution(conflict_data)
         
         system_prompt = self._create_negotiation_system_prompt()
         user_prompt = self._create_conflict_description(conflict_data)
@@ -256,6 +262,76 @@ class CentralNegotiator:
             
         except json.JSONDecodeError:
             return None
+    
+    def _create_deadlock_breaking_resolution(self, conflict_data: Dict) -> Dict:
+        """Create resolution specifically for deadlock breaking"""
+        agents = conflict_data.get('agents', [])
+        
+        print("🔧 Creating deadlock-breaking resolution")
+        
+        # Strategy: Force one agent to wait, others to try alternative moves
+        agent_actions = {}
+        
+        for i, agent in enumerate(agents):
+            agent_id = agent['id']
+            current_pos = agent.get('current_pos', [0, 0])
+            
+            if i == 0:
+                # First agent gets priority - try original move
+                planned_path = agent.get('planned_path', [])
+                if len(planned_path) > 1:
+                    agent_actions[agent_id] = {
+                        "action": "move",
+                        "path": planned_path[:3],  # Only next few steps
+                        "priority": 1
+                    }
+                else:
+                    agent_actions[agent_id] = {
+                        "action": "wait",
+                        "wait_turns": 1,
+                        "priority": 1
+                    }
+            else:
+                # Other agents try to step aside or wait
+                alternative_pos = self._find_safe_step_aside(current_pos, conflict_data)
+                
+                if alternative_pos:
+                    # Step aside temporarily
+                    agent_actions[agent_id] = {
+                        "action": "move", 
+                        "path": [current_pos, alternative_pos, current_pos],  # Step aside and back
+                        "priority": 2
+                    }
+                else:
+                    # Wait if no safe step-aside available
+                    agent_actions[agent_id] = {
+                        "action": "wait",
+                        "wait_turns": 2,
+                        "priority": 3
+                    }
+        
+        return {
+            "resolution": "deadlock_breaking",
+            "agent_actions": agent_actions,
+            "reasoning": "Deadlock detected - forcing priority movement and step-aside maneuvers to break the deadlock"
+        }
+    
+    def _find_safe_step_aside(self, current_pos: List[int], conflict_data: Dict) -> Optional[List[int]]:
+        """Find a safe adjacent position to step aside temporarily"""
+        x, y = current_pos
+        adjacent_positions = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+        
+        map_state = conflict_data.get('map_state', {})
+        grid = map_state.get('grid', [])
+        
+        for adj_x, adj_y in adjacent_positions:
+            if self._is_valid_coordinate(adj_x, adj_y, grid):
+                # Check if it's free of other agents
+                agents = map_state.get('agents', {})
+                if not any(pos == (adj_x, adj_y) for pos in agents.values()):
+                    return [adj_x, adj_y]
+        
+        return None
     
     def _create_fallback_resolution(self, conflict_data: Dict) -> Dict:
         """Create a simple fallback resolution when LLM fails"""
