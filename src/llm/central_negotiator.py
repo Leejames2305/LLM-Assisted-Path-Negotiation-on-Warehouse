@@ -79,18 +79,18 @@ class CentralNegotiator:
         """Create system prompt for negotiation"""
         return """You are a robot conflict resolver. Respond ONLY with valid JSON.
 
-RULES: Robots deliver boxes, one per cell, avoid collisions.
+        RULES: Robots deliver boxes, one per cell, avoid collisions.
 
-RESPONSE FORMAT:
-{
-    "resolution": "priority|reroute|wait",
-    "agent_actions": {
-        "0": {"action": "move|wait", "path": [[x,y]...], "priority": 1}
-    },
-    "reasoning": "Brief explanation"
-}
+        RESPONSE FORMAT:
+        {
+            "resolution": "priority|reroute|wait",
+            "agent_actions": {
+                "0": {"action": "move|wait", "path": [[x,y]...], "priority": 1}
+            },
+            "reasoning": "Brief explanation"
+        }
 
-Keep reasoning under 50 words. Always respond with complete JSON."""
+        Keep reasoning under 50 words. Always respond with complete JSON."""
     
     def _create_conflict_description(self, conflict_data: Dict) -> str:
         """Create human-readable conflict description"""
@@ -125,16 +125,16 @@ Keep reasoning under 50 words. Always respond with complete JSON."""
     def _add_reasoning_instructions(self, base_prompt: str) -> str:
         """Add specific instructions for reasoning models"""
         reasoning_instructions = """
-REASONING APPROACH:
-1. Analyze the spatial configuration and movement constraints
-2. Consider each agent's priority and current objective
-3. Evaluate potential collision points and timing
-4. Reason through multiple resolution strategies
-5. Select the most efficient solution
+        REASONING APPROACH:
+        1. Analyze the spatial configuration and movement constraints
+        2. Consider each agent's priority and current objective
+        3. Evaluate potential collision points and timing
+        4. Reason through multiple resolution strategies
+        5. Select the most efficient solution
 
-Please think through this step-by-step before providing your JSON response.
+        Please think through this step-by-step before providing your JSON response.
 
-"""
+        """
         return reasoning_instructions + base_prompt
     
     def _parse_negotiation_response(self, response: str) -> Dict:
@@ -235,22 +235,22 @@ Please think through this step-by-step before providing your JSON response.
         """
         system_prompt = """You are a pathfinding assistant for warehouse robots. Provide efficient paths avoiding obstacles and other robots.
 
-RESPONSE FORMAT (JSON):
-{
-    "path": [[x, y], [x, y], ...],
-    "reasoning": "Brief explanation"
-}
+        RESPONSE FORMAT (JSON):
+        {
+            "path": [[x, y], [x, y], ...],
+            "reasoning": "Brief explanation"
+        }
 
-Consider: walls (#), other agents (A), boxes (B), targets (T)."""
+        Consider: walls (#), other agents (A), boxes (B), targets (T)."""
         
         user_prompt = f"""Find path for Agent {agent_data['id']}:
-Current: {agent_data['current_pos']}
-Target: {agent_data['target_pos']}
-Carrying box: {agent_data.get('carrying_box', False)}
+        Current: {agent_data['current_pos']}
+        Target: {agent_data['target_pos']}
+        Carrying box: {agent_data.get('carrying_box', False)}
 
-Map state: {map_state}
+        Map state: {map_state}
 
-Provide optimal path as JSON."""
+        Provide optimal path as JSON."""
         
         messages = [
             self.client.create_system_message(system_prompt),

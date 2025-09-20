@@ -114,17 +114,17 @@ class AgentValidator:
         
         system_prompt = """You are helping a robot find an alternative action when its planned action is invalid.
 
-Suggest alternatives like:
-- Wait for a turn
-- Move to a different adjacent cell
-- Take a longer but safer path
+        Suggest alternatives like:
+        - Wait for a turn
+        - Move to a different adjacent cell
+        - Take a longer but safer path
 
-Respond with JSON: {"action": "move/wait", "path": [[x,y]...], "reasoning": "explanation"}"""
+        Respond with JSON: {"action": "move/wait", "path": [[x,y]...], "reasoning": "explanation"}"""
         
         user_prompt = f"""Agent {agent_id} cannot execute: {failed_action}
-Current state: {current_state}
+        Current state: {current_state}
 
-Suggest a safe alternative action."""
+        Suggest a safe alternative action."""
         
         messages = [
             self.client.create_system_message(system_prompt),
@@ -150,52 +150,74 @@ Suggest a safe alternative action."""
         """Create system prompt for action validation"""
         return """You are an Agent Validator for warehouse robots. Your job is to verify that negotiated actions are safe and executable.
 
-VALIDATION RULES:
-- Agents can only move to adjacent cells (not diagonal)
-- Cannot move into walls (#) or occupied cells
-- Must consider current agent position and map state
-- Check if proposed path is physically possible
+        VALIDATION RULES:
+        - Agents can only move to adjacent cells (not diagonal) - horizontal/vertical only
+        - Cannot move into walls (#) - these are BLOCKED
+        - Cannot move into cells occupied by other agents or boxes
+        - Must stay within map boundaries
+        - Each step in path must be physically possible
+        - Check the provided map layout to verify walls and obstacles
 
-RESPONSE FORMAT (JSON):
-{
-    "valid": true/false,
-    "reason": "explanation of validation result",
-    "alternative": {"action": "move/wait", "path": [...]} or null
-}
+        MAP SYMBOLS:
+        - '#' = Wall (BLOCKED - cannot pass through)
+        - '.' = Open space (can move through)
+        - Agent/Box positions are given separately
 
-Be strict about safety. When in doubt, mark as invalid."""
+        RESPONSE FORMAT (JSON):
+        {
+            "valid": true/false,
+            "reason": "explanation of validation result including specific issues found",
+            "alternative": {"action": "move/wait", "path": [...]} or null
+        }
+
+        Be strict about safety. When in doubt, mark as invalid."""
     
     def _create_validation_query(self, agent_id: int, proposed_action: Dict, current_state: Dict) -> str:
         """Create validation query"""
         agent_pos = current_state.get('agents', {}).get(agent_id, 'unknown')
         
+        # Format the map grid for better visualization
+        grid = current_state.get('grid', [])
+        map_visualization = ""
+        if grid:
+            map_visualization = "\nMap Layout (# = wall, . = open space):\n"
+            for y, row in enumerate(grid):
+                row_str = " ".join(row)
+                map_visualization += f"  Row {y}: {row_str}\n"
+        
         query = f"""VALIDATION REQUEST for Agent {agent_id}:
 
-Current Position: {agent_pos}
-Proposed Action: {proposed_action}
+        Current Position: {agent_pos}
+        Proposed Action: {proposed_action}
+        {map_visualization}
+        Current Positions:
+        Agents: {current_state.get('agents', {})}
+        Boxes: {current_state.get('boxes', {})}
+        Targets: {current_state.get('targets', {})}
 
-Current Map State:
-Agents: {current_state.get('agents', {})}
-Boxes: {current_state.get('boxes', {})}
-Targets: {current_state.get('targets', {})}
+        VALIDATION CHECKLIST:
+        1. Check if proposed path moves through walls (#) - NOT ALLOWED
+        2. Check if proposed path collides with other agents/boxes - NOT ALLOWED  
+        3. Check if moves are only to adjacent cells (no diagonal) - REQUIRED
+        4. Check if path stays within map boundaries - REQUIRED
 
-Is this action valid and safe to execute?"""
+        Is this action valid and safe to execute?"""
         
         return query
     
     def _add_validation_reasoning_instructions(self, base_prompt: str) -> str:
         """Add reasoning instructions for validation"""
         reasoning_instructions = """
-VALIDATION REASONING:
-1. Check physical constraints (walls, boundaries, adjacent movement only)
-2. Verify no collision with other agents or obstacles
-3. Ensure the action aligns with the agent's current capabilities
-4. Consider timing and sequential dependencies
-5. Evaluate safety margins and potential edge cases
+        VALIDATION REASONING:
+        1. Check physical constraints (walls, boundaries, adjacent movement only)
+        2. Verify no collision with other agents or obstacles
+        3. Ensure the action aligns with the agent's current capabilities
+        4. Consider timing and sequential dependencies
+        5. Evaluate safety margins and potential edge cases
 
-Please reason through each validation step before providing your JSON response.
+        Please reason through each validation step before providing your JSON response.
 
-"""
+        """
         return reasoning_instructions + base_prompt
     
     def _parse_validation_response(self, response: str) -> Dict:

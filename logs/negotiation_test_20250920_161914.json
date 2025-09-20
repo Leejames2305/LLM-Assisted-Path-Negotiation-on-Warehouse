@@ -1,16 +1,16 @@
 {
   "test_info": {
-    "timestamp": "2025-09-09T19:44:05.923765",
+    "timestamp": "2025-09-20T16:14:37.507334",
     "test_type": "forced_conflict_negotiation",
     "description": "Artificial scenarios designed to force 100% conflict rate"
   },
   "negotiations": [
     {
       "turn": 0,
-      "timestamp": "2025-09-09T19:44:17.899165",
+      "timestamp": "2025-09-20T16:14:47.436645",
       "hmas2_stages": {
         "central_negotiation": {
-          "system_prompt": "You are a robot conflict resolver. Respond ONLY with valid JSON.\n\nRULES: Robots deliver boxes, one per cell, avoid collisions.\n\nRESPONSE FORMAT:\n{\n    \"resolution\": \"priority|reroute|wait\",\n    \"agent_actions\": {\n        \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n    },\n    \"reasoning\": \"Brief explanation\"\n}\n\nKeep reasoning under 50 words. Always respond with complete JSON.",
+          "system_prompt": "You are a robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation\"\n        }\n\n        Keep reasoning under 50 words. Always respond with complete JSON.",
           "user_prompt": "TURN 0 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (4, 1), going to (8, 6)\n  Planned path: [(4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (5, 6), going to (2, 1)\n  Planned path: [(5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (4, 1), 1: (5, 6)}\nRemaining boxes: {0: (3, 1), 1: (6, 6)}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\nPlease provide a negotiation solution in JSON format.",
           "llm_response": {
             "resolution": "priority",
@@ -102,7 +102,7 @@
                 "priority": 1
               },
               "1": {
-                "action": "wait",
+                "action": "move",
                 "path": [
                   [
                     5,
@@ -184,9 +184,9 @@
                 "priority": 2
               }
             },
-            "reasoning": "Agent 0 has higher priority to move through (5,4) first, while Agent 1 waits to avoid collision."
+            "reasoning": "Assign higher priority to Agent 0 to proceed through conflict point (5,4) first, allowing Agent 1 to follow without collision."
           },
-          "model_used": "qwen/qwen3-235b-a22b:free"
+          "model_used": "x-ai/grok-4-fast:free"
         },
         "agent_validations": {
           "0": {
@@ -277,28 +277,19 @@
               ],
               "priority": 1
             },
-            "validation_model": "qwen/qwen3-235b-a22b:free",
+            "validation_model": "x-ai/grok-4-fast:free",
             "validation_result": {
               "valid": false,
-              "reason": "The path moves into cell (5,6) which is currently occupied by Agent 1. Agents cannot move into cells occupied by other agents.",
-              "alternative": {
-                "action": "wait",
-                "path": null
-              }
+              "reason": "The proposed path is invalid because it attempts to move into cells currently occupied by other agents or boxes: position [5,6] is occupied by Agent 1, and [6,6] is occupied by Box 1. Additionally, while the path consists of adjacent moves, stays within boundaries, and avoids walls, these collisions violate safety rules.",
+              "alternative": null
             },
-            "alternative_suggested": {
-              "action": "wait",
-              "path": null
-            },
-            "final_action_executed": {
-              "action": "wait",
-              "path": null
-            }
+            "alternative_suggested": null,
+            "final_action_executed": null
           },
           "1": {
             "agent_id": 1,
             "proposed_action": {
-              "action": "wait",
+              "action": "move",
               "path": [
                 [
                   5,
@@ -379,38 +370,19 @@
               ],
               "priority": 2
             },
-            "validation_model": "qwen/qwen3-235b-a22b:free",
+            "validation_model": "x-ai/grok-4-fast:free",
             "validation_result": {
               "valid": false,
-              "reason": "Validation failed, defaulting to safe rejection",
-              "alternative": {
-                "action": "wait",
-                "path": [],
-                "reasoning": "Safe fallback"
-              }
+              "reason": "The proposed path is invalid because it attempts to move into cells occupied by other agents and boxes. Specifically, the path includes [4,1], which is currently occupied by Agent 0, and [3,1], which is occupied by Box 0. Additionally, while the path consists of adjacent moves and avoids walls, these collisions violate safety rules.",
+              "alternative": null
             },
-            "alternative_suggested": {
-              "action": "wait",
-              "path": [],
-              "reasoning": "Safe fallback"
-            },
-            "final_action_executed": {
-              "action": "wait",
-              "path": [],
-              "reasoning": "Safe fallback"
-            }
+            "alternative_suggested": null,
+            "final_action_executed": null
           }
         },
         "final_actions": {
-          "0": {
-            "action": "wait",
-            "path": null
-          },
-          "1": {
-            "action": "wait",
-            "path": [],
-            "reasoning": "Safe fallback"
-          }
+          "0": null,
+          "1": null
         },
         "validation_overrides": {
           "0": {
@@ -500,14 +472,11 @@
               ],
               "priority": 1
             },
-            "agent_alternative": {
-              "action": "wait",
-              "path": null
-            }
+            "agent_alternative": null
           },
           "1": {
             "rejected_central_action": {
-              "action": "wait",
+              "action": "move",
               "path": [
                 [
                   5,
@@ -588,11 +557,7 @@
               ],
               "priority": 2
             },
-            "agent_alternative": {
-              "action": "wait",
-              "path": [],
-              "reasoning": "Safe fallback"
-            }
+            "agent_alternative": null
           }
         }
       },
@@ -938,7 +903,7 @@
       "agent_alternatives_suggested": 2,
       "central_vs_agent_disagreement_rate": 1.0
     },
-    "saved_at": "2025-09-09T19:53:57.781999",
+    "saved_at": "2025-09-20T16:19:14.866743",
     "auto_save": false
   }
 }
