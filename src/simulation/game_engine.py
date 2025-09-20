@@ -40,8 +40,9 @@ class GameEngine:
         # Deadlock detection and mitigation
         self.failed_move_counts = {}  # Track consecutive failed moves per agent
         self.agent_position_history = {}  # Track position history for stagnation detection
+        self.agent_failed_move_history = {}  # Track actual move failures (not intentional waiting)
         self.max_failed_moves = 3  # Trigger deadlock breaking after 3 failures
-        self.stagnation_turns = 3  # Number of turns without movement to consider stagnation
+        self.stagnation_turns = 3  # Number of turns with failed moves to consider stagnation
         
         # Logging - Use comprehensive format compatible with visualization
         self.log_enabled = os.getenv('LOG_SIMULATION', 'true').lower() == 'true'
@@ -112,43 +113,22 @@ class GameEngine:
             print(f"Agent {agent_id}: Path planned ({len(path)} steps)")
     
     def detect_stagnation_conflicts(self) -> Dict:
-        """Detect when agents aren't making progress (stagnation)"""
+        """Detect when agents have failed moves for multiple turns (actual stagnation, not intentional waiting)"""
         
-        # Track position history for all agents
-        for agent_id, agent in self.agents.items():
-            if agent_id not in self.agent_position_history:
-                self.agent_position_history[agent_id] = []
-            
-            # Only track history for agents with active targets
-            if agent.target_position is not None:
-                # Add current position to history
-                self.agent_position_history[agent_id].append(agent.position)
-                
-                # Keep only recent history
-                if len(self.agent_position_history[agent_id]) > self.stagnation_turns:
-                    self.agent_position_history[agent_id] = self.agent_position_history[agent_id][-self.stagnation_turns:]
-            else:
-                # Agent has completed tasks - clear history to prevent false positives
-                if self.agent_position_history[agent_id]:
-                    print(f"🧹 Agent {agent_id}: Cleared position history (task completed)")
-                    self.agent_position_history[agent_id] = []
-        
-        # Check for stagnant agents (but exclude agents that have completed their tasks)
+        # Check for agents with consecutive failed moves (not just staying in same position)
         stagnant_agents = []
-        for agent_id, positions in self.agent_position_history.items():
-            if len(positions) >= self.stagnation_turns:
-                # If agent hasn't moved in X turns (all positions are the same)
-                if len(set(positions)) == 1:
-                    # IMPORTANT: Only flag as stagnant if agent still has work to do
-                    agent = self.agents.get(agent_id)
-                    if agent and agent.target_position is not None:
-                        stagnant_agents.append(agent_id)
-                        print(f"🚫 Agent {agent_id}: Stagnant with active target {agent.target_position}")
-                    else:
-                        print(f"✅ Agent {agent_id}: Staying in place (task completed) - not stagnant")
+        
+        for agent_id, agent in self.agents.items():
+            # Only check agents with active targets
+            if agent.target_position is not None:
+                failed_move_count = len(self.agent_failed_move_history.get(agent_id, []))
+                
+                if failed_move_count >= self.stagnation_turns:
+                    stagnant_agents.append(agent_id)
+                    print(f"🚫 Agent {agent_id}: Stagnant due to {failed_move_count} consecutive failed moves")
         
         if stagnant_agents:
-            print(f"🚫 STAGNATION DETECTED! Agents stuck: {stagnant_agents}")
+            print(f"🚫 STAGNATION DETECTED! Agents with failed moves: {stagnant_agents}")
             
             # Calculate fresh planned paths for stagnant agents to provide context
             map_state = self.warehouse_map.get_state_dict()
@@ -176,7 +156,8 @@ class GameEngine:
                     'current_pos': agent.position,
                     'target_pos': agent.target_position,
                     'planned_path': current_path,
-                    'stuck_reason': 'stagnation'
+                    'stuck_reason': 'failed_moves',
+                    'failed_move_count': len(self.agent_failed_move_history.get(aid, []))
                 })
             
             return {
@@ -237,7 +218,10 @@ class GameEngine:
             # Reset failure counts after forced negotiation
             for agent_id in stuck_agents:
                 self.failed_move_counts[agent_id] = 0
-                print(f"🔄 Agent {agent_id}: Reset failure count after deadlock negotiation")
+                # Also clear failed move history
+                if agent_id in self.agent_failed_move_history:
+                    self.agent_failed_move_history[agent_id] = []
+                print(f"🔄 Agent {agent_id}: Reset failure count and move history after deadlock negotiation")
     
     def run_simulation_step(self) -> bool:
         """
@@ -271,6 +255,10 @@ class GameEngine:
             for agent_id in stagnation_conflict['conflicting_agents']:
                 if agent_id in self.agent_position_history:
                     self.agent_position_history[agent_id] = []
+                # Also clear failed move history after stagnation resolution
+                if agent_id in self.agent_failed_move_history:
+                    self.agent_failed_move_history[agent_id] = []
+                print(f"🧹 Agent {agent_id}: Cleared move histories after stagnation resolution")
             
             # Increment turn and continue
             self.current_turn += 1
@@ -567,6 +555,10 @@ class GameEngine:
                     # Reset failure count on successful move
                     self.failed_move_counts[agent_id] = 0
                     
+                    # IMPORTANT: Clear failed move history on successful move or wait
+                    if agent_id in self.agent_failed_move_history:
+                        self.agent_failed_move_history[agent_id] = []
+                    
                     # CRITICAL FIX: If agent has a negotiated path, advance it properly
                     if (hasattr(agent, '_has_negotiated_path') and 
                         getattr(agent, '_has_negotiated_path', False) and 
@@ -595,6 +587,21 @@ class GameEngine:
                 else:
                     # Track failed moves for deadlock detection
                     self.failed_move_counts[agent_id] = self.failed_move_counts.get(agent_id, 0) + 1
+                    
+                    # IMPORTANT: Track actual move failures for stagnation detection
+                    if agent_id not in self.agent_failed_move_history:
+                        self.agent_failed_move_history[agent_id] = []
+                    
+                    self.agent_failed_move_history[agent_id].append({
+                        'turn': self.current_turn,
+                        'attempted_move': next_pos,
+                        'from_position': agent.position
+                    })
+                    
+                    # Keep only recent failed move history
+                    if len(self.agent_failed_move_history[agent_id]) > self.stagnation_turns:
+                        self.agent_failed_move_history[agent_id] = self.agent_failed_move_history[agent_id][-self.stagnation_turns:]
+                    
                     print(f"❌ Agent {agent_id}: Move to {next_pos} failed ({self.failed_move_counts[agent_id]} consecutive failures)")
     
     def _check_box_pickup(self, agent_id: int):
@@ -641,6 +648,11 @@ class GameEngine:
                         delivered_box_id = agent.drop_box()
                         print(f"🎉 Agent {agent_id}: Delivered box {delivered_box_id} to target {target_id}")
                         agent.set_target(None)  # Task complete
+                        
+                        # Clear failed move history when task is completed
+                        if agent_id in self.agent_failed_move_history:
+                            self.agent_failed_move_history[agent_id] = []
+                            print(f"🧹 Agent {agent_id}: Cleared failed move history (task completed)")
     
     def _update_map_state(self):
         """Update warehouse map with current agent positions"""
