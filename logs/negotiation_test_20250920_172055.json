@@ -1,0 +1,56 @@
+{
+  "test_info": {
+    "timestamp": "2025-09-20T17:20:43.706982",
+    "test_type": "forced_conflict_negotiation",
+    "description": "Artificial scenarios designed to force 100% conflict rate"
+  },
+  "negotiations": [],
+  "conflict_scenarios": [
+    {
+      "type": "s_shaped_corridor",
+      "map_size": [
+        10,
+        8
+      ],
+      "agents": {
+        "0": [
+          4,
+          1
+        ],
+        "1": [
+          5,
+          6
+        ]
+      },
+      "targets": {
+        "0": [
+          8,
+          6
+        ],
+        "1": [
+          2,
+          1
+        ]
+      },
+      "expected_conflicts": "GUARANTEED",
+      "negotiations": [],
+      "total_conflicts": 0,
+      "turns_completed": 4
+    }
+  ],
+  "summary": {
+    "total_scenarios": 1,
+    "total_negotiations": 0,
+    "total_conflicts": 0,
+    "success_rate": 0.0,
+    "hmas2_metrics": {
+      "total_agent_validations": 0,
+      "validation_approvals": 0,
+      "validation_rejections": 0,
+      "agent_alternatives_suggested": 0,
+      "central_vs_agent_disagreement_rate": 0.0
+    },
+    "saved_at": "2025-09-20T17:20:55.214280",
+    "auto_save": false
+  }
+}

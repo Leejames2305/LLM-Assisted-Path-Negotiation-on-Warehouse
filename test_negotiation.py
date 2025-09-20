@@ -275,9 +275,16 @@ class NegotiationTester:
         print(f"\n📍 Agent Movement Plan:")
         for agent_id, start_pos in warehouse.agents.items():
             goal_id = warehouse.agent_goals.get(agent_id)
-            if goal_id is not None and goal_id in warehouse.targets:
-                target_pos = warehouse.targets[goal_id]
-                print(f"   Agent {agent_id}: {start_pos} → {target_pos}")
+            if goal_id is not None:
+                # Show the correct two-phase plan
+                if goal_id in warehouse.boxes and goal_id in warehouse.targets:
+                    box_pos = warehouse.boxes[goal_id]
+                    target_pos = warehouse.targets[goal_id]
+                    print(f"   Agent {agent_id}: {start_pos} → 📦{box_pos} → 🎯{target_pos}")
+                else:
+                    print(f"   ⚠️  Agent {agent_id}: Missing box or target for goal {goal_id}")
+            else:
+                print(f"   ⚠️  Agent {agent_id}: No goal assigned")
         
         print(f"\n⚔️  Expected Conflicts: GUARANTEED (agents must navigate through same bottlenecks)")
         print("=" * 50)
@@ -300,12 +307,27 @@ class NegotiationTester:
         from src.agents import RobotAgent  # Use RobotAgent instead of Agent
         for agent_id, position in warehouse.agents.items():
             agent = RobotAgent(agent_id, position)
-            # Set target based on assigned goals
+            
+            # CRITICAL FIX: Set the box as the initial target, not the delivery target!
             if agent_id in warehouse.agent_goals:
                 goal_id = warehouse.agent_goals[agent_id]
-                if goal_id in warehouse.targets:
-                    target_pos = warehouse.targets[goal_id]
-                    agent.set_target(target_pos)
+                
+                # Phase 1: Agent should first go to their assigned box
+                if goal_id in warehouse.boxes:
+                    box_pos = warehouse.boxes[goal_id]
+                    agent.set_target(box_pos)  # Go to box first!
+                    print(f"   Agent {agent_id}: Initial target set to BOX at {box_pos}")
+                    
+                    # Store the final delivery target for later (after box pickup)
+                    if goal_id in warehouse.targets:
+                        delivery_target = warehouse.targets[goal_id]
+                        setattr(agent, 'delivery_target', delivery_target)
+                        print(f"   Agent {agent_id}: Delivery target will be {delivery_target}")
+                else:
+                    print(f"   ⚠️  WARNING: Agent {agent_id} assigned to non-existent box {goal_id}")
+            else:
+                print(f"   ⚠️  WARNING: Agent {agent_id} has no assigned goal!")
+                
             game_engine.agents[agent_id] = agent
         
         # CRITICAL: Plan initial paths for all agents (ignoring other agents for initial planning)
@@ -336,11 +358,19 @@ class NegotiationTester:
                 
                 # Set the planned path directly
                 agent.planned_path = path
-                print(f"   Agent {agent_id}: Planned path with {len(path)} steps")
+                
+                # Show what the agent is planning to do
+                if hasattr(agent, 'delivery_target'):
+                    print(f"   Agent {agent_id}: Phase 1 - Go to BOX at {agent.target_position} ({len(path)} steps)")
+                    if len(path) <= 10:  # Show short paths
+                        print(f"      Path to box: {path}")
+                else:
+                    print(f"   Agent {agent_id}: Planned path with {len(path)} steps")
+                    if len(path) <= 10:  # Show short paths
+                        print(f"      Path: {path}")
+                
                 if len(path) == 0:
                     print(f"   ⚠️  WARNING: Agent {agent_id} has NO PATH to target!")
-                elif len(path) <= 10:  # Show short paths
-                    print(f"      Path: {path}")
             else:
                 print(f"   ⚠️  WARNING: Agent {agent_id} has NO TARGET!")
         print("🧠 Path planning completed.")

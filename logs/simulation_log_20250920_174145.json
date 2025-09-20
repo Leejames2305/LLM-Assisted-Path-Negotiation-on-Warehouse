@@ -1,0 +1,1464 @@
+[
+  {
+    "timestamp": "2025-09-20T17:41:40.969842",
+    "turn": 0,
+    "event_type": "SIMULATION_START",
+    "map_state": {
+      "agents": {
+        "0": [
+          1,
+          0
+        ],
+        "1": [
+          7,
+          3
+        ]
+      },
+      "boxes": {
+        "0": [
+          1,
+          2
+        ],
+        "1": [
+          3,
+          5
+        ]
+      },
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          "A",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          "B",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          ".",
+          ".",
+          ".",
+          "A"
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "B",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          1,
+          0
+        ],
+        "target": [
+          1,
+          2
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          7,
+          3
+        ],
+        "target": [
+          3,
+          5
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            7,
+            3
+          ],
+          [
+            6,
+            3
+          ],
+          [
+            5,
+            3
+          ],
+          [
+            4,
+            3
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:40.973218",
+    "turn": 0,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          1,
+          1
+        ],
+        "1": [
+          6,
+          3
+        ]
+      },
+      "boxes": {
+        "0": [
+          1,
+          2
+        ],
+        "1": [
+          3,
+          5
+        ]
+      },
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          "A",
+          ".",
+          ".",
+          ".",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          "B",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          ".",
+          ".",
+          "A",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "B",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          1,
+          1
+        ],
+        "target": [
+          1,
+          2
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          6,
+          3
+        ],
+        "target": [
+          3,
+          5
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            6,
+            3
+          ],
+          [
+            5,
+            3
+          ],
+          [
+            4,
+            3
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:41.680296",
+    "turn": 1,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          1,
+          2
+        ],
+        "1": [
+          5,
+          3
+        ]
+      },
+      "boxes": {
+        "1": [
+          3,
+          5
+        ]
+      },
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          "@",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          ".",
+          "A",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "B",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          1,
+          2
+        ],
+        "target": [
+          5,
+          1
+        ],
+        "carrying_box": true,
+        "box_id": 0,
+        "planned_path": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          5,
+          3
+        ],
+        "target": [
+          3,
+          5
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            5,
+            3
+          ],
+          [
+            4,
+            3
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:42.499976",
+    "turn": 2,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          1,
+          1
+        ],
+        "1": [
+          4,
+          3
+        ]
+      },
+      "boxes": {
+        "1": [
+          3,
+          5
+        ]
+      },
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          "@",
+          ".",
+          ".",
+          ".",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          "A",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "B",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          1,
+          1
+        ],
+        "target": [
+          5,
+          1
+        ],
+        "carrying_box": true,
+        "box_id": 0,
+        "planned_path": [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          4,
+          3
+        ],
+        "target": [
+          3,
+          5
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            4,
+            3
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:43.040232",
+    "turn": 3,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          2,
+          1
+        ],
+        "1": [
+          3,
+          3
+        ]
+      },
+      "boxes": {
+        "1": [
+          3,
+          5
+        ]
+      },
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "@",
+          ".",
+          ".",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "A",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "B",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          2,
+          1
+        ],
+        "target": [
+          5,
+          1
+        ],
+        "carrying_box": true,
+        "box_id": 0,
+        "planned_path": [
+          [
+            2,
+            1
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          3,
+          3
+        ],
+        "target": [
+          3,
+          5
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:43.560236",
+    "turn": 4,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          3,
+          1
+        ],
+        "1": [
+          3,
+          4
+        ]
+      },
+      "boxes": {
+        "1": [
+          3,
+          5
+        ]
+      },
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "@",
+          ".",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "A",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "B",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          3,
+          1
+        ],
+        "target": [
+          5,
+          1
+        ],
+        "carrying_box": true,
+        "box_id": 0,
+        "planned_path": [
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          3,
+          4
+        ],
+        "target": [
+          3,
+          5
+        ],
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:44.126136",
+    "turn": 5,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          4,
+          1
+        ],
+        "1": [
+          3,
+          5
+        ]
+      },
+      "boxes": {},
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          "@",
+          "T",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "@",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          4,
+          1
+        ],
+        "target": [
+          5,
+          1
+        ],
+        "carrying_box": true,
+        "box_id": 0,
+        "planned_path": [
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          3,
+          5
+        ],
+        "target": [
+          3,
+          3
+        ],
+        "carrying_box": true,
+        "box_id": 1,
+        "planned_path": [
+          [
+            3,
+            5
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:44.729651",
+    "turn": 6,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          5,
+          1
+        ],
+        "1": [
+          3,
+          4
+        ]
+      },
+      "boxes": {},
+      "targets": {
+        "0": [
+          3,
+          3
+        ],
+        "1": [
+          5,
+          1
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "@",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "T",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "@",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          5,
+          1
+        ],
+        "target": [
+          5,
+          1
+        ],
+        "carrying_box": true,
+        "box_id": 0,
+        "planned_path": [],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          3,
+          4
+        ],
+        "target": [
+          3,
+          3
+        ],
+        "carrying_box": true,
+        "box_id": 1,
+        "planned_path": [
+          [
+            3,
+            4
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  },
+  {
+    "timestamp": "2025-09-20T17:41:45.225045",
+    "turn": 7,
+    "event_type": "TURN_COMPLETE",
+    "map_state": {
+      "agents": {
+        "0": [
+          5,
+          1
+        ],
+        "1": [
+          3,
+          3
+        ]
+      },
+      "boxes": {},
+      "targets": {
+        "0": [
+          3,
+          3
+        ]
+      },
+      "agent_goals": {
+        "0": 1,
+        "1": 0
+      },
+      "grid": [
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "A",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          "#",
+          ".",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          "@",
+          ".",
+          ".",
+          ".",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#",
+          "."
+        ],
+        [
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          ".",
+          "#"
+        ]
+      ]
+    },
+    "agent_status": {
+      "0": {
+        "id": 0,
+        "position": [
+          5,
+          1
+        ],
+        "target": null,
+        "carrying_box": false,
+        "box_id": null,
+        "planned_path": [],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      },
+      "1": {
+        "id": 1,
+        "position": [
+          3,
+          3
+        ],
+        "target": [
+          3,
+          3
+        ],
+        "carrying_box": true,
+        "box_id": 1,
+        "planned_path": [],
+        "is_waiting": false,
+        "wait_turns_remaining": 0,
+        "priority": 1,
+        "current_action": null
+      }
+    }
+  }
+]

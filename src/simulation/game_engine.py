@@ -91,7 +91,7 @@ class GameEngine:
     
     def run_simulation_step(self) -> bool:
         """
-        Run one step of the simulation
+        Run one step of the simulation with forced conflict detection
         
         Returns:
             bool: True if simulation should continue, False if complete
@@ -105,23 +105,23 @@ class GameEngine:
         for agent in self.agents.values():
             agent.update_turn()
         
-        # Get planned moves for all active agents
-        planned_moves = self._get_planned_moves()
-        
         # Always check for deliveries, even if agents don't move
         for agent_id in self.agents.keys():
             self._check_box_delivery(agent_id)
         
-        if not planned_moves:
-            print("No agents have planned moves.")
+        # PHASE 1: Get forced planned moves (ignoring other agents) for conflict detection
+        forced_moves = self._get_forced_planned_moves()
+        
+        if not forced_moves:
+            print("No agents have targets to move towards.")
             # Check if all tasks are complete
             if self._check_completion():
                 print("🎉 All tasks completed! Simulation complete!")
                 self.simulation_complete = True
             return False
         
-        # Check for conflicts
-        conflict_info = self.conflict_detector.detect_path_conflicts(planned_moves, self.current_turn)
+        # Check for conflicts using forced paths
+        conflict_info = self.conflict_detector.detect_path_conflicts(forced_moves, self.current_turn)
         
         if conflict_info['has_conflicts']:
             print(f"{Fore.RED}CONFLICT DETECTED!{Style.RESET_ALL}")
@@ -129,11 +129,26 @@ class GameEngine:
             print(f"Conflict points: {conflict_info['conflict_points']}")
             
             # Use Central Negotiator to resolve conflicts
-            resolution = self._negotiate_conflicts(conflict_info, planned_moves)
+            resolution = self._negotiate_conflicts(conflict_info, forced_moves)
             self._execute_negotiated_actions(resolution)
         else:
-            print(f"{Fore.GREEN}No conflicts detected. Executing planned moves...{Style.RESET_ALL}")
-            self._execute_planned_moves(planned_moves)
+            # PHASE 2: No conflicts in forced paths - try normal planning
+            print(f"{Fore.GREEN}No conflicts in forced paths. Trying normal planning...{Style.RESET_ALL}")
+            
+            normal_moves = self._get_normal_planned_moves()
+            if normal_moves:
+                # Double-check for conflicts in normal paths
+                normal_conflict_info = self.conflict_detector.detect_path_conflicts(normal_moves, self.current_turn)
+                
+                if normal_conflict_info['has_conflicts']:
+                    print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
+                    resolution = self._negotiate_conflicts(normal_conflict_info, normal_moves)
+                    self._execute_negotiated_actions(resolution)
+                else:
+                    print(f"{Fore.GREEN}No conflicts detected. Executing planned moves...{Style.RESET_ALL}")
+                    self._execute_planned_moves(normal_moves)
+            else:
+                print(f"{Fore.YELLOW}No agents can plan paths - all waiting...{Style.RESET_ALL}")
         
         # Update map with new agent positions
         self._update_map_state()
@@ -154,7 +169,29 @@ class GameEngine:
         return not self.simulation_complete
     
     def _get_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
-        """Get planned moves for all active agents"""
+        """Get planned moves for all active agents (legacy method - now calls normal planning)"""
+        return self._get_normal_planned_moves()
+    
+    def _get_forced_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
+        """Get forced planned moves (ignoring other agents) for conflict detection"""
+        forced_moves = {}
+        
+        for agent_id, agent in self.agents.items():
+            if not agent.is_waiting and agent.target_position:
+                # Force path planning ignoring other agents
+                map_state = self.warehouse_map.get_state_dict()
+                forced_path = self._plan_forced_path(agent, map_state)
+                
+                if forced_path:
+                    forced_moves[agent_id] = forced_path
+                    print(f"Agent {agent_id}: Forced path with {len(forced_path)} steps")
+                else:
+                    print(f"Agent {agent_id}: No forced path available")
+        
+        return forced_moves
+    
+    def _get_normal_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
+        """Get normal planned moves (avoiding other agents)"""
         planned_moves = {}
         
         for agent_id, agent in self.agents.items():
@@ -165,12 +202,62 @@ class GameEngine:
                 
                 if needs_replan:
                     map_state = self.warehouse_map.get_state_dict()
-                    agent.plan_path(map_state)
+                    normal_path = self._plan_normal_path(agent, map_state)
+                    agent.planned_path = normal_path
                 
                 if agent.planned_path:
                     planned_moves[agent_id] = agent.planned_path.copy()
+                    print(f"Agent {agent_id}: Normal path with {len(agent.planned_path)} steps")
         
         return planned_moves
+    
+    def _plan_forced_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
+        """Plan path ignoring other agents - for conflict detection"""
+        # Extract only walls as obstacles (ignore other agents)
+        walls = set()
+        grid = map_state.get('grid', [])
+        for y, row in enumerate(grid):
+            for x, cell in enumerate(row):
+                if cell == '#':
+                    walls.add((x, y))
+        
+        # Use pathfinder with only walls as obstacles
+        forced_path = self.pathfinder.find_path_with_obstacles(
+            start=agent.position,
+            goal=agent.target_position,
+            walls=walls,
+            agent_positions={},  # Empty - ignore other agents
+            exclude_agent=agent.agent_id
+        )
+        
+        return forced_path
+    
+    def _plan_normal_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
+        """Plan path avoiding other agents - for actual movement"""
+        # Extract walls
+        walls = set()
+        grid = map_state.get('grid', [])
+        for y, row in enumerate(grid):
+            for x, cell in enumerate(row):
+                if cell == '#':
+                    walls.add((x, y))
+        
+        # Get other agent positions to avoid
+        agent_positions = {}
+        for other_id, other_agent in self.agents.items():
+            if other_id != agent.agent_id:
+                agent_positions[other_id] = other_agent.position
+        
+        # Use pathfinder avoiding walls and other agents
+        normal_path = self.pathfinder.find_path_with_obstacles(
+            start=agent.position,
+            goal=agent.target_position,
+            walls=walls,
+            agent_positions=agent_positions,
+            exclude_agent=agent.agent_id
+        )
+        
+        return normal_path
     
     def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Dict:
         """Use Central Negotiator to resolve conflicts"""
