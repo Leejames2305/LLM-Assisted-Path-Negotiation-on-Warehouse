@@ -118,6 +118,12 @@ Detailed logs are saved in `/logs`:
 - Conflict resolution decisions
 - LLM reasoning processes
 
+### Visualise
+Run the visualization on logged files:
+```cmd
+python visualization.py logs/simulation_logs....
+```
+
 ## 🔧 Configuration
 
 Environment variables in `.env.example`:
