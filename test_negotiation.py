@@ -385,6 +385,20 @@ class NegotiationTester:
             'negotiations': []
         }
         
+        # Initialize comprehensive simulation log for visualization
+        simulation_log = {
+            'scenario': {
+                'type': scenario_type,
+                'map_size': [warehouse.width, warehouse.height],
+                'initial_agents': {str(k): list(v) for k, v in warehouse.agents.items()},
+                'initial_targets': {str(k): list(v) for k, v in warehouse.targets.items()},
+                'grid': warehouse.grid.tolist(),  # Include actual grid data for wall detection
+                'timestamp': datetime.now().isoformat()
+            },
+            'turns': [],
+            'summary': {}
+        }
+        
         # Monkey-patch the negotiation method to capture HMAS-2 data
         original_negotiate = game_engine.central_negotiator.negotiate_path_conflict
         original_system_prompt = game_engine.central_negotiator._create_negotiation_system_prompt
@@ -757,6 +771,32 @@ class NegotiationTester:
         while turn_completed < max_turns:
             print(f"\n=== TURN {turn_completed + 1} ===")
             
+            # Capture turn state BEFORE executing the turn
+            turn_entry = {
+                'turn': turn_completed + 1,
+                'timestamp': datetime.now().isoformat(),
+                'type': 'routine',  # Will be updated to 'negotiation' if conflicts occur
+                'agent_states': {
+                    str(aid): {
+                        'position': list(agent.position),
+                        'target': list(agent.target_position) if agent.target_position else None,
+                        'carrying_box': agent.carrying_box,
+                        'box_id': getattr(agent, 'box_id', None),
+                        'is_waiting': agent.is_waiting,
+                        'wait_turns_remaining': getattr(agent, 'wait_turns_remaining', 0),
+                        'planned_path': agent.planned_path[:10] if hasattr(agent, 'planned_path') and agent.planned_path else [],  # First 10 steps
+                        'has_negotiated_path': getattr(agent, '_has_negotiated_path', False)
+                    } for aid, agent in game_engine.agents.items()
+                },
+                'map_state': {
+                    'boxes': {str(k): list(v) for k, v in game_engine.warehouse_map.get_state_dict().get('boxes', {}).items()},
+                    'targets': {str(k): list(v) for k, v in game_engine.warehouse_map.get_state_dict().get('targets', {}).items()},
+                    'dimensions': [game_engine.width, game_engine.height]
+                },
+                'conflicts_detected': False,
+                'negotiation_occurred': False
+            }
+            
             # Reset negotiation flag at start of each turn for clean state
             if hasattr(game_engine, '_negotiation_captured'):
                 setattr(game_engine, '_negotiation_captured', False)
@@ -771,12 +811,44 @@ class NegotiationTester:
                 # Run one simulation step
                 continue_sim = game_engine.run_simulation_step()
                 
+                # Check if conflicts were detected and negotiation occurred
+                if hasattr(game_engine, '_negotiation_captured') and getattr(game_engine, '_negotiation_captured'):
+                    turn_entry['type'] = 'negotiation'
+                    turn_entry['conflicts_detected'] = True
+                    turn_entry['negotiation_occurred'] = True
+                    print("📋 Negotiation captured for this turn")
+                
                 # Count conflicts in this turn
                 turn_conflicts = len([n for n in scenario_data['negotiations'] 
                                     if n.get('turn') == game_engine.current_turn])
                 if turn_conflicts > 0:
                     conflicts_detected += turn_conflicts
                     print(f"🔥 Conflicts this turn: {turn_conflicts}")
+                
+                # Capture turn state AFTER executing the turn
+                turn_entry['results'] = {
+                    'agent_states_after': {
+                        str(aid): {
+                            'position': list(agent.position),
+                            'target': list(agent.target_position) if agent.target_position else None,
+                            'carrying_box': agent.carrying_box,
+                            'box_id': getattr(agent, 'box_id', None),
+                            'is_waiting': agent.is_waiting,
+                            'wait_turns_remaining': getattr(agent, 'wait_turns_remaining', 0),
+                            'planned_path': agent.planned_path[:10] if hasattr(agent, 'planned_path') and agent.planned_path else [],
+                            'has_negotiated_path': getattr(agent, '_has_negotiated_path', False)
+                        } for aid, agent in game_engine.agents.items()
+                    },
+                    'map_state_after': {
+                        'boxes': {str(k): list(v) for k, v in game_engine.warehouse_map.get_state_dict().get('boxes', {}).items()},
+                        'targets': {str(k): list(v) for k, v in game_engine.warehouse_map.get_state_dict().get('targets', {}).items()},
+                        'dimensions': [game_engine.width, game_engine.height]
+                    },
+                    'simulation_continued': continue_sim
+                }
+                
+                # Add turn entry to simulation log
+                simulation_log['turns'].append(turn_entry)
                 
                 # IMPORTANT: Break if simulation signals completion
                 if not continue_sim:
@@ -790,8 +862,34 @@ class NegotiationTester:
             turn_completed += 1
             input("Press Enter for next turn...")
         
+        # Complete simulation log summary
+        simulation_log['summary'] = {
+            'total_turns': turn_completed,
+            'total_conflicts': conflicts_detected,
+            'total_negotiations': len(scenario_data['negotiations']),
+            'completion_timestamp': datetime.now().isoformat(),
+            'negotiation_turns': len([t for t in simulation_log['turns'] if t['type'] == 'negotiation']),
+            'routine_turns': len([t for t in simulation_log['turns'] if t['type'] == 'routine'])
+        }
+        
+        # Save comprehensive simulation log
+        simulation_log_filename = f"negotiation_simulation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
+        # Ensure logs directory exists
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        simulation_log_path = os.path.join(logs_dir, simulation_log_filename)
+        
+        try:
+            with open(simulation_log_path, 'w') as f:
+                json.dump(simulation_log, f, indent=2)
+            print(f"💾 Comprehensive simulation log saved: {simulation_log_filename}")
+        except Exception as e:
+            print(f"❌ Failed to save simulation log: {e}")
+        
         scenario_data['total_conflicts'] = conflicts_detected
         scenario_data['turns_completed'] = turn_completed
+        scenario_data['simulation_log_file'] = simulation_log_filename  # Reference to detailed log
         
         self.negotiation_log['conflict_scenarios'].append(scenario_data)
         self._mark_data_changed()  # Mark that we have new scenario data
@@ -800,6 +898,7 @@ class NegotiationTester:
         print(f"   Total conflicts detected: {conflicts_detected}")
         print(f"   Total negotiations: {len(scenario_data['negotiations'])}")
         print(f"   Turns completed: {scenario_data['turns_completed']}")
+        print(f"   Detailed log: {simulation_log_filename}")
         
         return scenario_data
     

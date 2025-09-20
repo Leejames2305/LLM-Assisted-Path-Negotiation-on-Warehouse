@@ -1,19 +1,19 @@
 {
   "test_info": {
-    "timestamp": "2025-09-20T19:39:40.823043",
+    "timestamp": "2025-09-20T22:09:00.323638",
     "test_type": "forced_conflict_negotiation",
     "description": "Artificial scenarios designed to force 100% conflict rate"
   },
   "negotiations": [
     {
       "turn": 1,
-      "timestamp": "2025-09-20T19:39:46.620116",
+      "timestamp": "2025-09-20T22:09:05.158284",
       "hmas2_stages": {
         "central_negotiation": {
           "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
           "user_prompt": "TURN 1 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (3, 1), going to (8, 6)\n  Planned path: [(3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 6), going to (2, 1)\n  Planned path: [(6, 6), (5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (3, 1), 1: (6, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 3): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 2): corner_refuge (value: 16)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T A0  .  .  .  .  #  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  . A1  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
           "llm_response": {
-            "resolution": "reroute",
+            "resolution": "priority",
             "agent_actions": {
               "0": {
                 "action": "move",
@@ -47,26 +47,6 @@
                     3
                   ],
                   [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    7,
-                    3
-                  ],
-                  [
                     7,
                     4
                   ],
@@ -123,10 +103,11 @@
                     6
                   ]
                 ],
-                "priority": 1
+                "priority": 2,
+                "wait_turns": 0
               },
               "1": {
-                "action": "move",
+                "action": "wait",
                 "path": [
                   [
                     6,
@@ -209,10 +190,11 @@
                     1
                   ]
                 ],
-                "priority": 1
+                "priority": 1,
+                "wait_turns": 1
               }
             },
-            "reasoning": "Reroute Agent 0 to detour into the wiggle room at (8,3) and wait there temporarily, delaying its entry into the conflicting row 4 until Agent 1 has passed, ensuring no spatial-temporal collisions."
+            "reasoning": "Fallback resolution: First agent moves, others wait"
           },
           "model_used": "x-ai/grok-4-fast:free"
         },
@@ -251,26 +233,6 @@
                   3
                 ],
                 [
-                  8,
-                  3
-                ],
-                [
-                  8,
-                  3
-                ],
-                [
-                  8,
-                  3
-                ],
-                [
-                  8,
-                  3
-                ],
-                [
-                  7,
-                  3
-                ],
-                [
                   7,
                   4
                 ],
@@ -327,12 +289,13 @@
                   6
                 ]
               ],
-              "priority": 1
+              "priority": 2,
+              "wait_turns": 0
             },
             "validation_model": "x-ai/grok-4-fast:free",
             "validation_result": {
               "valid": true,
-              "reason": "Next move is adjacent, within bounds, and not into a wall or occupied position."
+              "reason": "Next move (4,1) is adjacent to (3,1), within bounds, and open space (no wall or agent collision)"
             },
             "alternative_suggested": null,
             "final_action_executed": {
@@ -367,26 +330,6 @@
                   3
                 ],
                 [
-                  8,
-                  3
-                ],
-                [
-                  8,
-                  3
-                ],
-                [
-                  8,
-                  3
-                ],
-                [
-                  8,
-                  3
-                ],
-                [
-                  7,
-                  3
-                ],
-                [
                   7,
                   4
                 ],
@@ -443,13 +386,14 @@
                   6
                 ]
               ],
-              "priority": 1
+              "priority": 2,
+              "wait_turns": 0
             }
           },
           "1": {
             "agent_id": 1,
             "proposed_action": {
-              "action": "move",
+              "action": "wait",
               "path": [
                 [
                   6,
@@ -532,16 +476,17 @@
                   1
                 ]
               ],
-              "priority": 1
+              "priority": 1,
+              "wait_turns": 1
             },
             "validation_model": "x-ai/grok-4-fast:free",
             "validation_result": {
               "valid": true,
-              "reason": "Next move (5,6) is adjacent, within bounds, and not a wall or occupied position."
+              "reason": "Wait action is always safe"
             },
             "alternative_suggested": null,
             "final_action_executed": {
-              "action": "move",
+              "action": "wait",
               "path": [
                 [
                   6,
@@ -624,7 +569,8 @@
                   1
                 ]
               ],
-              "priority": 1
+              "priority": 1,
+              "wait_turns": 1
             }
           }
         },
@@ -661,26 +607,6 @@
                 3
               ],
               [
-                8,
-                3
-              ],
-              [
-                8,
-                3
-              ],
-              [
-                8,
-                3
-              ],
-              [
-                8,
-                3
-              ],
-              [
-                7,
-                3
-              ],
-              [
                 7,
                 4
               ],
@@ -737,10 +663,11 @@
                 6
               ]
             ],
-            "priority": 1
+            "priority": 2,
+            "wait_turns": 0
           },
           "1": {
-            "action": "move",
+            "action": "wait",
             "path": [
               [
                 6,
@@ -823,7 +750,8 @@
                 1
               ]
             ],
-            "priority": 1
+            "priority": 1,
+            "wait_turns": 1
           }
         },
         "validation_overrides": {}
@@ -1157,11 +1085,11 @@
     },
     {
       "turn": 2,
-      "timestamp": "2025-09-20T19:40:57.731144",
+      "timestamp": "2025-09-20T22:09:57.411969",
       "hmas2_stages": {
         "central_negotiation": {
           "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
-          "user_prompt": "TURN 2 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (4, 1), going to (8, 6)\n  Planned path: [(4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (8, 3), (8, 3), (8, 3), (8, 3), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (5, 6), going to (2, 1)\n  Planned path: [(5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 4), (7, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (4, 1), 1: (5, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 2): corner_refuge (value: 22)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  . A0  .  .  .  #  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  .  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  . A1  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+          "user_prompt": "TURN 2 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (4, 1), going to (8, 6)\n  Planned path: [(4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 6), going to (2, 1)\n  Planned path: [(5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (4, 1), 1: (6, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 3): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 2): corner_refuge (value: 16)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  . A0  .  .  .  #  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  . A1  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
           "llm_response": {
             "resolution": "reroute",
             "agent_actions": {
@@ -1193,7 +1121,11 @@
                     3
                   ],
                   [
-                    8,
+                    7,
+                    4
+                  ],
+                  [
+                    7,
                     3
                   ],
                   [
@@ -1283,6 +1215,10 @@
                 "action": "move",
                 "path": [
                   [
+                    6,
+                    6
+                  ],
+                  [
                     5,
                     6
                   ],
@@ -1362,7 +1298,7 @@
                 "priority": 1
               }
             },
-            "reasoning": "Reroute Agent 0 by extending wait at empty (8,3) for two additional turns to avoid swap conflict at (7,4) and (7,3), allowing Agent 1 to pass first; utilizes adjacent empty space for temporary positioning."
+            "reasoning": "Reroute agent 0 to the wiggle room at (8,3) for temporary waiting, allowing agent 1 to traverse row 4 without edge conflict at (4,4)-(5,4); agent 0 resumes after agent 1 clears (7,4)."
           },
           "model_used": "x-ai/grok-4-fast:free"
         },
@@ -1397,7 +1333,11 @@
                   3
                 ],
                 [
-                  8,
+                  7,
+                  4
+                ],
+                [
+                  7,
                   3
                 ],
                 [
@@ -1486,7 +1426,7 @@
             "validation_model": "x-ai/grok-4-fast:free",
             "validation_result": {
               "valid": true,
-              "reason": "Next move is adjacent, within bounds, and not into a wall or occupied position."
+              "reason": "Next move (5,1) is adjacent, within bounds, and not into a wall or occupied position."
             },
             "alternative_suggested": null,
             "final_action_executed": {
@@ -1517,7 +1457,11 @@
                   3
                 ],
                 [
-                  8,
+                  7,
+                  4
+                ],
+                [
+                  7,
                   3
                 ],
                 [
@@ -1610,6 +1554,10 @@
               "action": "move",
               "path": [
                 [
+                  6,
+                  6
+                ],
+                [
                   5,
                   6
                 ],
@@ -1691,12 +1639,16 @@
             "validation_model": "x-ai/grok-4-fast:free",
             "validation_result": {
               "valid": true,
-              "reason": "Next move is adjacent, within bounds, and to an open space without collision."
+              "reason": "Next move (5,6) is adjacent to (6,6), within bounds, and open space (not a wall)."
             },
             "alternative_suggested": null,
             "final_action_executed": {
               "action": "move",
               "path": [
+                [
+                  6,
+                  6
+                ],
                 [
                   5,
                   6
@@ -1807,7 +1759,11 @@
                 3
               ],
               [
-                8,
+                7,
+                4
+              ],
+              [
+                7,
                 3
               ],
               [
@@ -1896,6 +1852,10 @@
           "1": {
             "action": "move",
             "path": [
+              [
+                6,
+                6
+              ],
               [
                 5,
                 6
@@ -2016,26 +1976,6 @@
                 3
               ],
               [
-                8,
-                3
-              ],
-              [
-                8,
-                3
-              ],
-              [
-                8,
-                3
-              ],
-              [
-                8,
-                3
-              ],
-              [
-                7,
-                3
-              ],
-              [
                 7,
                 4
               ],
@@ -2096,7 +2036,7 @@
           {
             "id": 1,
             "current_pos": [
-              5,
+              6,
               6
             ],
             "target_pos": [
@@ -2185,12 +2125,8 @@
         ],
         "conflict_points": [
           [
-            7,
+            5,
             4
-          ],
-          [
-            7,
-            3
           ]
         ],
         "map_state": {
@@ -2200,7 +2136,7 @@
               1
             ],
             "1": [
-              5,
+              6,
               6
             ]
           },
@@ -2298,8 +2234,8 @@
               ".",
               ".",
               ".",
-              "@",
               ".",
+              "@",
               ".",
               "T",
               "#"
@@ -2353,13 +2289,13 @@
       "negotiations": [
         {
           "turn": 1,
-          "timestamp": "2025-09-20T19:39:46.620116",
+          "timestamp": "2025-09-20T22:09:05.158284",
           "hmas2_stages": {
             "central_negotiation": {
               "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
               "user_prompt": "TURN 1 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (3, 1), going to (8, 6)\n  Planned path: [(3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 6), going to (2, 1)\n  Planned path: [(6, 6), (5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (3, 1), 1: (6, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 3): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 2): corner_refuge (value: 16)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T A0  .  .  .  .  #  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  . A1  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
               "llm_response": {
-                "resolution": "reroute",
+                "resolution": "priority",
                 "agent_actions": {
                   "0": {
                     "action": "move",
@@ -2393,26 +2329,6 @@
                         3
                       ],
                       [
-                        8,
-                        3
-                      ],
-                      [
-                        8,
-                        3
-                      ],
-                      [
-                        8,
-                        3
-                      ],
-                      [
-                        8,
-                        3
-                      ],
-                      [
-                        7,
-                        3
-                      ],
-                      [
                         7,
                         4
                       ],
@@ -2469,10 +2385,11 @@
                         6
                       ]
                     ],
-                    "priority": 1
+                    "priority": 2,
+                    "wait_turns": 0
                   },
                   "1": {
-                    "action": "move",
+                    "action": "wait",
                     "path": [
                       [
                         6,
@@ -2555,10 +2472,11 @@
                         1
                       ]
                     ],
-                    "priority": 1
+                    "priority": 1,
+                    "wait_turns": 1
                   }
                 },
-                "reasoning": "Reroute Agent 0 to detour into the wiggle room at (8,3) and wait there temporarily, delaying its entry into the conflicting row 4 until Agent 1 has passed, ensuring no spatial-temporal collisions."
+                "reasoning": "Fallback resolution: First agent moves, others wait"
               },
               "model_used": "x-ai/grok-4-fast:free"
             },
@@ -2597,26 +2515,6 @@
                       3
                     ],
                     [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      7,
-                      3
-                    ],
-                    [
                       7,
                       4
                     ],
@@ -2673,12 +2571,13 @@
                       6
                     ]
                   ],
-                  "priority": 1
+                  "priority": 2,
+                  "wait_turns": 0
                 },
                 "validation_model": "x-ai/grok-4-fast:free",
                 "validation_result": {
                   "valid": true,
-                  "reason": "Next move is adjacent, within bounds, and not into a wall or occupied position."
+                  "reason": "Next move (4,1) is adjacent to (3,1), within bounds, and open space (no wall or agent collision)"
                 },
                 "alternative_suggested": null,
                 "final_action_executed": {
@@ -2713,26 +2612,6 @@
                       3
                     ],
                     [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      7,
-                      3
-                    ],
-                    [
                       7,
                       4
                     ],
@@ -2789,13 +2668,14 @@
                       6
                     ]
                   ],
-                  "priority": 1
+                  "priority": 2,
+                  "wait_turns": 0
                 }
               },
               "1": {
                 "agent_id": 1,
                 "proposed_action": {
-                  "action": "move",
+                  "action": "wait",
                   "path": [
                     [
                       6,
@@ -2878,16 +2758,17 @@
                       1
                     ]
                   ],
-                  "priority": 1
+                  "priority": 1,
+                  "wait_turns": 1
                 },
                 "validation_model": "x-ai/grok-4-fast:free",
                 "validation_result": {
                   "valid": true,
-                  "reason": "Next move (5,6) is adjacent, within bounds, and not a wall or occupied position."
+                  "reason": "Wait action is always safe"
                 },
                 "alternative_suggested": null,
                 "final_action_executed": {
-                  "action": "move",
+                  "action": "wait",
                   "path": [
                     [
                       6,
@@ -2970,7 +2851,8 @@
                       1
                     ]
                   ],
-                  "priority": 1
+                  "priority": 1,
+                  "wait_turns": 1
                 }
               }
             },
@@ -3007,26 +2889,6 @@
                     3
                   ],
                   [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    7,
-                    3
-                  ],
-                  [
                     7,
                     4
                   ],
@@ -3083,10 +2945,11 @@
                     6
                   ]
                 ],
-                "priority": 1
+                "priority": 2,
+                "wait_turns": 0
               },
               "1": {
-                "action": "move",
+                "action": "wait",
                 "path": [
                   [
                     6,
@@ -3169,7 +3032,8 @@
                     1
                   ]
                 ],
-                "priority": 1
+                "priority": 1,
+                "wait_turns": 1
               }
             },
             "validation_overrides": {}
@@ -3503,11 +3367,11 @@
         },
         {
           "turn": 2,
-          "timestamp": "2025-09-20T19:40:57.731144",
+          "timestamp": "2025-09-20T22:09:57.411969",
           "hmas2_stages": {
             "central_negotiation": {
               "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
-              "user_prompt": "TURN 2 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (4, 1), going to (8, 6)\n  Planned path: [(4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (8, 3), (8, 3), (8, 3), (8, 3), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (5, 6), going to (2, 1)\n  Planned path: [(5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 4), (7, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (4, 1), 1: (5, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 2): corner_refuge (value: 22)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  . A0  .  .  .  #  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  .  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  . A1  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+              "user_prompt": "TURN 2 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (4, 1), going to (8, 6)\n  Planned path: [(4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 6), going to (2, 1)\n  Planned path: [(5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (4, 1), 1: (6, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 3): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 2): corner_refuge (value: 16)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  . A0  .  .  .  #  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  . A1  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
               "llm_response": {
                 "resolution": "reroute",
                 "agent_actions": {
@@ -3539,7 +3403,11 @@
                         3
                       ],
                       [
-                        8,
+                        7,
+                        4
+                      ],
+                      [
+                        7,
                         3
                       ],
                       [
@@ -3629,6 +3497,10 @@
                     "action": "move",
                     "path": [
                       [
+                        6,
+                        6
+                      ],
+                      [
                         5,
                         6
                       ],
@@ -3708,7 +3580,7 @@
                     "priority": 1
                   }
                 },
-                "reasoning": "Reroute Agent 0 by extending wait at empty (8,3) for two additional turns to avoid swap conflict at (7,4) and (7,3), allowing Agent 1 to pass first; utilizes adjacent empty space for temporary positioning."
+                "reasoning": "Reroute agent 0 to the wiggle room at (8,3) for temporary waiting, allowing agent 1 to traverse row 4 without edge conflict at (4,4)-(5,4); agent 0 resumes after agent 1 clears (7,4)."
               },
               "model_used": "x-ai/grok-4-fast:free"
             },
@@ -3743,7 +3615,11 @@
                       3
                     ],
                     [
-                      8,
+                      7,
+                      4
+                    ],
+                    [
+                      7,
                       3
                     ],
                     [
@@ -3832,7 +3708,7 @@
                 "validation_model": "x-ai/grok-4-fast:free",
                 "validation_result": {
                   "valid": true,
-                  "reason": "Next move is adjacent, within bounds, and not into a wall or occupied position."
+                  "reason": "Next move (5,1) is adjacent, within bounds, and not into a wall or occupied position."
                 },
                 "alternative_suggested": null,
                 "final_action_executed": {
@@ -3863,7 +3739,11 @@
                       3
                     ],
                     [
-                      8,
+                      7,
+                      4
+                    ],
+                    [
+                      7,
                       3
                     ],
                     [
@@ -3956,6 +3836,10 @@
                   "action": "move",
                   "path": [
                     [
+                      6,
+                      6
+                    ],
+                    [
                       5,
                       6
                     ],
@@ -4037,12 +3921,16 @@
                 "validation_model": "x-ai/grok-4-fast:free",
                 "validation_result": {
                   "valid": true,
-                  "reason": "Next move is adjacent, within bounds, and to an open space without collision."
+                  "reason": "Next move (5,6) is adjacent to (6,6), within bounds, and open space (not a wall)."
                 },
                 "alternative_suggested": null,
                 "final_action_executed": {
                   "action": "move",
                   "path": [
+                    [
+                      6,
+                      6
+                    ],
                     [
                       5,
                       6
@@ -4153,7 +4041,11 @@
                     3
                   ],
                   [
-                    8,
+                    7,
+                    4
+                  ],
+                  [
+                    7,
                     3
                   ],
                   [
@@ -4242,6 +4134,10 @@
               "1": {
                 "action": "move",
                 "path": [
+                  [
+                    6,
+                    6
+                  ],
                   [
                     5,
                     6
@@ -4362,26 +4258,6 @@
                     3
                   ],
                   [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    7,
-                    3
-                  ],
-                  [
                     7,
                     4
                   ],
@@ -4442,7 +4318,7 @@
               {
                 "id": 1,
                 "current_pos": [
-                  5,
+                  6,
                   6
                 ],
                 "target_pos": [
@@ -4531,12 +4407,8 @@
             ],
             "conflict_points": [
               [
-                7,
+                5,
                 4
-              ],
-              [
-                7,
-                3
               ]
             ],
             "map_state": {
@@ -4546,7 +4418,7 @@
                   1
                 ],
                 "1": [
-                  5,
+                  6,
                   6
                 ]
               },
@@ -4644,8 +4516,8 @@
                   ".",
                   ".",
                   ".",
-                  "@",
                   ".",
+                  "@",
                   ".",
                   "T",
                   "#"
@@ -4669,7 +4541,8 @@
         }
       ],
       "total_conflicts": 0,
-      "turns_completed": 20
+      "turns_completed": 30,
+      "simulation_log_file": "negotiation_simulation_20250920_221057.json"
     }
   ],
   "summary": {
@@ -4684,7 +4557,7 @@
       "agent_alternatives_suggested": 0,
       "central_vs_agent_disagreement_rate": 0.0
     },
-    "saved_at": "2025-09-20T19:41:51.779923",
+    "saved_at": "2025-09-20T22:10:57.720635",
     "auto_save": false
   }
 }
