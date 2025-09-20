@@ -340,8 +340,12 @@ class SimulationVisualizer:
     
     def draw_boxes(self, turn_data):
         """Draw box positions"""
-        if 'map_state' in turn_data:
-            boxes = turn_data['map_state'].get('boxes', {})
+        boxes_drawn = False
+        
+        # First try to get boxes from map_state (this is the dynamic, updated data)
+        if 'map_state' in turn_data and 'boxes' in turn_data['map_state']:
+            boxes = turn_data['map_state']['boxes']
+            # Draw boxes that are currently on the map (not picked up)
             for box_id, pos in boxes.items():
                 if pos and len(pos) >= 2:  # Ensure position is valid
                     x, y = pos[0], pos[1]
@@ -351,6 +355,23 @@ class SimulationVisualizer:
                     self.ax_main.add_patch(box)
                     self.ax_main.text(x, y, f'B{box_id}', ha='center', va='center', 
                                     fontweight='bold', fontsize=7)
+            boxes_drawn = True  # Mark as drawn regardless of whether boxes dict was empty
+        
+        # Fallback: Only use grid data if we couldn't access map_state.boxes at all
+        elif 'scenario' in self.sim_data and 'grid' in self.sim_data['scenario']:
+            print("⚠️  Using fallback grid data for boxes (map_state.boxes not available)")
+            grid = self.sim_data['scenario']['grid']
+            box_count = 0
+            for y, row in enumerate(grid):
+                for x, cell in enumerate(row):
+                    if cell == 'B':  # Box cell in grid
+                        box = patches.Rectangle((x-0.3, y-0.3), 0.6, 0.6, 
+                                              linewidth=2, edgecolor='brown', 
+                                              facecolor='burlywood', alpha=0.8)
+                        self.ax_main.add_patch(box)
+                        self.ax_main.text(x, y, f'B{box_count}', ha='center', va='center', 
+                                        fontweight='bold', fontsize=7)
+                        box_count += 1
     
     def draw_agents(self, turn_data):
         """Draw agent positions with status indicators"""

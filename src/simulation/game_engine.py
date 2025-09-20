@@ -19,6 +19,7 @@ init(autoreset=True)
 
 class GameEngine:
     def __init__(self, width: int = 8, height: int = 6, num_agents: int = 2):
+        """Initialize the game engine with specified parameters"""
         self.width = width
         self.height = height
         self.num_agents = max(2, min(num_agents, 4))  # Ensure 2-4 agents
@@ -36,9 +37,13 @@ class GameEngine:
         self.is_running = False
         self.simulation_complete = False
         
-        # Logging
+        # Logging - Use comprehensive format compatible with visualization
         self.log_enabled = os.getenv('LOG_SIMULATION', 'true').lower() == 'true'
-        self.simulation_log = []
+        self.simulation_log = {
+            'scenario': {},
+            'turns': [],
+            'summary': {}
+        }
         
     def initialize_simulation(self):
         """Initialize a new simulation"""
@@ -73,6 +78,17 @@ class GameEngine:
         
         # Initial pathfinding
         self._plan_initial_paths()
+        
+        # Initialize scenario data for logging
+        if self.log_enabled:
+            self.simulation_log['scenario'] = {
+                'type': 'interactive_simulation',
+                'map_size': [self.warehouse_map.width, self.warehouse_map.height],
+                'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
+                'initial_targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
+                'grid': self.warehouse_map.grid.tolist(),  # Include grid data for visualization
+                'timestamp': datetime.now().isoformat()
+            }
         
         # Log initial state
         self._log_turn_state("SIMULATION_START")
@@ -564,28 +580,82 @@ class GameEngine:
                 print(f"  🗺️  Path: {status['planned_path'][:5]}{'...' if len(status['planned_path']) > 5 else ''}")
     
     def _log_turn_state(self, event_type: str):
-        """Log current simulation state"""
+        """Log current simulation state in comprehensive format"""
         if not self.log_enabled:
             return
         
+        # Collect agent states
+        agent_states = {}
+        for agent_id, agent in self.agents.items():
+            status = agent.get_status()
+            agent_states[str(agent_id)] = {
+                'position': list(status['position']) if status['position'] else None,
+                'target_position': list(status['target']) if status['target'] else None,
+                'planned_path': [list(pos) for pos in status['planned_path']] if status['planned_path'] else [],
+                'is_waiting': status.get('is_waiting', False),
+                'wait_turns_remaining': status.get('wait_turns_remaining', 0),
+                'has_negotiated_path': getattr(agent, '_has_negotiated_path', False),
+                'is_at_target': status.get('is_at_target', False),
+                'carrying_box': status.get('carrying_box', False),
+                'box_id': status.get('box_id'),
+                'priority': status.get('priority', 0),
+                'current_action': status.get('current_action', 'idle')
+            }
+        
+        # Create comprehensive turn log entry
         log_entry = {
-            'timestamp': datetime.now().isoformat(),
             'turn': self.current_turn,
-            'event_type': event_type,
-            'map_state': self.warehouse_map.get_state_dict(),
-            'agent_status': {aid: agent.get_status() for aid, agent in self.agents.items()}
+            'timestamp': datetime.now().isoformat(),
+            'type': 'negotiation' if event_type == 'negotiation' else 'routine',
+            'agent_states': agent_states,
+            'map_state': {
+                'boxes': {str(k): list(v) for k, v in self.warehouse_map.boxes.items()},  # Include current box positions
+                'targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
+                'dimensions': [self.warehouse_map.width, self.warehouse_map.height]
+            },
+            'conflicts_detected': event_type == 'conflict',
+            'negotiation_occurred': event_type == 'negotiation',
+            'results': {
+                'agent_states_after': {},  # Could be populated post-move
+                'map_state_after': {},
+                'simulation_continued': not self.simulation_complete
+            }
         }
         
-        self.simulation_log.append(log_entry)
+        self.simulation_log['turns'].append(log_entry)
     
     def save_simulation_log(self, filename: Optional[str] = None):
-        """Save simulation log to file"""
-        if not self.simulation_log:
+        """Save comprehensive simulation log to file in visualization-compatible format"""
+        if not self.simulation_log['turns']:
             return
         
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"simulation_log_{timestamp}.json"
+        
+        # Populate scenario information if not already set
+        if not self.simulation_log['scenario']:
+            self.simulation_log['scenario'] = {
+                'type': 'interactive_simulation',
+                'map_size': [self.warehouse_map.width, self.warehouse_map.height],
+                'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
+                'initial_targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
+                'grid': self.warehouse_map.grid.tolist(),  # Include grid data for visualization
+                'timestamp': datetime.now().isoformat()
+            }
+        
+        # Populate summary information
+        negotiation_turns = len([t for t in self.simulation_log['turns'] if t['type'] == 'negotiation'])
+        routine_turns = len([t for t in self.simulation_log['turns'] if t['type'] == 'routine'])
+        
+        self.simulation_log['summary'] = {
+            'total_turns': len(self.simulation_log['turns']),
+            'total_conflicts': len([t for t in self.simulation_log['turns'] if t.get('conflicts_detected', False)]),
+            'total_negotiations': negotiation_turns,
+            'completion_timestamp': datetime.now().isoformat(),
+            'negotiation_turns': negotiation_turns,
+            'routine_turns': routine_turns
+        }
         
         log_path = os.path.join("logs", filename)
         os.makedirs("logs", exist_ok=True)
@@ -593,7 +663,9 @@ class GameEngine:
         with open(log_path, 'w') as f:
             json.dump(self.simulation_log, f, indent=2)
         
-        print(f"Simulation log saved to: {log_path}")
+        print(f"Comprehensive simulation log saved to: {log_path}")
+        print(f"📊 Summary: {len(self.simulation_log['turns'])} turns, {negotiation_turns} negotiations")
+        return log_path
     
     def run_interactive_simulation(self):
         """Run simulation with step-by-step user input"""
