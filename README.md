@@ -6,8 +6,8 @@ This project implements a hybrid multi-agent system (HMAS-2) where multiple robo
 
 - **Random Warehouse Map Generation**: Creates 8x6 warehouse maps with agents, boxes, targets, and obstacles
 - **HMAS-2 Framework**: Hybrid system with:
-  - Central LLM (GLM-4.5-Air) for complex conflict negotiation
-  - Agent LLMs (Gemma-3n-e4b) for action validation
+  - Central LLM (State-Of-The-Art, SOTA Model) for complex conflict negotiation
+  - Agent LLMs (Smaller model) for action validation
 - **Real-time Conflict Detection**: Identifies path conflicts and triggers LLM negotiation
 - **Interactive Terminal Interface**: Step-by-step simulation with colored display
 - **Comprehensive Logging**: Saves detailed simulation logs for analysis
@@ -30,36 +30,22 @@ This project implements a hybrid multi-agent system (HMAS-2) where multiple robo
 ## 🧪 Testing & Verification
 
 
-### Quick Structure Test (No Dependencies)
-```cmd
-python quick_test.py
-```
-Verifies project structure and file syntax without requiring any external packages.
-
-### Simple Demo Test (Basic Dependencies)
-```cmd
-python demo_test.py
-```
-Runs a comprehensive offline demonstration of core functionality:
-- Map generation with visual display
-- Agent creation and pathfinding  
-- Conflict detection
-- Basic simulation logic
-- State logging
-
 ### Full Smoke Test (All Features)
 ```cmd
-python smoke_test.py
+python tests/smoke_test.py
 ```
 Tests all components including LLM fallback functionality (works without API keys).
-
-**💡 Tip**: Start with `demo_test.py` to see the system in action immediately!
 
 ## 🎮 Usage
 
 Run the simulation:
 ```cmd
 python main.py
+```
+
+Run the simulation, but forced negotiation:
+```cmd
+python test_negotiation.py
 ```
 
 ### Interactive Commands:
@@ -73,26 +59,33 @@ python main.py
 CodeBase/
 ├── src/
 │   ├── map_generator/        # Warehouse map generation
-│   ├── agents/              # Robot agent implementation
-│   ├── llm/                 # LLM clients and negotiation
-│   ├── navigation/          # Pathfinding and conflict detection
-│   └── simulation/          # Main game engine
-├── logs/                    # Simulation logs (auto-generated)
-├── main.py                  # Entry point
-├── requirements.txt         # Dependencies
-├── .env.example            # Environment template
-└── README.md               # This file
+│   ├── agents/               # Robot agent implementation
+│   ├── llm/                  # LLM clients and negotiation
+│   ├── navigation/           # Pathfinding and conflict detection
+│   └── simulation/           # Main game engine
+│
+├── logs/                     # Simulation logs (auto-generated)
+│
+├── tests/                    # All tests file
+│   ├── smoke_test.py         # Test all components
+│   └── test_....py           # Miscellaneous test files
+│
+├── main.py                   # Entry point
+├── test_negotiation.py       # Entry with FORCED negotiation  
+├── requirements.txt          # Dependencies
+├── .env.example              # Environment template
+└── README.md
 ```
 
 ## 🤖 LLM Configuration
 
 ### Central Negotiator
-- **Model**: `zai/glm-4.5-air:free`
+- **Model (SOTA)**: `zai/glm-4.5-air:free`
 - **Purpose**: Complex conflict resolution and strategic planning
 - **Temperature**: 0.3 (consistent reasoning)
 
 ### Agent Validators
-- **Model**: `google/gemma-3n-e4b-it:free`
+- **Model (Smaller Model)**: `google/gemma-3n-e4b-it:free`
 - **Purpose**: Quick action validation and safety checks
 - **Temperature**: 0.1 (very consistent validation)
 
@@ -127,10 +120,13 @@ Detailed logs are saved in `/logs`:
 
 ## 🔧 Configuration
 
-Environment variables in `.env`:
+Environment variables in `.env.example`:
 ```env
 # OpenRouter API Configuration
 OPENROUTER_API_KEY=your_key_here
+
+# Advanced OpenRouter Features
+...
 
 # LLM Models
 CENTRAL_LLM_MODEL=zai/glm-4.5-air:free
@@ -139,9 +135,7 @@ AGENT_LLM_MODEL=google/gemma-3n-e4b-it:free
 # Simulation Settings
 MAP_WIDTH=8
 MAP_HEIGHT=6
-MIN_AGENTS=2
-MAX_AGENTS=4
-LOG_SIMULATION=true
+...
 ```
 
 ## 🚨 Troubleshooting
