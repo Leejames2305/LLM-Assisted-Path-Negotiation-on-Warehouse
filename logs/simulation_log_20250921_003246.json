@@ -1,0 +1,1063 @@
+{
+  "scenario": {
+    "type": "interactive_simulation",
+    "map_size": [
+      8,
+      6
+    ],
+    "initial_agents": {
+      "0": [
+        6,
+        4
+      ],
+      "1": [
+        2,
+        2
+      ]
+    },
+    "initial_targets": {
+      "0": [
+        7,
+        0
+      ],
+      "1": [
+        4,
+        3
+      ]
+    },
+    "grid": [
+      [
+        ".",
+        ".",
+        ".",
+        "#",
+        ".",
+        ".",
+        ".",
+        "T"
+      ],
+      [
+        ".",
+        ".",
+        ".",
+        ".",
+        "B",
+        ".",
+        "#",
+        "#"
+      ],
+      [
+        ".",
+        ".",
+        "A",
+        ".",
+        ".",
+        ".",
+        ".",
+        "."
+      ],
+      [
+        ".",
+        "B",
+        "#",
+        ".",
+        "T",
+        ".",
+        ".",
+        "."
+      ],
+      [
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        "A",
+        "."
+      ],
+      [
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        "."
+      ]
+    ],
+    "timestamp": "2025-09-21T00:32:39.647609"
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "timestamp": "2025-09-21T00:32:39.647609",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            6,
+            4
+          ],
+          "target_position": [
+            4,
+            1
+          ],
+          "planned_path": [
+            [
+              6,
+              4
+            ],
+            [
+              5,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              3
+            ],
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              1
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            2,
+            2
+          ],
+          "target_position": [
+            1,
+            3
+          ],
+          "planned_path": [
+            [
+              2,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {
+          "0": [
+            4,
+            1
+          ],
+          "1": [
+            1,
+            3
+          ]
+        },
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 0,
+      "timestamp": "2025-09-21T00:32:39.652612",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            5,
+            4
+          ],
+          "target_position": [
+            4,
+            1
+          ],
+          "planned_path": [
+            [
+              5,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              3
+            ],
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              1
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            1,
+            2
+          ],
+          "target_position": [
+            1,
+            3
+          ],
+          "planned_path": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {
+          "0": [
+            4,
+            1
+          ],
+          "1": [
+            1,
+            3
+          ]
+        },
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 1,
+      "timestamp": "2025-09-21T00:32:40.954732",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            4,
+            4
+          ],
+          "target_position": [
+            4,
+            1
+          ],
+          "planned_path": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              3
+            ],
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              1
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            1,
+            3
+          ],
+          "target_position": [
+            4,
+            3
+          ],
+          "planned_path": [
+            [
+              1,
+              3
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              3,
+              2
+            ],
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 1,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {
+          "0": [
+            4,
+            1
+          ]
+        },
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 2,
+      "timestamp": "2025-09-21T00:32:41.671577",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            4,
+            3
+          ],
+          "target_position": [
+            4,
+            1
+          ],
+          "planned_path": [
+            [
+              4,
+              3
+            ],
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              1
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            1,
+            2
+          ],
+          "target_position": [
+            4,
+            3
+          ],
+          "planned_path": [
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              3,
+              2
+            ],
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 1,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {
+          "0": [
+            4,
+            1
+          ]
+        },
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 3,
+      "timestamp": "2025-09-21T00:32:42.397130",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            4,
+            2
+          ],
+          "target_position": [
+            4,
+            1
+          ],
+          "planned_path": [
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              1
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            2,
+            2
+          ],
+          "target_position": [
+            4,
+            3
+          ],
+          "planned_path": [
+            [
+              2,
+              2
+            ],
+            [
+              3,
+              2
+            ],
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 1,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {
+          "0": [
+            4,
+            1
+          ]
+        },
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 4,
+      "timestamp": "2025-09-21T00:32:42.994916",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            4,
+            1
+          ],
+          "target_position": [
+            7,
+            0
+          ],
+          "planned_path": [
+            [
+              4,
+              1
+            ],
+            [
+              4,
+              0
+            ],
+            [
+              5,
+              0
+            ],
+            [
+              6,
+              0
+            ],
+            [
+              7,
+              0
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 0,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            3,
+            2
+          ],
+          "target_position": [
+            4,
+            3
+          ],
+          "planned_path": [
+            [
+              3,
+              2
+            ],
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 1,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {},
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 5,
+      "timestamp": "2025-09-21T00:32:43.763152",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            4,
+            0
+          ],
+          "target_position": [
+            7,
+            0
+          ],
+          "planned_path": [
+            [
+              4,
+              0
+            ],
+            [
+              5,
+              0
+            ],
+            [
+              6,
+              0
+            ],
+            [
+              7,
+              0
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 0,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            3,
+            3
+          ],
+          "target_position": [
+            4,
+            3
+          ],
+          "planned_path": [
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 1,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {},
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 6,
+      "timestamp": "2025-09-21T00:32:44.411007",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            5,
+            0
+          ],
+          "target_position": [
+            7,
+            0
+          ],
+          "planned_path": [
+            [
+              5,
+              0
+            ],
+            [
+              6,
+              0
+            ],
+            [
+              7,
+              0
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 0,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            4,
+            3
+          ],
+          "target_position": [
+            4,
+            3
+          ],
+          "planned_path": [],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 1,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {},
+        "targets": {
+          "0": [
+            7,
+            0
+          ],
+          "1": [
+            4,
+            3
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 7,
+      "timestamp": "2025-09-21T00:32:45.056329",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            6,
+            0
+          ],
+          "target_position": [
+            7,
+            0
+          ],
+          "planned_path": [
+            [
+              6,
+              0
+            ],
+            [
+              7,
+              0
+            ]
+          ],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 0,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            4,
+            3
+          ],
+          "target_position": null,
+          "planned_path": [],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {},
+        "targets": {
+          "0": [
+            7,
+            0
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    },
+    {
+      "turn": 8,
+      "timestamp": "2025-09-21T00:32:45.685269",
+      "type": "routine",
+      "agent_states": {
+        "0": {
+          "position": [
+            7,
+            0
+          ],
+          "target_position": [
+            7,
+            0
+          ],
+          "planned_path": [],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": true,
+          "box_id": 0,
+          "priority": 1,
+          "current_action": null
+        },
+        "1": {
+          "position": [
+            4,
+            3
+          ],
+          "target_position": null,
+          "planned_path": [],
+          "is_waiting": false,
+          "wait_turns_remaining": 0,
+          "has_negotiated_path": false,
+          "is_at_target": false,
+          "carrying_box": false,
+          "box_id": null,
+          "priority": 1,
+          "current_action": null
+        }
+      },
+      "map_state": {
+        "boxes": {},
+        "targets": {
+          "0": [
+            7,
+            0
+          ]
+        },
+        "dimensions": [
+          8,
+          6
+        ]
+      },
+      "conflicts_detected": false,
+      "negotiation_occurred": false,
+      "results": {
+        "agent_states_after": {},
+        "map_state_after": {},
+        "simulation_continued": true
+      }
+    }
+  ],
+  "summary": {
+    "total_turns": 10,
+    "total_conflicts": 0,
+    "total_negotiations": 0,
+    "completion_timestamp": "2025-09-21T00:32:46.587216",
+    "negotiation_turns": 0,
+    "routine_turns": 10
+  }
+}

@@ -11,6 +11,8 @@ from colorama import init, Fore, Style
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.simulation.game_engine import GameEngine
+from src.map_generator import WarehouseMap
+from src.map_generator.layout_selector import get_layout_for_game
 
 # Initialize colorama and load environment
 init(autoreset=True)
@@ -38,24 +40,41 @@ def main():
         
         print(f"{Fore.YELLOW}Running in demo mode (LLM features will use fallbacks){Style.RESET_ALL}")
     
-    # Get simulation parameters
-    print(f"\n{Fore.CYAN}Simulation Configuration:{Style.RESET_ALL}")
+    # Get layout selection
+    print(f"\n{Fore.CYAN}Loading Warehouse Layout...{Style.RESET_ALL}")
+    layout = get_layout_for_game(allow_selection=True)
     
+    if layout is None:
+        print(f"{Fore.RED}No layout selected. Exiting.{Style.RESET_ALL}")
+        return
+    
+    # Create simulation with loaded layout
     try:
-        num_agents = int(input("Number of agents (2-4, default 2): ") or "2")
-        num_agents = max(2, min(num_agents, 4))
-    except ValueError:
-        num_agents = 2
-    
-    print(f"Using {num_agents} agents")
-    
-    # Create and run simulation
-    try:
+        layout_dims = layout['dimensions']
+        num_agents = len(layout['agents'])
+        
+        print(f"\n{Fore.CYAN}Creating Game Engine...{Style.RESET_ALL}")
         game_engine = GameEngine(
-            width=int(os.getenv('MAP_WIDTH', 8)),
-            height=int(os.getenv('MAP_HEIGHT', 6)),
+            width=layout_dims['width'],
+            height=layout_dims['height'],
             num_agents=num_agents
         )
+        
+        # Load the layout into the warehouse map
+        game_engine.warehouse_map = WarehouseMap.from_layout(layout)
+        
+        # Initialize agents from layout
+        from src.agents import RobotAgent  # type: ignore
+        game_engine.agents = {}
+        for agent in layout['agents']:
+            agent_id = agent['id']
+            position = (agent['x'], agent['y'])
+            robot = RobotAgent(agent_id, position)
+            game_engine.agents[agent_id] = robot
+        
+        print(f"✅ Layout loaded: {layout.get('name', 'Untitled')}")
+        print(f"   Dimensions: {layout_dims['width']}x{layout_dims['height']}")
+        print(f"   Agents: {len(layout['agents'])}, Boxes: {len(layout['boxes'])}, Targets: {len(layout['targets'])}")
         
         game_engine.run_interactive_simulation()
         

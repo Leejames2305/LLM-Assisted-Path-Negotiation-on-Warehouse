@@ -11,11 +11,16 @@ import signal
 import atexit
 from datetime import datetime
 from typing import Dict, List, Any
+from colorama import init, Fore, Style
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.simulation.game_engine import GameEngine
 from src.map_generator import WarehouseMap
+from src.map_generator.layout_selector import get_layout_for_game
+
+# Initialize colorama
+init(autoreset=True)
 
 # Global variable to store the tester instance for signal handling
 _global_tester = None
@@ -83,184 +88,45 @@ class NegotiationTester:
             self.save_negotiation_log(auto_save=True)
             self._unsaved_data = False
     
-    def create_forced_conflict_map(self, scenario_type: str = "single_corridor") -> WarehouseMap:
-        """Create maps designed to guarantee conflicts"""
+    def load_layout_for_negotiation_test(self) -> WarehouseMap | None:
+        """Load a layout for testing (same as main.py)"""
+        print(f"\n{Fore.CYAN}Loading Warehouse Layout...{Style.RESET_ALL}")
+        layout = get_layout_for_game(allow_selection=True)
         
-        warehouse = None
+        if layout is None:
+            print(f"{Fore.RED}No layout selected. Test cancelled.{Style.RESET_ALL}")
+            return None
         
-        if scenario_type == "single_corridor":
-            # Extreme single corridor that forces all agents through same path
-            width, height = 8, 3
-            warehouse = WarehouseMap(width, height)
+        try:
+            # Load the layout into the warehouse map
+            warehouse = WarehouseMap.from_layout(layout)
             
-            # Fill with walls
-            warehouse.grid.fill('#')
+            print(f"✅ Layout loaded: {layout.get('name', 'Untitled')}")
+            print(f"   Dimensions: {layout['dimensions']['width']}x{layout['dimensions']['height']}")
+            print(f"   Agents: {len(layout['agents'])}, Boxes: {len(layout['boxes'])}, Targets: {len(layout['targets'])}")
             
-            # Create single corridor down the middle
-            for x in range(1, width - 1):
-                warehouse.grid[1, x] = '.'
+            return warehouse
             
-            # Place agents at opposite ends
-            warehouse.agents = {0: (1, 1), 1: (width-2, 1)}
-            
-            # Place boxes and targets to force crossing paths
-            warehouse.boxes = {0: (2, 1), 1: (width-3, 1)}
-            warehouse.targets = {0: (width-3, 1), 1: (2, 1)}  # Crossed targets!
-            warehouse.agent_goals = {0: 0, 1: 1}
-            
-        elif scenario_type == "s_shaped_corridor":
-            # Create S-shaped corridor exactly as user specified with strategic wiggle room
-            width, height = 10, 8
-            warehouse = WarehouseMap(width, height)
-            
-            # Start with all walls
-            warehouse.grid.fill('#')
-            
-            # Implement user's exact design pattern:
-            # Row 0: # # # # # # # # # #
-            # Row 1: # . . . . . . . # #
-            # Row 2: # # # # # # # . . #  
-            # Row 3: # # # # # # # . . #
-            # Row 4: # # . . . . . . # #
-            # Row 5: # . . # # # # # # #
-            # Row 6: # # . . . . . . . #
-            # Row 7: # # # # # # # # # #
-            
-            # Row 1: Top horizontal corridor
-            for x in range(1, 8):
-                warehouse.grid[1, x] = '.'
-            
-            # Row 2: Right area with wiggle space
-            warehouse.grid[2, 7] = '.'
-            warehouse.grid[2, 8] = '.'
-            
-            # Row 3: Right area with wiggle space  
-            warehouse.grid[3, 7] = '.'
-            warehouse.grid[3, 8] = '.'
-            
-            # Row 4: Middle horizontal corridor with wiggle space at end
-            for x in range(2, 8):
-                warehouse.grid[4, x] = '.'
-            # Note: Row 4 ends at column 7 to match user's pattern (# #)
-            
-            # Row 5: Left wiggle space and connection
-            warehouse.grid[5, 1] = '.'
-            warehouse.grid[5, 2] = '.'
-            
-            # Row 6: Bottom horizontal corridor  
-            for x in range(2, 9):
-                warehouse.grid[6, x] = '.'
-            
-            # Place agents to GUARANTEE conflict requiring negotiation
-            # Agent 0: Top area, needs to traverse S to bottom-right  
-            # Agent 1: Bottom area, needs to traverse S to top-left
-            # Their paths WILL block each other, requiring LLM negotiation to resolve
-            warehouse.agents = {0: (4, 1), 1: (5, 6)}
-            
-            # Place boxes near agents
-            warehouse.boxes = {0: (3, 1), 1: (6, 6)}
-            
-            # Targets require full S-traversal creating GUARANTEED negotiation scenario
-            warehouse.targets = {0: (8, 6), 1: (2, 1)}
-            warehouse.agent_goals = {0: 0, 1: 1}
-            
-        elif scenario_type == "bottleneck_chamber":
-            # Two chambers connected by single cell bottleneck
-            width, height = 7, 5
-            warehouse = WarehouseMap(width, height)
-            
-            # Fill with walls
-            warehouse.grid.fill('#')
-            
-            # Left chamber
-            for y in range(1, 4):
-                for x in range(1, 3):
-                    warehouse.grid[y, x] = '.'
-            
-            # Right chamber  
-            for y in range(1, 4):
-                for x in range(4, 6):
-                    warehouse.grid[y, x] = '.'
-            
-            # Single bottleneck connection
-            warehouse.grid[2, 3] = '.'
-            
-            # Place agents in opposite chambers
-            warehouse.agents = {0: (1, 1), 1: (5, 1), 2: (1, 3)}
-            
-            # Force them to cross through bottleneck
-            warehouse.boxes = {0: (2, 2), 1: (4, 2), 2: (5, 3)}
-            warehouse.targets = {0: (5, 2), 1: (1, 2), 2: (2, 1)}  # All must cross!
-            warehouse.agent_goals = {0: 0, 1: 1, 2: 2}
-            
-        elif scenario_type == "triple_intersection":
-            # Three paths converging at single intersection
-            width, height = 5, 5
-            warehouse = WarehouseMap(width, height)
-            
-            # Fill with walls
-            warehouse.grid.fill('#')
-            
-            # Create three paths converging at center
-            # Horizontal path
-            for x in range(5):
-                warehouse.grid[2, x] = '.'
-            # Vertical path
-            for y in range(5):
-                warehouse.grid[y, 2] = '.'
-            
-            # Place agents at ends of each path
-            warehouse.agents = {0: (0, 2), 1: (4, 2), 2: (2, 0)}
-            
-            # All must pass through center (2,2)
-            warehouse.boxes = {0: (1, 2), 1: (3, 2), 2: (2, 1)}
-            warehouse.targets = {0: (4, 2), 1: (0, 2), 2: (2, 4)}
-            warehouse.agent_goals = {0: 0, 1: 1, 2: 2}
-            
-        elif scenario_type == "validation_stress_test":
-            # New scenario designed to trigger agent validation rejections
-            width, height = 6, 4
-            warehouse = WarehouseMap(width, height)
-            
-            # Fill with walls
-            warehouse.grid.fill('#')
-            
-            # Create a narrow L-shaped corridor with hazards
-            # Horizontal part
-            for x in range(1, 5):
-                warehouse.grid[1, x] = '.'
-            # Vertical part (short)
-            warehouse.grid[2, 4] = '.'
-            warehouse.grid[3, 4] = '.'  # Dead end to trigger validation issues
-            
-            # Place agents in challenging positions
-            warehouse.agents = {0: (1, 1), 1: (4, 1)}
-            
-            # Place boxes in positions that might trigger validation failures
-            warehouse.boxes = {0: (2, 1), 1: (3, 1)}
-            warehouse.targets = {0: (4, 3), 1: (1, 1)}  # Crossed, one unreachable
-            warehouse.agent_goals = {0: 0, 1: 1}
-            
-        else:
-            # Default fallback
-            warehouse = WarehouseMap(8, 3)
-            warehouse.generate_map(num_agents=2, layout_type="extreme")
-        
-        return warehouse
+        except Exception as e:
+            print(f"{Fore.RED}Error loading layout: {e}{Style.RESET_ALL}")
+            return None
     
-    def run_forced_conflict_test(self, scenario_type: str, max_turns: int = 100, enable_spatial_hints: bool = True) -> Dict[str, Any]:
-        """Run a single conflict scenario and capture all negotiations"""
+    def run_negotiation_test(self, max_turns: int = 100, enable_spatial_hints: bool = True) -> Dict[str, Any]:
+        """Run a negotiation test with user-selected layout"""
         
-        print(f"\n🎯 TESTING SCENARIO: {scenario_type.upper()}")
+        print(f"\n🎯 TESTING NEGOTIATION WITH LLM")
         hints_status = "WITH SPATIAL HINTS" if enable_spatial_hints else "BASELINE (NO HINTS)"
         print(f"📊 Mode: {hints_status}")
         print("=" * 60)
         
-        # Create the forced conflict map
-        warehouse = self.create_forced_conflict_map(scenario_type)
+        # Load layout from user selection
+        warehouse = self.load_layout_for_negotiation_test()
         
-        # Display the scenario IMMEDIATELY after creation
-        print("🗺️  GENERATED SCENARIO MAP:")
+        if warehouse is None:
+            return {'cancelled': True}
+        
+        # Display the scenario
+        print("🗺️  LOADED LAYOUT MAP:")
         print("=" * 50)
         print(warehouse.display())
         
@@ -377,18 +243,17 @@ class NegotiationTester:
         
         # Store scenario info
         scenario_data = {
-            'type': scenario_type,
+            'type': 'user_selected_layout',
             'map_size': (warehouse.width, warehouse.height),
             'agents': dict(warehouse.agents),
             'targets': dict(warehouse.targets),
-            'expected_conflicts': 'GUARANTEED',
             'negotiations': []
         }
         
         # Initialize comprehensive simulation log for visualization
         simulation_log = {
             'scenario': {
-                'type': scenario_type,
+                'type': 'user_selected_layout',
                 'map_size': [warehouse.width, warehouse.height],
                 'initial_agents': {str(k): list(v) for k, v in warehouse.agents.items()},
                 'initial_targets': {str(k): list(v) for k, v in warehouse.targets.items()},
@@ -902,111 +767,17 @@ class NegotiationTester:
         
         return scenario_data
     
-    def preview_all_scenarios(self):
-        """Show a quick preview of all available scenarios"""
-        print("🔍 SCENARIO PREVIEW - Quick look at all available maps:")
+    def preview_layouts(self):
+        """Show a quick preview of available layouts"""
+        from src.map_generator.layout_manager import LayoutManager
+        
+        print("\n🔍 AVAILABLE LAYOUTS:")
         print("=" * 70)
         
-        scenarios = [
-            ("single_corridor", "Two agents must cross paths in narrow corridor"),
-            ("s_shaped_corridor", "S-shaped path like user diagram - solvable with negotiations"),
-            ("bottleneck_chamber", "Three agents must pass through single bottleneck"),
-            ("triple_intersection", "Three agents converge at single intersection"),
-            ("validation_stress_test", "HMAS-2 validation test - agents reject central decisions")
-        ]
-        
-        for i, (scenario_type, description) in enumerate(scenarios, 1):
-            print(f"\n{i}. {scenario_type.upper()}: {description}")
-            print("-" * 40)
-            
-            # Create and display the scenario map
-            try:
-                warehouse = self.create_forced_conflict_map(scenario_type)
-                
-                # Show compact map
-                for y in range(warehouse.height):
-                    row = f"{y}: "
-                    for x in range(warehouse.width):
-                        cell = warehouse.grid[y, x]
-                        
-                        # Show agents and targets on map
-                        if (x, y) in warehouse.agents.values():
-                            agent_id = [k for k, v in warehouse.agents.items() if v == (x, y)][0]
-                            row += f"A{agent_id}"
-                        elif (x, y) in warehouse.targets.values():
-                            target_id = [k for k, v in warehouse.targets.items() if v == (x, y)][0]
-                            row += f"T{target_id}"
-                        elif (x, y) in warehouse.boxes.values():
-                            box_id = [k for k, v in warehouse.boxes.items() if v == (x, y)][0]
-                            row += f"B{box_id}"
-                        elif cell == '#':
-                            row += "##"
-                        else:
-                            row += " ."
-                    print(row)
-                
-                print(f"   Agents: {dict(warehouse.agents)}")
-                print(f"   Targets: {dict(warehouse.targets)}")
-                
-            except Exception as e:
-                print(f"   Error creating scenario: {e}")
-        
-        print("\n" + "=" * 70)
-    
-    def run_benchmark_comparison(self, scenario_type: str, max_turns: int = 100):
-        """Run the same scenario with and without spatial hints for comparison"""
-        print(f"\n🔬 BENCHMARK COMPARISON: {scenario_type.upper()}")
+        manager = LayoutManager()
+        layouts_info = manager.list_layout_details()
+        print(layouts_info)
         print("=" * 70)
-        
-        # Run without spatial hints (baseline)
-        print("\n📊 PHASE 1: Running BASELINE (no spatial hints)...")
-        baseline_results = self.run_forced_conflict_test(scenario_type, max_turns, enable_spatial_hints=False)
-        
-        if baseline_results.get('cancelled'):
-            print("Benchmark cancelled during baseline phase.")
-            return baseline_results
-        
-        print("\n⏱️  Waiting 3 seconds before next phase...")
-        import time
-        time.sleep(3)
-        
-        # Run with spatial hints (enhanced)
-        print("\n📊 PHASE 2: Running ENHANCED (with spatial hints)...")
-        enhanced_results = self.run_forced_conflict_test(scenario_type, max_turns, enable_spatial_hints=True)
-        
-        if enhanced_results.get('cancelled'):
-            print("Benchmark cancelled during enhanced phase.")
-            return enhanced_results
-        
-        # Compare results
-        print(f"\n📈 COMPARISON RESULTS:")
-        print("=" * 50)
-        print(f"BASELINE (no hints):")
-        print(f"  - Conflicts: {baseline_results.get('total_conflicts', 0)}")
-        print(f"  - Negotiations: {len(baseline_results.get('negotiations', []))}")
-        print(f"  - Turns: {baseline_results.get('turns_completed', 0)}")
-        
-        print(f"\nENHANCED (with hints):")
-        print(f"  - Conflicts: {enhanced_results.get('total_conflicts', 0)}")
-        print(f"  - Negotiations: {len(enhanced_results.get('negotiations', []))}")
-        print(f"  - Turns: {enhanced_results.get('turns_completed', 0)}")
-        
-        # Analyze resolution strategies
-        baseline_strategies = self._count_resolution_strategies(baseline_results.get('negotiations', []))
-        enhanced_strategies = self._count_resolution_strategies(enhanced_results.get('negotiations', []))
-        
-        print(f"\nSTRATEGY USAGE:")
-        print(f"BASELINE: {baseline_strategies}")
-        print(f"ENHANCED: {enhanced_strategies}")
-        
-        return {
-            'baseline': baseline_results,
-            'enhanced': enhanced_results,
-            'comparison': {
-                'baseline_strategies': baseline_strategies,
-                'enhanced_strategies': enhanced_strategies
-            }
-        }
     
     def _count_resolution_strategies(self, negotiations: List[Dict]) -> Dict[str, int]:
         """Count how often each resolution strategy was used"""
@@ -1079,60 +850,36 @@ class NegotiationTester:
         return filepath
 
 def main():
-    """Run comprehensive negotiation tests"""
+    """Run negotiation tests with user-selected layouts"""
     print("🤖 LLM NEGOTIATION TEST SUITE")
     print("=" * 60)
-    print("This test creates scenarios guaranteed to cause conflicts")
-    print("and logs all LLM negotiations for analysis.")
+    print("Test LLM negotiations with your chosen warehouse layout.")
     print()
     
     tester = NegotiationTester()
     
     # Test mode selection
     print("📊 TEST MODES:")
-    print("1. Standard test (with spatial hints)")
-    print("2. Baseline test (no spatial hints)")  
-    print("3. Benchmark comparison (both modes)")
-    print("4. Preview all scenarios")
+    print("1. Run negotiation test (with spatial hints)")
+    print("2. Run negotiation test (baseline - no spatial hints)")
+    print("3. View available layouts")
     
     try:
-        mode = input("\nSelect mode (1-4): ").strip()
+        mode = input("\nSelect mode (1-3): ").strip()
         
-        if mode == "4":
-            tester.preview_all_scenarios()
+        if mode == "3":
+            tester.preview_layouts()
             return
         
-        # Scenario selection
-        scenarios = [
-            ("single_corridor", "Two agents must cross paths in narrow corridor"),
-            ("s_shaped_corridor", "S-shaped path like user diagram - solvable with negotiations"),
-            ("bottleneck_chamber", "Three agents must pass through single bottleneck"),
-            ("triple_intersection", "Three agents converge at single intersection"),
-            ("validation_stress_test", "HMAS-2 validation test - agents reject central decisions")
-        ]
-        
-        print("\nAvailable test scenarios:")
-        for i, (scenario, description) in enumerate(scenarios, 1):
-            print(f"{i}. {scenario}: {description}")
-        
-        scenario_choice = input("\nSelect scenario (1-5): ").strip()
-        try:
-            scenario_idx = int(scenario_choice) - 1
-            scenario_type = scenarios[scenario_idx][0]
-        except (ValueError, IndexError):
-            print("❌ Invalid scenario choice")
-            return
-        
-        # Run based on selected mode
+        # Run negotiation test
         if mode == "1":
-            # Standard with hints
-            result = tester.run_forced_conflict_test(scenario_type, enable_spatial_hints=True)
+            # With spatial hints
+            print("\n🎯 Starting negotiation test WITH SPATIAL HINTS...")
+            result = tester.run_negotiation_test(enable_spatial_hints=True)
         elif mode == "2": 
             # Baseline without hints
-            result = tester.run_forced_conflict_test(scenario_type, enable_spatial_hints=False)
-        elif mode == "3":
-            # Benchmark comparison
-            result = tester.run_benchmark_comparison(scenario_type)
+            print("\n🎯 Starting negotiation test BASELINE (NO SPATIAL HINTS)...")
+            result = tester.run_negotiation_test(enable_spatial_hints=False)
         else:
             print("❌ Invalid mode choice")
             return

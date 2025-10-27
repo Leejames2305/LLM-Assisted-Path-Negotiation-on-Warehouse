@@ -56,23 +56,16 @@ class GameEngine:
         """Initialize a new simulation"""
         print(f"{Fore.CYAN}Initializing Multi-Robot Warehouse Simulation...{Style.RESET_ALL}")
         
-        # Get layout type from environment or default to tunnel
-        layout_type = os.getenv('MAP_LAYOUT_TYPE', 'tunnel')
+        # Note: warehouse_map is already loaded from layout in main.py
+        # Verify map is properly initialized
+        if not self.warehouse_map or self.warehouse_map.width == 0:
+            raise ValueError("Warehouse map not properly initialized. Load a layout first.")
         
-        # Generate map with tunnel layout for better conflict scenarios
-        self.warehouse_map.generate_map(
-            num_agents=self.num_agents, 
-            wall_density=0.1,
-            layout_type=layout_type
-        )
-        print(f"Generated {self.width}x{self.height} warehouse map with {self.num_agents} agents ({layout_type} layout)")
+        print(f"Loaded {self.warehouse_map.width}x{self.warehouse_map.height} warehouse map with {self.num_agents} agents")
         
-        # Create agents
-        self.agents = {}
-        for agent_id in range(self.num_agents):
-            position = self.warehouse_map.agents[agent_id]
-            agent = RobotAgent(agent_id, position)
-            
+        # Initialize agents from the layout
+        # Agents are already created in main.py, but set up their targets here
+        for agent_id, agent in self.agents.items():
             # Assign box to pick up (proper warehouse task: box → target)
             if agent_id in self.warehouse_map.agent_goals:
                 box_id = agent_id  # Each agent gets their own box
@@ -80,8 +73,8 @@ class GameEngine:
                     box_pos = self.warehouse_map.boxes[box_id]
                     agent.set_target(box_pos)  # First go to the box
                     print(f"Agent {agent_id}: Assigned to pickup box at {box_pos}")
-            
-            self.agents[agent_id] = agent
+            else:
+                print(f"⚠️  Agent {agent_id}: No goal assigned in layout")
         
         # Initial pathfinding
         self._plan_initial_paths()

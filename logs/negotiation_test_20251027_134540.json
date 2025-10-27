@@ -1,0 +1,5604 @@
+{
+  "test_info": {
+    "timestamp": "2025-10-27T13:42:14.618311",
+    "test_type": "forced_conflict_negotiation",
+    "description": "Artificial scenarios designed to force 100% conflict rate"
+  },
+  "negotiations": [
+    {
+      "turn": 1,
+      "timestamp": "2025-10-27T13:42:25.915583",
+      "hmas2_stages": {
+        "central_negotiation": {
+          "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+          "user_prompt": "TURN 1 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (3, 1), going to (8, 6)\n  Planned path: [(3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 6), going to (2, 1)\n  Planned path: [(6, 6), (5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (3, 1), 1: (6, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 3): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 1): corner_refuge (value: 15)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 2): staging_area (value: 14)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T A0  .  .  .  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  . A1  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+          "llm_response": {
+            "resolution": "reroute",
+            "agent_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    8,
+                    1
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    4
+                  ],
+                  [
+                    8,
+                    5
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ],
+                "priority": 2
+              }
+            },
+            "reasoning": "Agent 0 is rerouted to the wiggle room at (8,3) and then proceeds directly to its target, avoiding the shared cell (5,4). Agent 1 keeps its original path. This eliminates the conflict while using available empty space."
+          },
+          "model_used": "openai/gpt-oss-20b:free"
+        },
+        "agent_validations": {
+          "0": {
+            "agent_id": 0,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  5,
+                  1
+                ],
+                [
+                  6,
+                  1
+                ],
+                [
+                  7,
+                  1
+                ],
+                [
+                  8,
+                  1
+                ],
+                [
+                  8,
+                  2
+                ],
+                [
+                  8,
+                  3
+                ],
+                [
+                  8,
+                  4
+                ],
+                [
+                  8,
+                  5
+                ],
+                [
+                  8,
+                  6
+                ]
+              ],
+              "priority": 1
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (4,1) is adjacent, within bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  5,
+                  1
+                ],
+                [
+                  6,
+                  1
+                ],
+                [
+                  7,
+                  1
+                ],
+                [
+                  8,
+                  1
+                ],
+                [
+                  8,
+                  2
+                ],
+                [
+                  8,
+                  3
+                ],
+                [
+                  8,
+                  4
+                ],
+                [
+                  8,
+                  5
+                ],
+                [
+                  8,
+                  6
+                ]
+              ],
+              "priority": 1
+            }
+          },
+          "1": {
+            "agent_id": 1,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  6,
+                  6
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  4,
+                  6
+                ],
+                [
+                  3,
+                  6
+                ],
+                [
+                  2,
+                  6
+                ],
+                [
+                  2,
+                  5
+                ],
+                [
+                  2,
+                  4
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  4
+                ],
+                [
+                  5,
+                  4
+                ],
+                [
+                  6,
+                  4
+                ],
+                [
+                  7,
+                  4
+                ],
+                [
+                  7,
+                  3
+                ],
+                [
+                  7,
+                  2
+                ],
+                [
+                  7,
+                  1
+                ],
+                [
+                  6,
+                  1
+                ],
+                [
+                  5,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  1
+                ]
+              ],
+              "priority": 2
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (5,6) is adjacent, within bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  6,
+                  6
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  4,
+                  6
+                ],
+                [
+                  3,
+                  6
+                ],
+                [
+                  2,
+                  6
+                ],
+                [
+                  2,
+                  5
+                ],
+                [
+                  2,
+                  4
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  4
+                ],
+                [
+                  5,
+                  4
+                ],
+                [
+                  6,
+                  4
+                ],
+                [
+                  7,
+                  4
+                ],
+                [
+                  7,
+                  3
+                ],
+                [
+                  7,
+                  2
+                ],
+                [
+                  7,
+                  1
+                ],
+                [
+                  6,
+                  1
+                ],
+                [
+                  5,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  1
+                ]
+              ],
+              "priority": 2
+            }
+          }
+        },
+        "final_actions": {
+          "0": {
+            "action": "move",
+            "path": [
+              [
+                3,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                8,
+                1
+              ],
+              [
+                8,
+                2
+              ],
+              [
+                8,
+                3
+              ],
+              [
+                8,
+                4
+              ],
+              [
+                8,
+                5
+              ],
+              [
+                8,
+                6
+              ]
+            ],
+            "priority": 1
+          },
+          "1": {
+            "action": "move",
+            "path": [
+              [
+                6,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                7,
+                4
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ]
+            ],
+            "priority": 2
+          }
+        },
+        "validation_overrides": {}
+      },
+      "conflict_data": {
+        "agents": [
+          {
+            "id": 0,
+            "current_pos": [
+              3,
+              1
+            ],
+            "target_pos": [
+              8,
+              6
+            ],
+            "planned_path": [
+              [
+                3,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                4
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                6,
+                6
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                8,
+                6
+              ]
+            ]
+          },
+          {
+            "id": 1,
+            "current_pos": [
+              6,
+              6
+            ],
+            "target_pos": [
+              2,
+              1
+            ],
+            "planned_path": [
+              [
+                6,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                7,
+                4
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ]
+            ]
+          }
+        ],
+        "conflict_points": [
+          [
+            5,
+            4
+          ]
+        ],
+        "map_state": {
+          "agents": {
+            "0": [
+              3,
+              1
+            ],
+            "1": [
+              6,
+              6
+            ]
+          },
+          "boxes": {},
+          "targets": {
+            "0": [
+              8,
+              6
+            ],
+            "1": [
+              2,
+              1
+            ]
+          },
+          "agent_goals": {
+            "0": 0,
+            "1": 1
+          },
+          "grid": [
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              "T",
+              "@",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              ".",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              "@",
+              ".",
+              "T",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ]
+          ]
+        },
+        "turn": 1
+      }
+    },
+    {
+      "turn": 10,
+      "timestamp": "2025-10-27T13:43:16.066304",
+      "hmas2_stages": {
+        "central_negotiation": {
+          "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+          "user_prompt": "TURN 10 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 3), going to (8, 6)\n  Planned path: [(8, 3), (8, 4), (8, 5), (8, 6)]\n\nCONFLICT POINTS: [(8, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 3), 1: (5, 4)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 1): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0]\n- Position (7, 4): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0]\n- Position (7, 2): strategic_bypass (value: 18)\n  \u2514\u2500 Near agents: [0]\n- Position (7, 1): strategic_bypass (value: 17)\n  \u2514\u2500 Near agents: [0]\n- Position (8, 2): corner_refuge (value: 15)\n  \u2514\u2500 Near agents: [0]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  W  #\n #  #  #  #  #  #  #  W  .  #\n #  #  #  #  #  #  #  . A0  #\n #  #  .  .  . A1  .  W  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+          "llm_response": {
+            "resolution": "reroute",
+            "agent_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    8,
+                    4
+                  ],
+                  [
+                    8,
+                    5
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ],
+                "priority": 1
+              }
+            },
+            "reasoning": "Agent 0 temporarily moves to the wiggle room at (7,4) to clear the conflict point (8,3) before proceeding to its target at (8,6). This reroute uses available empty space and avoids any collision with other agents."
+          },
+          "model_used": "openai/gpt-oss-20b:free"
+        },
+        "agent_validations": {
+          "0": {
+            "agent_id": 0,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  3
+                ],
+                [
+                  7,
+                  4
+                ],
+                [
+                  8,
+                  4
+                ],
+                [
+                  8,
+                  5
+                ],
+                [
+                  8,
+                  6
+                ]
+              ],
+              "priority": 1
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": false,
+              "reason": "Next move (7,4) is diagonal from current position (8,3); only orthogonal adjacent moves are allowed.",
+              "alternative": {
+                "action": "wait",
+                "reason": "llm_rejection"
+              }
+            },
+            "alternative_suggested": {
+              "action": "wait",
+              "reason": "llm_rejection"
+            },
+            "final_action_executed": {
+              "action": "wait",
+              "reason": "llm_rejection"
+            }
+          }
+        },
+        "final_actions": {
+          "0": {
+            "action": "wait",
+            "reason": "llm_rejection"
+          }
+        },
+        "validation_overrides": {
+          "0": {
+            "rejected_central_action": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  3
+                ],
+                [
+                  7,
+                  4
+                ],
+                [
+                  8,
+                  4
+                ],
+                [
+                  8,
+                  5
+                ],
+                [
+                  8,
+                  6
+                ]
+              ],
+              "priority": 1
+            },
+            "rejection_reason": "Next move (7,4) is diagonal from current position (8,3); only orthogonal adjacent moves are allowed.",
+            "agent_alternative": {
+              "action": "wait",
+              "reason": "llm_rejection"
+            }
+          }
+        }
+      },
+      "conflict_data": {
+        "agents": [
+          {
+            "id": 0,
+            "current_pos": [
+              8,
+              3
+            ],
+            "target_pos": [
+              8,
+              6
+            ],
+            "planned_path": [
+              [
+                8,
+                3
+              ],
+              [
+                8,
+                4
+              ],
+              [
+                8,
+                5
+              ],
+              [
+                8,
+                6
+              ]
+            ]
+          }
+        ],
+        "conflict_points": [
+          [
+            8,
+            3
+          ]
+        ],
+        "map_state": {
+          "agents": {
+            "0": [
+              8,
+              3
+            ],
+            "1": [
+              5,
+              4
+            ]
+          },
+          "boxes": {},
+          "targets": {
+            "0": [
+              8,
+              6
+            ],
+            "1": [
+              2,
+              1
+            ]
+          },
+          "agent_goals": {
+            "0": 0,
+            "1": 1
+          },
+          "grid": [
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              "T",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              "@",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              "@",
+              ".",
+              ".",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              ".",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "T",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ]
+          ]
+        },
+        "turn": 10
+      }
+    },
+    {
+      "turn": 11,
+      "timestamp": "2025-10-27T13:43:36.560017",
+      "hmas2_stages": {
+        "central_negotiation": {
+          "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+          "user_prompt": "TURN 11 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 3), going to (8, 6)\n  Planned path: [(8, 3), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 4), going to (2, 1)\n  Planned path: [(6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 4), (7, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 3), 1: (6, 4)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 2): corner_refuge (value: 22)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 1): corner_refuge (value: 21)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  . A0  #\n #  #  .  .  .  . A1  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+          "llm_response": {
+            "resolution": "reroute",
+            "agent_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    2
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    7,
+                    4
+                  ]
+                ],
+                "priority": 1
+              }
+            },
+            "reasoning": "Agent 0 steps aside to the wiggle room at (8,2) before proceeding, freeing the cells (7,3) and (7,4) for Agent 1. This uses the available empty space to resolve the conflict without any agent needing to wait."
+          },
+          "model_used": "openai/gpt-oss-20b:free"
+        },
+        "agent_validations": {
+          "0": {
+            "agent_id": 0,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  2
+                ]
+              ],
+              "priority": 1
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (8,2) is adjacent, within bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  2
+                ]
+              ],
+              "priority": 1
+            }
+          },
+          "1": {
+            "agent_id": 1,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  7,
+                  4
+                ]
+              ],
+              "priority": 1
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (7,4) is adjacent, within bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  7,
+                  4
+                ]
+              ],
+              "priority": 1
+            }
+          }
+        },
+        "final_actions": {
+          "0": {
+            "action": "move",
+            "path": [
+              [
+                8,
+                2
+              ]
+            ],
+            "priority": 1
+          },
+          "1": {
+            "action": "move",
+            "path": [
+              [
+                7,
+                4
+              ]
+            ],
+            "priority": 1
+          }
+        },
+        "validation_overrides": {}
+      },
+      "conflict_data": {
+        "agents": [
+          {
+            "id": 0,
+            "current_pos": [
+              8,
+              3
+            ],
+            "target_pos": [
+              8,
+              6
+            ],
+            "planned_path": [
+              [
+                8,
+                3
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                4
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                6,
+                6
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                8,
+                6
+              ]
+            ]
+          },
+          {
+            "id": 1,
+            "current_pos": [
+              6,
+              4
+            ],
+            "target_pos": [
+              2,
+              1
+            ],
+            "planned_path": [
+              [
+                6,
+                4
+              ],
+              [
+                7,
+                4
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ]
+            ]
+          }
+        ],
+        "conflict_points": [
+          [
+            7,
+            4
+          ],
+          [
+            7,
+            3
+          ]
+        ],
+        "map_state": {
+          "agents": {
+            "0": [
+              8,
+              3
+            ],
+            "1": [
+              6,
+              4
+            ]
+          },
+          "boxes": {},
+          "targets": {
+            "0": [
+              8,
+              6
+            ],
+            "1": [
+              2,
+              1
+            ]
+          },
+          "agent_goals": {
+            "0": 0,
+            "1": 1
+          },
+          "grid": [
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              "T",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              "@",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              "@",
+              ".",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              ".",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "T",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ]
+          ]
+        },
+        "turn": 11
+      }
+    },
+    {
+      "turn": 12,
+      "timestamp": "2025-10-27T13:43:54.337432",
+      "hmas2_stages": {
+        "central_negotiation": {
+          "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+          "user_prompt": "TURN 12 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 3), going to (8, 6)\n  Planned path: [(8, 3), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (7, 4), going to (2, 1)\n  Planned path: [(7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 3), 1: (7, 4)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 2): corner_refuge (value: 22)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 1): corner_refuge (value: 21)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  . A0  #\n #  #  .  .  .  .  . A1  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+          "llm_response": {
+            "resolution": "reroute",
+            "agent_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ],
+                "priority": 2
+              }
+            },
+            "reasoning": "Agent 0 is rerouted through the available wiggle room at (8,2) and then (7,2) to avoid the conflict at (7,3). This keeps the path efficient while preventing collision. Agent 1 keeps its original path. The reroute strategy uses the empty spaces to create a temporary waiting position for Agent 0, allowing Agent 1 to pass unimpeded."
+          },
+          "model_used": "openai/gpt-oss-20b:free"
+        },
+        "agent_validations": {
+          "0": {
+            "agent_id": 0,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  3
+                ],
+                [
+                  8,
+                  2
+                ],
+                [
+                  7,
+                  2
+                ],
+                [
+                  7,
+                  3
+                ],
+                [
+                  6,
+                  4
+                ],
+                [
+                  5,
+                  4
+                ],
+                [
+                  4,
+                  4
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  2,
+                  4
+                ],
+                [
+                  2,
+                  5
+                ],
+                [
+                  2,
+                  6
+                ],
+                [
+                  3,
+                  6
+                ],
+                [
+                  4,
+                  6
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  6
+                ],
+                [
+                  7,
+                  6
+                ],
+                [
+                  8,
+                  6
+                ]
+              ],
+              "priority": 1
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (8,2) is adjacent to current position, within map bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  3
+                ],
+                [
+                  8,
+                  2
+                ],
+                [
+                  7,
+                  2
+                ],
+                [
+                  7,
+                  3
+                ],
+                [
+                  6,
+                  4
+                ],
+                [
+                  5,
+                  4
+                ],
+                [
+                  4,
+                  4
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  2,
+                  4
+                ],
+                [
+                  2,
+                  5
+                ],
+                [
+                  2,
+                  6
+                ],
+                [
+                  3,
+                  6
+                ],
+                [
+                  4,
+                  6
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  6
+                ],
+                [
+                  7,
+                  6
+                ],
+                [
+                  8,
+                  6
+                ]
+              ],
+              "priority": 1
+            }
+          },
+          "1": {
+            "agent_id": 1,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  7,
+                  4
+                ],
+                [
+                  7,
+                  3
+                ],
+                [
+                  7,
+                  2
+                ],
+                [
+                  7,
+                  1
+                ],
+                [
+                  6,
+                  1
+                ],
+                [
+                  5,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  1
+                ]
+              ],
+              "priority": 2
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (7,3) is adjacent, within bounds, and not a wall or occupied cell."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  7,
+                  4
+                ],
+                [
+                  7,
+                  3
+                ],
+                [
+                  7,
+                  2
+                ],
+                [
+                  7,
+                  1
+                ],
+                [
+                  6,
+                  1
+                ],
+                [
+                  5,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  1
+                ]
+              ],
+              "priority": 2
+            }
+          }
+        },
+        "final_actions": {
+          "0": {
+            "action": "move",
+            "path": [
+              [
+                8,
+                3
+              ],
+              [
+                8,
+                2
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                6,
+                6
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                8,
+                6
+              ]
+            ],
+            "priority": 1
+          },
+          "1": {
+            "action": "move",
+            "path": [
+              [
+                7,
+                4
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ]
+            ],
+            "priority": 2
+          }
+        },
+        "validation_overrides": {}
+      },
+      "conflict_data": {
+        "agents": [
+          {
+            "id": 0,
+            "current_pos": [
+              8,
+              3
+            ],
+            "target_pos": [
+              8,
+              6
+            ],
+            "planned_path": [
+              [
+                8,
+                3
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                4
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                6,
+                6
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                8,
+                6
+              ]
+            ]
+          },
+          {
+            "id": 1,
+            "current_pos": [
+              7,
+              4
+            ],
+            "target_pos": [
+              2,
+              1
+            ],
+            "planned_path": [
+              [
+                7,
+                4
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ]
+            ]
+          }
+        ],
+        "conflict_points": [
+          [
+            7,
+            3
+          ]
+        ],
+        "map_state": {
+          "agents": {
+            "0": [
+              8,
+              3
+            ],
+            "1": [
+              7,
+              4
+            ]
+          },
+          "boxes": {},
+          "targets": {
+            "0": [
+              8,
+              6
+            ],
+            "1": [
+              2,
+              1
+            ]
+          },
+          "agent_goals": {
+            "0": 0,
+            "1": 1
+          },
+          "grid": [
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              "T",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              "@",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "@",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              ".",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "T",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ]
+          ]
+        },
+        "turn": 12
+      }
+    },
+    {
+      "turn": 13,
+      "timestamp": "2025-10-27T13:44:57.861718",
+      "hmas2_stages": {
+        "central_negotiation": {
+          "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+          "user_prompt": "TURN 13 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 2), going to (8, 6)\n  Planned path: [(8, 2), (7, 2), (7, 3), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (7, 3), going to (2, 1)\n  Planned path: [(7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 2)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 2), 1: (7, 3)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  .  #\n #  #  #  #  #  #  #  . A0  #\n #  #  #  #  #  #  # A1  .  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target\n\nPlease provide a negotiation solution in JSON format.",
+          "llm_response": {
+            "resolution": "reroute",
+            "agent_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    1
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ]
+                ],
+                "priority": 2
+              }
+            },
+            "reasoning": "Agent0 is rerouted to the temporary waiting cell (8,1) so that Agent1 can safely move into the conflict cell (7,2). This avoids a collision while keeping both agents on efficient paths."
+          },
+          "model_used": "openai/gpt-oss-20b:free"
+        },
+        "agent_validations": {
+          "0": {
+            "agent_id": 0,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  2
+                ],
+                [
+                  8,
+                  1
+                ]
+              ],
+              "priority": 1
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (8,1) is adjacent to current position (8,2), within map bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  8,
+                  2
+                ],
+                [
+                  8,
+                  1
+                ]
+              ],
+              "priority": 1
+            }
+          },
+          "1": {
+            "agent_id": 1,
+            "proposed_action": {
+              "action": "move",
+              "path": [
+                [
+                  7,
+                  3
+                ],
+                [
+                  7,
+                  2
+                ]
+              ],
+              "priority": 2
+            },
+            "validation_model": "openai/gpt-oss-20b:free",
+            "validation_result": {
+              "valid": true,
+              "reason": "Next move (7,2) is adjacent, within bounds, and not a wall."
+            },
+            "alternative_suggested": null,
+            "final_action_executed": {
+              "action": "move",
+              "path": [
+                [
+                  7,
+                  3
+                ],
+                [
+                  7,
+                  2
+                ]
+              ],
+              "priority": 2
+            }
+          }
+        },
+        "final_actions": {
+          "0": {
+            "action": "move",
+            "path": [
+              [
+                8,
+                2
+              ],
+              [
+                8,
+                1
+              ]
+            ],
+            "priority": 1
+          },
+          "1": {
+            "action": "move",
+            "path": [
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ]
+            ],
+            "priority": 2
+          }
+        },
+        "validation_overrides": {}
+      },
+      "conflict_data": {
+        "agents": [
+          {
+            "id": 0,
+            "current_pos": [
+              8,
+              2
+            ],
+            "target_pos": [
+              8,
+              6
+            ],
+            "planned_path": [
+              [
+                8,
+                2
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                3
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                6,
+                6
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                8,
+                6
+              ]
+            ]
+          },
+          {
+            "id": 1,
+            "current_pos": [
+              7,
+              3
+            ],
+            "target_pos": [
+              2,
+              1
+            ],
+            "planned_path": [
+              [
+                7,
+                3
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                5,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                1
+              ]
+            ]
+          }
+        ],
+        "conflict_points": [
+          [
+            7,
+            2
+          ]
+        ],
+        "map_state": {
+          "agents": {
+            "0": [
+              8,
+              2
+            ],
+            "1": [
+              7,
+              3
+            ]
+          },
+          "boxes": {},
+          "targets": {
+            "0": [
+              8,
+              6
+            ],
+            "1": [
+              2,
+              1
+            ]
+          },
+          "agent_goals": {
+            "0": 0,
+            "1": 1
+          },
+          "grid": [
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              "T",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              ".",
+              "@",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "@",
+              ".",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              ".",
+              ".",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              ".",
+              "T",
+              "#"
+            ],
+            [
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#",
+              "#"
+            ]
+          ]
+        },
+        "turn": 13
+      }
+    }
+  ],
+  "conflict_scenarios": [
+    {
+      "type": "user_selected_layout",
+      "map_size": [
+        10,
+        8
+      ],
+      "agents": {
+        "0": [
+          4,
+          1
+        ],
+        "1": [
+          5,
+          6
+        ]
+      },
+      "targets": {
+        "0": [
+          8,
+          6
+        ],
+        "1": [
+          2,
+          1
+        ]
+      },
+      "negotiations": [
+        {
+          "turn": 1,
+          "timestamp": "2025-10-27T13:42:25.915583",
+          "hmas2_stages": {
+            "central_negotiation": {
+              "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+              "user_prompt": "TURN 1 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (3, 1), going to (8, 6)\n  Planned path: [(3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (7, 2), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 6), going to (2, 1)\n  Planned path: [(6, 6), (5, 6), (4, 6), (3, 6), (2, 6), (2, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(5, 4)]\n\nMAP CONTEXT:\nAll agents: {0: (3, 1), 1: (6, 6)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 3): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 1): corner_refuge (value: 15)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 2): staging_area (value: 14)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T A0  .  .  .  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  . A1  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+              "llm_response": {
+                "resolution": "reroute",
+                "agent_actions": {
+                  "0": {
+                    "action": "move",
+                    "path": [
+                      [
+                        3,
+                        1
+                      ],
+                      [
+                        4,
+                        1
+                      ],
+                      [
+                        5,
+                        1
+                      ],
+                      [
+                        6,
+                        1
+                      ],
+                      [
+                        7,
+                        1
+                      ],
+                      [
+                        8,
+                        1
+                      ],
+                      [
+                        8,
+                        2
+                      ],
+                      [
+                        8,
+                        3
+                      ],
+                      [
+                        8,
+                        4
+                      ],
+                      [
+                        8,
+                        5
+                      ],
+                      [
+                        8,
+                        6
+                      ]
+                    ],
+                    "priority": 1
+                  },
+                  "1": {
+                    "action": "move",
+                    "path": [
+                      [
+                        6,
+                        6
+                      ],
+                      [
+                        5,
+                        6
+                      ],
+                      [
+                        4,
+                        6
+                      ],
+                      [
+                        3,
+                        6
+                      ],
+                      [
+                        2,
+                        6
+                      ],
+                      [
+                        2,
+                        5
+                      ],
+                      [
+                        2,
+                        4
+                      ],
+                      [
+                        3,
+                        4
+                      ],
+                      [
+                        4,
+                        4
+                      ],
+                      [
+                        5,
+                        4
+                      ],
+                      [
+                        6,
+                        4
+                      ],
+                      [
+                        7,
+                        4
+                      ],
+                      [
+                        7,
+                        3
+                      ],
+                      [
+                        7,
+                        2
+                      ],
+                      [
+                        7,
+                        1
+                      ],
+                      [
+                        6,
+                        1
+                      ],
+                      [
+                        5,
+                        1
+                      ],
+                      [
+                        4,
+                        1
+                      ],
+                      [
+                        3,
+                        1
+                      ],
+                      [
+                        2,
+                        1
+                      ]
+                    ],
+                    "priority": 2
+                  }
+                },
+                "reasoning": "Agent 0 is rerouted to the wiggle room at (8,3) and then proceeds directly to its target, avoiding the shared cell (5,4). Agent 1 keeps its original path. This eliminates the conflict while using available empty space."
+              },
+              "model_used": "openai/gpt-oss-20b:free"
+            },
+            "agent_validations": {
+              "0": {
+                "agent_id": 0,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      3,
+                      1
+                    ],
+                    [
+                      4,
+                      1
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      6,
+                      1
+                    ],
+                    [
+                      7,
+                      1
+                    ],
+                    [
+                      8,
+                      1
+                    ],
+                    [
+                      8,
+                      2
+                    ],
+                    [
+                      8,
+                      3
+                    ],
+                    [
+                      8,
+                      4
+                    ],
+                    [
+                      8,
+                      5
+                    ],
+                    [
+                      8,
+                      6
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (4,1) is adjacent, within bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      3,
+                      1
+                    ],
+                    [
+                      4,
+                      1
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      6,
+                      1
+                    ],
+                    [
+                      7,
+                      1
+                    ],
+                    [
+                      8,
+                      1
+                    ],
+                    [
+                      8,
+                      2
+                    ],
+                    [
+                      8,
+                      3
+                    ],
+                    [
+                      8,
+                      4
+                    ],
+                    [
+                      8,
+                      5
+                    ],
+                    [
+                      8,
+                      6
+                    ]
+                  ],
+                  "priority": 1
+                }
+              },
+              "1": {
+                "agent_id": 1,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      6,
+                      6
+                    ],
+                    [
+                      5,
+                      6
+                    ],
+                    [
+                      4,
+                      6
+                    ],
+                    [
+                      3,
+                      6
+                    ],
+                    [
+                      2,
+                      6
+                    ],
+                    [
+                      2,
+                      5
+                    ],
+                    [
+                      2,
+                      4
+                    ],
+                    [
+                      3,
+                      4
+                    ],
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      5,
+                      4
+                    ],
+                    [
+                      6,
+                      4
+                    ],
+                    [
+                      7,
+                      4
+                    ],
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      7,
+                      2
+                    ],
+                    [
+                      7,
+                      1
+                    ],
+                    [
+                      6,
+                      1
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      4,
+                      1
+                    ],
+                    [
+                      3,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "priority": 2
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (5,6) is adjacent, within bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      6,
+                      6
+                    ],
+                    [
+                      5,
+                      6
+                    ],
+                    [
+                      4,
+                      6
+                    ],
+                    [
+                      3,
+                      6
+                    ],
+                    [
+                      2,
+                      6
+                    ],
+                    [
+                      2,
+                      5
+                    ],
+                    [
+                      2,
+                      4
+                    ],
+                    [
+                      3,
+                      4
+                    ],
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      5,
+                      4
+                    ],
+                    [
+                      6,
+                      4
+                    ],
+                    [
+                      7,
+                      4
+                    ],
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      7,
+                      2
+                    ],
+                    [
+                      7,
+                      1
+                    ],
+                    [
+                      6,
+                      1
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      4,
+                      1
+                    ],
+                    [
+                      3,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "priority": 2
+                }
+              }
+            },
+            "final_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    8,
+                    1
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    4
+                  ],
+                  [
+                    8,
+                    5
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ],
+                "priority": 2
+              }
+            },
+            "validation_overrides": {}
+          },
+          "conflict_data": {
+            "agents": [
+              {
+                "id": 0,
+                "current_pos": [
+                  3,
+                  1
+                ],
+                "target_pos": [
+                  8,
+                  6
+                ],
+                "planned_path": [
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ]
+              },
+              {
+                "id": 1,
+                "current_pos": [
+                  6,
+                  6
+                ],
+                "target_pos": [
+                  2,
+                  1
+                ],
+                "planned_path": [
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ]
+              }
+            ],
+            "conflict_points": [
+              [
+                5,
+                4
+              ]
+            ],
+            "map_state": {
+              "agents": {
+                "0": [
+                  3,
+                  1
+                ],
+                "1": [
+                  6,
+                  6
+                ]
+              },
+              "boxes": {},
+              "targets": {
+                "0": [
+                  8,
+                  6
+                ],
+                "1": [
+                  2,
+                  1
+                ]
+              },
+              "agent_goals": {
+                "0": 0,
+                "1": 1
+              },
+              "grid": [
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  "T",
+                  "@",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  ".",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "@",
+                  ".",
+                  "T",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ]
+              ]
+            },
+            "turn": 1
+          }
+        },
+        {
+          "turn": 10,
+          "timestamp": "2025-10-27T13:43:16.066304",
+          "hmas2_stages": {
+            "central_negotiation": {
+              "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+              "user_prompt": "TURN 10 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 3), going to (8, 6)\n  Planned path: [(8, 3), (8, 4), (8, 5), (8, 6)]\n\nCONFLICT POINTS: [(8, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 3), 1: (5, 4)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 1): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0]\n- Position (7, 4): corner_refuge (value: 20)\n  \u2514\u2500 Near agents: [0]\n- Position (7, 2): strategic_bypass (value: 18)\n  \u2514\u2500 Near agents: [0]\n- Position (7, 1): strategic_bypass (value: 17)\n  \u2514\u2500 Near agents: [0]\n- Position (8, 2): corner_refuge (value: 15)\n  \u2514\u2500 Near agents: [0]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  W  #\n #  #  #  #  #  #  #  W  .  #\n #  #  #  #  #  #  #  . A0  #\n #  #  .  .  . A1  .  W  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+              "llm_response": {
+                "resolution": "reroute",
+                "agent_actions": {
+                  "0": {
+                    "action": "move",
+                    "path": [
+                      [
+                        8,
+                        3
+                      ],
+                      [
+                        7,
+                        4
+                      ],
+                      [
+                        8,
+                        4
+                      ],
+                      [
+                        8,
+                        5
+                      ],
+                      [
+                        8,
+                        6
+                      ]
+                    ],
+                    "priority": 1
+                  }
+                },
+                "reasoning": "Agent 0 temporarily moves to the wiggle room at (7,4) to clear the conflict point (8,3) before proceeding to its target at (8,6). This reroute uses available empty space and avoids any collision with other agents."
+              },
+              "model_used": "openai/gpt-oss-20b:free"
+            },
+            "agent_validations": {
+              "0": {
+                "agent_id": 0,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      3
+                    ],
+                    [
+                      7,
+                      4
+                    ],
+                    [
+                      8,
+                      4
+                    ],
+                    [
+                      8,
+                      5
+                    ],
+                    [
+                      8,
+                      6
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": false,
+                  "reason": "Next move (7,4) is diagonal from current position (8,3); only orthogonal adjacent moves are allowed.",
+                  "alternative": {
+                    "action": "wait",
+                    "reason": "llm_rejection"
+                  }
+                },
+                "alternative_suggested": {
+                  "action": "wait",
+                  "reason": "llm_rejection"
+                },
+                "final_action_executed": {
+                  "action": "wait",
+                  "reason": "llm_rejection"
+                }
+              }
+            },
+            "final_actions": {
+              "0": {
+                "action": "wait",
+                "reason": "llm_rejection"
+              }
+            },
+            "validation_overrides": {
+              "0": {
+                "rejected_central_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      3
+                    ],
+                    [
+                      7,
+                      4
+                    ],
+                    [
+                      8,
+                      4
+                    ],
+                    [
+                      8,
+                      5
+                    ],
+                    [
+                      8,
+                      6
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "rejection_reason": "Next move (7,4) is diagonal from current position (8,3); only orthogonal adjacent moves are allowed.",
+                "agent_alternative": {
+                  "action": "wait",
+                  "reason": "llm_rejection"
+                }
+              }
+            }
+          },
+          "conflict_data": {
+            "agents": [
+              {
+                "id": 0,
+                "current_pos": [
+                  8,
+                  3
+                ],
+                "target_pos": [
+                  8,
+                  6
+                ],
+                "planned_path": [
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    4
+                  ],
+                  [
+                    8,
+                    5
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ]
+              }
+            ],
+            "conflict_points": [
+              [
+                8,
+                3
+              ]
+            ],
+            "map_state": {
+              "agents": {
+                "0": [
+                  8,
+                  3
+                ],
+                "1": [
+                  5,
+                  4
+                ]
+              },
+              "boxes": {},
+              "targets": {
+                "0": [
+                  8,
+                  6
+                ],
+                "1": [
+                  2,
+                  1
+                ]
+              },
+              "agent_goals": {
+                "0": 0,
+                "1": 1
+              },
+              "grid": [
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  "T",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  "@",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  "@",
+                  ".",
+                  ".",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  ".",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "T",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ]
+              ]
+            },
+            "turn": 10
+          }
+        },
+        {
+          "turn": 11,
+          "timestamp": "2025-10-27T13:43:36.560017",
+          "hmas2_stages": {
+            "central_negotiation": {
+              "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+              "user_prompt": "TURN 11 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 3), going to (8, 6)\n  Planned path: [(8, 3), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (6, 4), going to (2, 1)\n  Planned path: [(6, 4), (7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 4), (7, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 3), 1: (6, 4)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 2): corner_refuge (value: 22)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 1): corner_refuge (value: 21)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  . A0  #\n #  #  .  .  .  . A1  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+              "llm_response": {
+                "resolution": "reroute",
+                "agent_actions": {
+                  "0": {
+                    "action": "move",
+                    "path": [
+                      [
+                        8,
+                        2
+                      ]
+                    ],
+                    "priority": 1
+                  },
+                  "1": {
+                    "action": "move",
+                    "path": [
+                      [
+                        7,
+                        4
+                      ]
+                    ],
+                    "priority": 1
+                  }
+                },
+                "reasoning": "Agent 0 steps aside to the wiggle room at (8,2) before proceeding, freeing the cells (7,3) and (7,4) for Agent 1. This uses the available empty space to resolve the conflict without any agent needing to wait."
+              },
+              "model_used": "openai/gpt-oss-20b:free"
+            },
+            "agent_validations": {
+              "0": {
+                "agent_id": 0,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      2
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (8,2) is adjacent, within bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      2
+                    ]
+                  ],
+                  "priority": 1
+                }
+              },
+              "1": {
+                "agent_id": 1,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      7,
+                      4
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (7,4) is adjacent, within bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      7,
+                      4
+                    ]
+                  ],
+                  "priority": 1
+                }
+              }
+            },
+            "final_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    2
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    7,
+                    4
+                  ]
+                ],
+                "priority": 1
+              }
+            },
+            "validation_overrides": {}
+          },
+          "conflict_data": {
+            "agents": [
+              {
+                "id": 0,
+                "current_pos": [
+                  8,
+                  3
+                ],
+                "target_pos": [
+                  8,
+                  6
+                ],
+                "planned_path": [
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ]
+              },
+              {
+                "id": 1,
+                "current_pos": [
+                  6,
+                  4
+                ],
+                "target_pos": [
+                  2,
+                  1
+                ],
+                "planned_path": [
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ]
+              }
+            ],
+            "conflict_points": [
+              [
+                7,
+                4
+              ],
+              [
+                7,
+                3
+              ]
+            ],
+            "map_state": {
+              "agents": {
+                "0": [
+                  8,
+                  3
+                ],
+                "1": [
+                  6,
+                  4
+                ]
+              },
+              "boxes": {},
+              "targets": {
+                "0": [
+                  8,
+                  6
+                ],
+                "1": [
+                  2,
+                  1
+                ]
+              },
+              "agent_goals": {
+                "0": 0,
+                "1": 1
+              },
+              "grid": [
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  "T",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  "@",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "@",
+                  ".",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  ".",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "T",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ]
+              ]
+            },
+            "turn": 11
+          }
+        },
+        {
+          "turn": 12,
+          "timestamp": "2025-10-27T13:43:54.337432",
+          "hmas2_stages": {
+            "central_negotiation": {
+              "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+              "user_prompt": "TURN 12 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 3), going to (8, 6)\n  Planned path: [(8, 3), (7, 3), (7, 4), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (7, 4), going to (2, 1)\n  Planned path: [(7, 4), (7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 3)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 3), 1: (7, 4)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\n\ud83c\udfaf STRATEGIC REROUTING OPTIONS (Wiggle Rooms):\n- Position (8, 2): corner_refuge (value: 22)\n  \u2514\u2500 Near agents: [0, 1]\n- Position (8, 1): corner_refuge (value: 21)\n  \u2514\u2500 Near agents: [0, 1]\n\n\ud83d\udca1 REROUTING STRATEGIES:\n- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n- 'priority': Assign movement priority + others wait in place\n- 'wait': All agents pause (conservative approach)\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  W  #\n #  #  #  #  #  #  #  .  W  #\n #  #  #  #  #  #  #  . A0  #\n #  #  .  .  .  .  . A1  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target, W = Wiggle Room\n\nPlease provide a negotiation solution in JSON format.",
+              "llm_response": {
+                "resolution": "reroute",
+                "agent_actions": {
+                  "0": {
+                    "action": "move",
+                    "path": [
+                      [
+                        8,
+                        3
+                      ],
+                      [
+                        8,
+                        2
+                      ],
+                      [
+                        7,
+                        2
+                      ],
+                      [
+                        7,
+                        3
+                      ],
+                      [
+                        6,
+                        4
+                      ],
+                      [
+                        5,
+                        4
+                      ],
+                      [
+                        4,
+                        4
+                      ],
+                      [
+                        3,
+                        4
+                      ],
+                      [
+                        2,
+                        4
+                      ],
+                      [
+                        2,
+                        5
+                      ],
+                      [
+                        2,
+                        6
+                      ],
+                      [
+                        3,
+                        6
+                      ],
+                      [
+                        4,
+                        6
+                      ],
+                      [
+                        5,
+                        6
+                      ],
+                      [
+                        6,
+                        6
+                      ],
+                      [
+                        7,
+                        6
+                      ],
+                      [
+                        8,
+                        6
+                      ]
+                    ],
+                    "priority": 1
+                  },
+                  "1": {
+                    "action": "move",
+                    "path": [
+                      [
+                        7,
+                        4
+                      ],
+                      [
+                        7,
+                        3
+                      ],
+                      [
+                        7,
+                        2
+                      ],
+                      [
+                        7,
+                        1
+                      ],
+                      [
+                        6,
+                        1
+                      ],
+                      [
+                        5,
+                        1
+                      ],
+                      [
+                        4,
+                        1
+                      ],
+                      [
+                        3,
+                        1
+                      ],
+                      [
+                        2,
+                        1
+                      ]
+                    ],
+                    "priority": 2
+                  }
+                },
+                "reasoning": "Agent 0 is rerouted through the available wiggle room at (8,2) and then (7,2) to avoid the conflict at (7,3). This keeps the path efficient while preventing collision. Agent 1 keeps its original path. The reroute strategy uses the empty spaces to create a temporary waiting position for Agent 0, allowing Agent 1 to pass unimpeded."
+              },
+              "model_used": "openai/gpt-oss-20b:free"
+            },
+            "agent_validations": {
+              "0": {
+                "agent_id": 0,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      3
+                    ],
+                    [
+                      8,
+                      2
+                    ],
+                    [
+                      7,
+                      2
+                    ],
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      6,
+                      4
+                    ],
+                    [
+                      5,
+                      4
+                    ],
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      3,
+                      4
+                    ],
+                    [
+                      2,
+                      4
+                    ],
+                    [
+                      2,
+                      5
+                    ],
+                    [
+                      2,
+                      6
+                    ],
+                    [
+                      3,
+                      6
+                    ],
+                    [
+                      4,
+                      6
+                    ],
+                    [
+                      5,
+                      6
+                    ],
+                    [
+                      6,
+                      6
+                    ],
+                    [
+                      7,
+                      6
+                    ],
+                    [
+                      8,
+                      6
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (8,2) is adjacent to current position, within map bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      3
+                    ],
+                    [
+                      8,
+                      2
+                    ],
+                    [
+                      7,
+                      2
+                    ],
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      6,
+                      4
+                    ],
+                    [
+                      5,
+                      4
+                    ],
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      3,
+                      4
+                    ],
+                    [
+                      2,
+                      4
+                    ],
+                    [
+                      2,
+                      5
+                    ],
+                    [
+                      2,
+                      6
+                    ],
+                    [
+                      3,
+                      6
+                    ],
+                    [
+                      4,
+                      6
+                    ],
+                    [
+                      5,
+                      6
+                    ],
+                    [
+                      6,
+                      6
+                    ],
+                    [
+                      7,
+                      6
+                    ],
+                    [
+                      8,
+                      6
+                    ]
+                  ],
+                  "priority": 1
+                }
+              },
+              "1": {
+                "agent_id": 1,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      7,
+                      4
+                    ],
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      7,
+                      2
+                    ],
+                    [
+                      7,
+                      1
+                    ],
+                    [
+                      6,
+                      1
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      4,
+                      1
+                    ],
+                    [
+                      3,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "priority": 2
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (7,3) is adjacent, within bounds, and not a wall or occupied cell."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      7,
+                      4
+                    ],
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      7,
+                      2
+                    ],
+                    [
+                      7,
+                      1
+                    ],
+                    [
+                      6,
+                      1
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      4,
+                      1
+                    ],
+                    [
+                      3,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "priority": 2
+                }
+              }
+            },
+            "final_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ],
+                "priority": 2
+              }
+            },
+            "validation_overrides": {}
+          },
+          "conflict_data": {
+            "agents": [
+              {
+                "id": 0,
+                "current_pos": [
+                  8,
+                  3
+                ],
+                "target_pos": [
+                  8,
+                  6
+                ],
+                "planned_path": [
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ]
+              },
+              {
+                "id": 1,
+                "current_pos": [
+                  7,
+                  4
+                ],
+                "target_pos": [
+                  2,
+                  1
+                ],
+                "planned_path": [
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ]
+              }
+            ],
+            "conflict_points": [
+              [
+                7,
+                3
+              ]
+            ],
+            "map_state": {
+              "agents": {
+                "0": [
+                  8,
+                  3
+                ],
+                "1": [
+                  7,
+                  4
+                ]
+              },
+              "boxes": {},
+              "targets": {
+                "0": [
+                  8,
+                  6
+                ],
+                "1": [
+                  2,
+                  1
+                ]
+              },
+              "agent_goals": {
+                "0": 0,
+                "1": 1
+              },
+              "grid": [
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  "T",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  "@",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "@",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  ".",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "T",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ]
+              ]
+            },
+            "turn": 12
+          }
+        },
+        {
+          "turn": 13,
+          "timestamp": "2025-10-27T13:44:57.861718",
+          "hmas2_stages": {
+            "central_negotiation": {
+              "system_prompt": "You are an expert robot conflict resolver. Respond ONLY with valid JSON.\n\n        RULES: Robots deliver boxes, one per cell, avoid collisions.\n\n        RESOLUTION STRATEGIES:\n        1. \"priority\": Assign movement priorities\n           - Higher priority agents move first\n           - Others wait in current position\n        \n        2. \"reroute\": Use empty spaces for temporary positioning\n           - Move agents to strategic waiting positions\n           - Create paths that use available space efficiently\n           - Consider \"stepping aside\" into empty cells\n           - Look for alternative routes around conflicts\n        \n        3. \"wait\": Conservative pause\n           - All agents pause movement\n           - Use for complex deadlocks\n\n        RESPONSE FORMAT:\n        {\n            \"resolution\": \"priority|reroute|wait\",\n            \"agent_actions\": {\n                \"0\": {\"action\": \"move|wait\", \"path\": [[x,y]...], \"priority\": 1}\n            },\n            \"reasoning\": \"Brief explanation of chosen strategy\"\n        }\n\n        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!",
+              "user_prompt": "TURN 13 - PATH CONFLICT DETECTED\n\nAGENTS IN CONFLICT:\n- Agent 0: At (8, 2), going to (8, 6)\n  Planned path: [(8, 2), (7, 2), (7, 3), (6, 4), (5, 4), (4, 4), (3, 4), (2, 4), (2, 5), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6)]\n- Agent 1: At (7, 3), going to (2, 1)\n  Planned path: [(7, 3), (7, 2), (7, 1), (6, 1), (5, 1), (4, 1), (3, 1), (2, 1)]\n\nCONFLICT POINTS: [(7, 2)]\n\nMAP CONTEXT:\nAll agents: {0: (8, 2), 1: (7, 3)}\nRemaining boxes: {}\nRemaining targets: {0: (8, 6), 1: (2, 1)}\n\nMAP LAYOUT:\n #  #  #  #  #  #  #  #  #  #\n #  .  T  .  .  .  .  .  .  #\n #  #  #  #  #  #  #  . A0  #\n #  #  #  #  #  #  # A1  .  #\n #  #  .  .  .  .  .  .  #  #\n #  .  .  #  #  #  #  #  #  #\n #  #  .  .  .  .  .  .  T  #\n #  #  #  #  #  #  #  #  #  #\n\nLEGEND: # = Wall, . = Empty, A# = Agent, B# = Box, T# = Target\n\nPlease provide a negotiation solution in JSON format.",
+              "llm_response": {
+                "resolution": "reroute",
+                "agent_actions": {
+                  "0": {
+                    "action": "move",
+                    "path": [
+                      [
+                        8,
+                        2
+                      ],
+                      [
+                        8,
+                        1
+                      ]
+                    ],
+                    "priority": 1
+                  },
+                  "1": {
+                    "action": "move",
+                    "path": [
+                      [
+                        7,
+                        3
+                      ],
+                      [
+                        7,
+                        2
+                      ]
+                    ],
+                    "priority": 2
+                  }
+                },
+                "reasoning": "Agent0 is rerouted to the temporary waiting cell (8,1) so that Agent1 can safely move into the conflict cell (7,2). This avoids a collision while keeping both agents on efficient paths."
+              },
+              "model_used": "openai/gpt-oss-20b:free"
+            },
+            "agent_validations": {
+              "0": {
+                "agent_id": 0,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      2
+                    ],
+                    [
+                      8,
+                      1
+                    ]
+                  ],
+                  "priority": 1
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (8,1) is adjacent to current position (8,2), within map bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      8,
+                      2
+                    ],
+                    [
+                      8,
+                      1
+                    ]
+                  ],
+                  "priority": 1
+                }
+              },
+              "1": {
+                "agent_id": 1,
+                "proposed_action": {
+                  "action": "move",
+                  "path": [
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      7,
+                      2
+                    ]
+                  ],
+                  "priority": 2
+                },
+                "validation_model": "openai/gpt-oss-20b:free",
+                "validation_result": {
+                  "valid": true,
+                  "reason": "Next move (7,2) is adjacent, within bounds, and not a wall."
+                },
+                "alternative_suggested": null,
+                "final_action_executed": {
+                  "action": "move",
+                  "path": [
+                    [
+                      7,
+                      3
+                    ],
+                    [
+                      7,
+                      2
+                    ]
+                  ],
+                  "priority": 2
+                }
+              }
+            },
+            "final_actions": {
+              "0": {
+                "action": "move",
+                "path": [
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    1
+                  ]
+                ],
+                "priority": 1
+              },
+              "1": {
+                "action": "move",
+                "path": [
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ]
+                ],
+                "priority": 2
+              }
+            },
+            "validation_overrides": {}
+          },
+          "conflict_data": {
+            "agents": [
+              {
+                "id": 0,
+                "current_pos": [
+                  8,
+                  2
+                ],
+                "target_pos": [
+                  8,
+                  6
+                ],
+                "planned_path": [
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    8,
+                    6
+                  ]
+                ]
+              },
+              {
+                "id": 1,
+                "current_pos": [
+                  7,
+                  3
+                ],
+                "target_pos": [
+                  2,
+                  1
+                ],
+                "planned_path": [
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ]
+              }
+            ],
+            "conflict_points": [
+              [
+                7,
+                2
+              ]
+            ],
+            "map_state": {
+              "agents": {
+                "0": [
+                  8,
+                  2
+                ],
+                "1": [
+                  7,
+                  3
+                ]
+              },
+              "boxes": {},
+              "targets": {
+                "0": [
+                  8,
+                  6
+                ],
+                "1": [
+                  2,
+                  1
+                ]
+              },
+              "agent_goals": {
+                "0": 0,
+                "1": 1
+              },
+              "grid": [
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  "T",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  ".",
+                  "@",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "@",
+                  ".",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  ".",
+                  ".",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  ".",
+                  "T",
+                  "#"
+                ],
+                [
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#",
+                  "#"
+                ]
+              ]
+            },
+            "turn": 13
+          }
+        }
+      ],
+      "total_conflicts": 0,
+      "turns_completed": 31,
+      "simulation_log_file": "negotiation_simulation_20251027_134540.json"
+    }
+  ],
+  "summary": {
+    "total_scenarios": 1,
+    "total_negotiations": 5,
+    "total_conflicts": 0,
+    "success_rate": 1.0,
+    "hmas2_metrics": {
+      "total_agent_validations": 9,
+      "validation_approvals": 8,
+      "validation_rejections": 1,
+      "agent_alternatives_suggested": 1,
+      "central_vs_agent_disagreement_rate": 0.1111111111111111
+    },
+    "saved_at": "2025-10-27T13:45:40.579776",
+    "auto_save": false
+  }
+}
