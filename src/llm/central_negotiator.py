@@ -1,13 +1,17 @@
 """
 Central LLM Negotiator for Multi-Agent Conflict Resolution
-Uses powerful model for complex reasoning and negotiation
+Uses powerful model for complex reasoning and negotiation with iterative refinement
 """
 
 import json
 import os
-from typing import Dict, List, Tuple, Optional
+import logging
+from typing import Dict, List, Tuple, Optional, Callable
+from datetime import datetime
 from ..llm import OpenRouterClient
 from .openrouter_config import OpenRouterConfig
+
+logger = logging.getLogger(__name__)
 
 class CentralNegotiator:
     def __init__(self, model: Optional[str] = None, enable_spatial_hints: bool = True):
@@ -20,10 +24,16 @@ class CentralNegotiator:
         # Spatial hints configuration (toggleable for benchmarking)
         self.enable_spatial_hints = enable_spatial_hints
         
+        # Refinement loop configuration
+        self.max_refinement_iterations = 5
+        self.refinement_history = []
+        
         if self.enable_spatial_hints:
             print("🎯 Spatial hints ENABLED - LLM will receive wiggle room guidance")
         else:
             print("🚫 Spatial hints DISABLED - Baseline negotiation mode")
+        
+        print(f"🔄 Refinement loop ENABLED - Max iterations: {self.max_refinement_iterations}")
         
     def _is_reasoning_model(self, model: str) -> bool:
         """Check if the model supports reasoning features (delegated to config)"""
@@ -35,9 +45,20 @@ class CentralNegotiator:
         status = "ENABLED" if enabled else "DISABLED"
         print(f"🔧 Spatial hints {status}")
         
-    def negotiate_path_conflict(self, conflict_data: Dict) -> Dict:
+    def negotiate_path_conflict(
+        self, 
+        conflict_data: Dict, 
+        agent_validators: Optional[Dict[int, Callable]] = None
+    ) -> Tuple[Dict, List[Dict]]:
         """
-        Negotiate path conflicts between agents with enhanced reasoning
+        Negotiate path conflicts between agents with iterative refinement loop.
+        
+        Attempts to resolve conflicts by:
+        1. Getting initial plan from central LLM
+        2. Validating with all agents
+        3. If rejected: refining based on feedback (up to 5 iterations)
+        4. If all agents approve: return plan
+        5. If deadlock after 5 iterations: return empty dict to skip turn
         
         Args:
             conflict_data: {
@@ -47,20 +68,175 @@ class CentralNegotiator:
                 'turn': int,
                 'deadlock_breaking': bool (optional)
             }
+            agent_validators: Dict mapping agent_id to validator function (optional, for testing)
         
         Returns:
-            negotiation_result: {
-                'resolution': 'priority'/'reroute'/'wait'/'deadlock_breaking',
-                'agent_actions': {agent_id: {'action': 'move'/'wait', 'path': [...], 'priority': int}},
-                'reasoning': str
-            }
+            Tuple of:
+            - final_actions: Dict {agent_id: action} or {} if deadlock
+            - refinement_history: List of refinement iteration records
         """
+        
+        self.refinement_history = []
+        current_plan = None
+        rejected_agents = set()
+        iteration = 0
+        
+        logger.info(f"Starting conflict negotiation for agents: {[a.get('id') for a in conflict_data.get('agents', [])]}")
+        print(f"🎯 Starting conflict negotiation (max {self.max_refinement_iterations} refinement iterations)")
         
         # Check if this is a deadlock situation requiring special handling
         if conflict_data.get('deadlock_breaking', False) or conflict_data.get('conflict_type') in ['deadlock', 'stagnation']:
             print("🔧 DEADLOCK BREAKING MODE: Using specialized resolution")
-            return self._create_deadlock_breaking_resolution(conflict_data)
+            result = self._create_deadlock_breaking_resolution(conflict_data)
+            return result, []
         
+        # === STAGE 1: INITIAL NEGOTIATION ===
+        logger.debug("Stage 1: Getting initial plan from central LLM")
+        print(f"\n📋 STAGE 1: INITIAL NEGOTIATION")
+        current_plan = self._get_initial_central_plan(conflict_data)
+        
+        self.refinement_history.append({
+            "iteration": 0,
+            "stage": "initial_negotiation",
+            "timestamp": datetime.now().isoformat(),
+            "llm_response": current_plan,
+            "validation_results": None,
+            "rejected_by": [],
+            "feedback_provided": None,
+            "refined_plan": None
+        })
+        
+        # If no validators provided, return initial plan without refinement
+        if not agent_validators:
+            logger.debug("No validators provided, returning initial plan")
+            return current_plan, self.refinement_history
+        
+        # === STAGE 2-6: REFINEMENT LOOP (max 5 iterations) ===
+        while iteration < self.max_refinement_iterations:
+            iteration += 1
+            logger.debug(f"Refinement iteration {iteration}/{self.max_refinement_iterations}")
+            print(f"\n🔄 STAGE 2: VALIDATION (Iteration {iteration}/{self.max_refinement_iterations})")
+            
+            # Validate current plan
+            validation_results = self._validate_plan(
+                current_plan, 
+                conflict_data, 
+                agent_validators
+            )
+            
+            rejected_agents = {
+                agent_id 
+                for agent_id, result in validation_results.items() 
+                if not result["valid"]
+            }
+            
+            logger.debug(f"Validation complete. Rejected by: {rejected_agents}")
+            print(f"   Results: {len(validation_results)} agents, {len(rejected_agents)} rejections")
+            
+            # Log validation stage
+            self.refinement_history.append({
+                "iteration": iteration,
+                "stage": "validation",
+                "timestamp": datetime.now().isoformat(),
+                "llm_response": None,
+                "validation_results": validation_results,
+                "rejected_by": list(rejected_agents),
+                "feedback_provided": None,
+                "refined_plan": None
+            })
+            
+            # Check if all agents approved (unanimous approval required)
+            if not rejected_agents:
+                logger.info(f"✓ Plan approved unanimously after iteration {iteration}")
+                print(f"   ✅ All agents approved! Plan accepted.")
+                return current_plan, self.refinement_history
+            
+            # If we've exhausted iterations, break before refining again
+            if iteration >= self.max_refinement_iterations:
+                logger.warning(f"Max refinement iterations ({self.max_refinement_iterations}) reached")
+                print(f"   ⚠️  Max iterations reached, attempting final validation")
+                break
+            
+            # === REFINEMENT REQUEST ===
+            logger.debug(f"Requesting refinement for rejected agents: {rejected_agents}")
+            print(f"   📞 Requesting LLM refinement for {len(rejected_agents)} rejected agent(s)")
+            
+            feedback_summary = self._build_feedback_summary(
+                validation_results, 
+                rejected_agents
+            )
+            
+            refined_plan = self._refine_plan(
+                current_plan,
+                feedback_summary,
+                conflict_data
+            )
+            
+            # Log refinement stage
+            self.refinement_history.append({
+                "iteration": iteration,
+                "stage": "refinement",
+                "timestamp": datetime.now().isoformat(),
+                "llm_response": refined_plan,
+                "validation_results": None,
+                "rejected_by": list(rejected_agents),
+                "feedback_provided": feedback_summary,
+                "refined_plan": refined_plan
+            })
+            
+            current_plan = refined_plan
+        
+        # === STAGE 7: FINAL VALIDATION ===
+        logger.debug("Stage 7: Final validation after max iterations")
+        print(f"\n📋 STAGE 7: FINAL VALIDATION")
+        validation_results = self._validate_plan(
+            current_plan, 
+            conflict_data, 
+            agent_validators
+        )
+        
+        rejected_agents = {
+            agent_id 
+            for agent_id, result in validation_results.items() 
+            if not result["valid"]
+        }
+        
+        self.refinement_history.append({
+            "iteration": iteration,
+            "stage": "final_validation",
+            "timestamp": datetime.now().isoformat(),
+            "llm_response": None,
+            "validation_results": validation_results,
+            "rejected_by": list(rejected_agents),
+            "feedback_provided": None,
+            "refined_plan": None,
+            "final_status": "approved" if not rejected_agents else "deadlock_skipped"
+        })
+        
+        if rejected_agents:
+            logger.warning(
+                f"✗ Negotiation deadlock: Still rejected by {rejected_agents} "
+                f"after {self.max_refinement_iterations} refinement iterations. "
+                f"Skipping turn (no movement)."
+            )
+            print(f"   ❌ DEADLOCK: {len(rejected_agents)} agent(s) still rejecting after refinement")
+            print(f"   ⏭️  Skipping this turn (no movement executed)")
+            return {}, self.refinement_history
+        
+        logger.info(f"✓ Plan approved after final validation")
+        print(f"   ✅ Final validation passed! Plan accepted.")
+        return current_plan, self.refinement_history
+    
+    def _get_initial_central_plan(self, conflict_data: Dict) -> Dict:
+        """
+        Get initial conflict resolution plan from central LLM.
+        
+        Args:
+            conflict_data: Conflict information
+        
+        Returns:
+            Agent actions from LLM
+        """
         system_prompt = self._create_negotiation_system_prompt()
         user_prompt = self._create_conflict_description(conflict_data)
         
@@ -86,14 +262,296 @@ class CentralNegotiator:
         
         if response:
             try:
-                return self._parse_negotiation_response(response)
+                result = self._parse_negotiation_response(response)
+                
+                # Handle different response formats:
+                # 1. If result has 'agent_actions' key, use it
+                # 2. If result has agent IDs as top-level keys (0, 1, etc.), use result as is
+                # 3. Otherwise return empty
+                if 'agent_actions' in result:
+                    return result.get('agent_actions', {})
+                elif any(str(i) in result for i in range(10)):  # Check for agent IDs as keys
+                    return result
+                else:
+                    return {}
             except Exception as e:
-                print(f"❌ Error parsing negotiation response: {e}")
-                print(f"🔍 Raw response: {response}")
-                return self._create_fallback_resolution(conflict_data)
+                logger.error(f"Error parsing initial negotiation response: {e}")
+                return self._create_fallback_resolution(conflict_data).get('agent_actions', {})
         else:
-            print("❌ No response from LLM API")
-            return self._create_fallback_resolution(conflict_data)
+            logger.error("No response from LLM API")
+            return self._create_fallback_resolution(conflict_data).get('agent_actions', {})
+    
+    def _validate_plan(
+        self, 
+        plan: Dict, 
+        conflict_data: Dict,
+        agent_validators: Dict[int, Callable]
+    ) -> Dict[int, Dict[str, any]]:  # type: ignore
+        """
+        Validate plan with all involved agents.
+        
+        Args:
+            plan: Agent actions from central LLM
+            conflict_data: Conflict information
+            agent_validators: Validator functions for each agent
+        
+        Returns:
+            Dict mapping agent_id to validation result
+        """
+        validation_results = {}
+        map_state = conflict_data.get('map_state', {})
+        
+        for agent_id, validator_func in agent_validators.items():
+            agent_id_str = str(agent_id)
+            agent_action = plan.get(agent_id_str)
+            
+            if not agent_action:
+                validation_results[agent_id] = {
+                    "valid": False,
+                    "reason": "No action provided for this agent",
+                    "alternative": None
+                }
+                continue
+            
+            try:
+                # Call validator with correct parameter names: agent_id, proposed_action, current_state (map_state)
+                result = validator_func(
+                    agent_id=agent_id,
+                    proposed_action=agent_action,
+                    current_state=map_state  # map_state is the current_state parameter name expected by validator
+                )
+                
+                validation_results[agent_id] = {
+                    "valid": result.get("valid", False),
+                    "reason": result.get("reason", "Validation failed"),
+                    "alternative": result.get("alternative")
+                }
+            except Exception as e:
+                logger.error(f"Validation error for agent {agent_id}: {str(e)}")
+                validation_results[agent_id] = {
+                    "valid": False,
+                    "reason": f"Validation error: {str(e)}",
+                    "alternative": None
+                }
+        
+        return validation_results
+    
+    def _build_feedback_summary(
+        self, 
+        validation_results: Dict[int, Dict[str, any]],  # type: ignore
+        rejected_agents: set
+    ) -> Dict[str, any]:  # type: ignore
+        """
+        Build concise feedback from rejected validators to send to LLM.
+        
+        Args:
+            validation_results: Results from all validators
+            rejected_agents: Set of agent IDs that rejected
+        
+        Returns:
+            Dict with rejection reasons and alternatives
+        """
+        feedback = {
+            "total_rejected": len(rejected_agents),
+            "rejection_count": len(rejected_agents),
+            "rejections": []
+        }
+        
+        for agent_id in rejected_agents:
+            result = validation_results.get(agent_id, {})
+            feedback["rejections"].append({
+                "agent_id": agent_id,
+                "rejection_reason": result.get("reason", "Unknown reason"),
+                "suggested_alternative_action": result.get("alternative")
+            })
+        
+        return feedback
+    
+    def _refine_plan(
+        self, 
+        current_plan: Dict, 
+        feedback_summary: Dict[str, any],  # type: ignore
+        conflict_data: Dict
+    ) -> Dict:
+        """
+        Send feedback to central LLM to refine the plan.
+        
+        Args:
+            current_plan: Previously rejected plan
+            feedback_summary: Feedback from validators
+            conflict_data: Conflict information
+        
+        Returns:
+            Refined agent actions from LLM
+        """
+        refinement_prompt = self._build_refinement_prompt(
+            current_plan,
+            feedback_summary,
+            conflict_data
+        )
+        
+        system_prompt = self._get_refinement_system_prompt()
+        
+        logger.debug("Sending refinement request to LLM")
+        
+        try:
+            response = self.client.send_request(
+                model=self.model,
+                messages=[
+                    self.client.create_system_message(system_prompt),
+                    self.client.create_user_message(refinement_prompt)
+                ],
+                max_tokens=20000,
+                temperature=0.7
+            )
+            
+            if response:
+                refined_response = self._parse_negotiation_response(response)
+                
+                # Handle different response formats (same as initial plan):
+                # 1. If response has 'agent_actions' key, use it
+                # 2. If response has agent IDs as top-level keys (0, 1, etc.), use response as is
+                # 3. Otherwise return current plan as fallback
+                if 'agent_actions' in refined_response:
+                    refined_plan = refined_response.get("agent_actions", current_plan)
+                elif any(str(i) in refined_response for i in range(10)):  # Check for agent IDs as keys
+                    refined_plan = refined_response
+                else:
+                    refined_plan = current_plan
+                
+                logger.debug(f"Refinement response received: {len(refined_plan)} agents")
+                return refined_plan
+            else:
+                return current_plan
+            
+        except Exception as e:
+            logger.error(f"Error during plan refinement: {str(e)}")
+            return current_plan
+    
+    def _build_refinement_prompt(
+        self, 
+        current_plan: Dict, 
+        feedback_summary: Dict[str, any],  # type: ignore
+        conflict_data: Dict
+    ) -> str:
+        """
+        Build detailed prompt for LLM to refine based on validator feedback.
+        
+        Args:
+            current_plan: Previously rejected plan
+            feedback_summary: Validator feedback
+            conflict_data: Conflict information
+        
+        Returns:
+            Formatted prompt string
+        """
+        
+        # Format rejections with full details
+        rejections_text = ""
+        for rejection in feedback_summary["rejections"]:
+            agent_id = rejection["agent_id"]
+            reason = rejection["rejection_reason"]
+            alternative = rejection["suggested_alternative_action"]
+            
+            rejections_text += f"\n- Agent {agent_id}:\n"
+            rejections_text += f"  Reason: {reason}\n"
+            
+            if alternative:
+                rejections_text += f"  Suggested alternative: {json.dumps(alternative, indent=4)}\n"
+        
+        # Format current plan for clarity
+        plan_text = json.dumps(current_plan, indent=2)
+        
+        # Extract agent info from conflict data
+        agents_info = ""
+        if "agents" in conflict_data:
+            for agent in conflict_data["agents"]:
+                agent_id = agent.get("id")
+                current_pos = agent.get("current_pos")
+                target_pos = agent.get("target_pos")
+                planned_path = agent.get("planned_path")
+                agents_info += (
+                    f"\nAgent {agent_id}:\n"
+                    f"  Current Position: {current_pos}\n"
+                    f"  Target: {target_pos}\n"
+                    f"  Original Planned Path: {planned_path}\n"
+                )
+        
+        prompt = f"""REFINEMENT REQUEST - Your previous conflict resolution plan was rejected.
+
+        REJECTION SUMMARY:
+        Total rejected: {feedback_summary['total_rejected']} agent(s)
+
+        DETAILED REJECTIONS:{rejections_text}
+
+        AGENT STATUS:{agents_info}
+
+        PREVIOUSLY PROPOSED PLAN (REJECTED):
+        {plan_text}
+
+        CONFLICT INFORMATION:
+        {json.dumps(conflict_data, indent=2)}
+
+        REFINEMENT TASK:
+        Please provide a refined conflict resolution plan that addresses the validator feedback.
+
+        REQUIREMENTS:
+        1. Analyze each rejection reason carefully
+        2. Consider suggested alternatives as guidance (not mandatory)
+        3. Ensure all moves are orthogonally adjacent (up, down, left, right only)
+        4. No two agents can occupy the same cell at any point
+        5. Provide full paths for all agents
+
+        RESPONSE FORMAT:
+        {{
+            "resolution": "reroute|priority|wait",
+            "agent_actions": {{
+                "0": {{"action": "move|wait", "path": [[x,y], [x,y], ...], "priority": 1}},
+                "1": {{"action": "move|wait", "path": [[x,y], [x,y], ...], "priority": 2}}
+            }},
+            "reasoning": "Detailed explanation of how rejections were addressed"
+        }}
+
+        Return ONLY valid JSON, no additional text."""
+        
+        return prompt
+    
+    def _get_refinement_system_prompt(self) -> str:
+        """
+        System prompt for refinement requests.
+        
+        Returns:
+            System prompt string
+        """
+        return """You are an expert robot conflict resolver specializing in plan refinement.
+
+        Your task is to refine a previously rejected multi-agent conflict resolution plan based on specific validator feedback.
+
+        CORE RULES:
+        1. Only orthogonal adjacent moves (up, down, left, right)
+        2. No two agents can occupy the same cell simultaneously
+        3. Each agent must have a complete path from current position to target
+        4. Provide full paths in all refined actions
+        5. Prioritize addressing the specific rejection reasons provided
+
+        REFINEMENT STRATEGY:
+        - Analyze each rejection reason in depth
+        - Identify the root cause of validation failures
+        - Propose alternative routing or timing strategies
+        - Ensure the refined plan is fundamentally different from rejected version
+        - Maintain safety constraints: no collisions, valid moves only
+
+        OUTPUT REQUIREMENT:
+        Return ONLY valid JSON with no markdown formatting or text outside the JSON structure."""
+    
+    def get_refinement_history(self) -> List[Dict]:
+        """
+        Get the complete refinement history from the last negotiation.
+        
+        Returns:
+            List of refinement iteration records
+        """
+        return self.refinement_history
     
     def _create_negotiation_system_prompt(self) -> str:
         """Create system prompt for negotiation with rerouting always available"""

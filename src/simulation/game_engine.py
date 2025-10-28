@@ -453,17 +453,56 @@ class GameEngine:
                     'planned_path': planned_moves.get(agent_id, [])
                 })
         
+        # Prepare validators for refinement loop
+        agent_validators = {}
+        for agent_id in conflict_info['conflicting_agents']:
+            if agent_id in self.agents:
+                agent = self.agents[agent_id]
+                if hasattr(agent, 'validator'):
+                    agent_validators[agent_id] = agent.validator.validate_negotiated_action
+        
         # Get negotiation result from Central LLM
-        resolution = self.central_negotiator.negotiate_path_conflict(conflict_data)
+        # New: returns Tuple[Dict, List[Dict]] = (final_actions, refinement_history)
+        negotiation_result = self.central_negotiator.negotiate_path_conflict(
+            conflict_data, 
+            agent_validators=agent_validators
+        )
+        
+        # Handle both old format (just Dict) and new format (Tuple)
+        if isinstance(negotiation_result, tuple):
+            resolution, refinement_history = negotiation_result
+        else:
+            resolution = negotiation_result
+            refinement_history = []
+        
+        # Check for deadlock (empty dict means turn should be skipped)
+        if not resolution:  # Empty dict
+            print(f"🛑 Negotiation deadlock - turn skipped (no movement)")
+            return {
+                'agent_actions': {},
+                'resolution': 'deadlock_skipped',
+                'reasoning': 'Negotiation failed to resolve after max refinement iterations',
+                'refinement_history': refinement_history
+            }
         
         print(f"🤖 Negotiation complete: {resolution.get('resolution', 'unknown')}")
         print(f"📝 Reasoning: {resolution.get('reasoning', 'No reasoning provided')}")
+        
+        # Add refinement history if available
+        if refinement_history:
+            resolution['refinement_history'] = refinement_history
         
         return resolution
     
     def _execute_negotiated_actions(self, resolution: Dict):
         """Execute actions determined by negotiation"""
-        agent_actions = resolution.get('agent_actions', {})
+        # Handle both formats: response with 'agent_actions' key or agent IDs directly as keys
+        if 'agent_actions' in resolution:
+            agent_actions = resolution.get('agent_actions', {})
+        else:
+            # Agent IDs are top-level keys, but filter out non-numeric keys (metadata)
+            agent_actions = {k: v for k, v in resolution.items() 
+                           if isinstance(k, (int, str)) and (isinstance(k, int) or k.isdigit())}
         
         for agent_id, action_data in agent_actions.items():
             # Convert string agent_id to int if needed for lookup
@@ -481,8 +520,11 @@ class GameEngine:
                 
                 # CRITICAL FIX: Update agent's planned path with negotiated path
                 negotiated_path = action_data.get('path', [])
-                if negotiated_path and len(negotiated_path) > 1:
+                if negotiated_path and len(negotiated_path) > 0:
                     # Convert path elements to tuples for consistency
+                    # Store the path as-is from the LLM response
+                    # If it includes current position, agent will "wait" on first execution
+                    # If it doesn't include current position, agent will move immediately
                     updated_path = [tuple(pos) if isinstance(pos, (list, tuple)) else pos for pos in negotiated_path]
                     agent.set_path(updated_path)
                     
@@ -500,9 +542,9 @@ class GameEngine:
                     # IMPORTANT: After successful move, update the negotiated path by removing the first step
                     if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
                         if len(agent.planned_path) > 1:
-                            # Remove the first step (current position) and keep the rest
+                            # Remove the first step and keep the rest
                             agent.planned_path = agent.planned_path[1:]
-                            print(f"🔄 Agent {agent_id_key}: Updated negotiated path after move, {len(agent.planned_path)} steps remaining")
+                            print(f"🔄 Agent {agent_id_key}: Advanced negotiated path after move, {len(agent.planned_path)} steps remaining")
                         else:
                             # Path completed, clear the negotiated path flag
                             agent._has_negotiated_path = False
@@ -526,14 +568,32 @@ class GameEngine:
     def _execute_planned_moves(self, planned_moves: Dict):
         """Execute planned moves without conflicts"""
         for agent_id, path in planned_moves.items():
-            if agent_id in self.agents and len(path) > 1:
+            if agent_id in self.agents and len(path) > 0:
                 agent = self.agents[agent_id]
-                next_pos = path[1]  # path[0] is current position
+                
+                # Determine if this is a negotiated path or a normal path
+                # Negotiated paths come from LLM and may/may not include current position
+                # Normal paths come from pathfinder and always include current position as first element
+                is_negotiated_path = (hasattr(agent, '_has_negotiated_path') and 
+                                     getattr(agent, '_has_negotiated_path', False))
+                
+                # For normal paths, skip first element (current position)
+                # For negotiated paths, start from first element (handles both inclusion/exclusion of current pos)
+                if is_negotiated_path:
+                    start_index = 0
+                else:
+                    start_index = 1 if len(path) > 1 else 0
+                
+                if start_index >= len(path):
+                    print(f"⏸️  Agent {agent_id}: No moves remaining in path")
+                    continue
+                
+                next_pos = path[start_index]
                 
                 # CRITICAL FIX: Handle "waiting in place" moves (when next_pos == current_pos)
                 if next_pos == agent.position:
                     # This is a "wait" move - agent should stay in current position
-                    print(f"⏸️  Agent {agent_id}: Waiting at {agent.position} (negotiated)")
+                    print(f"⏸️  Agent {agent_id}: Waiting at {agent.position}")
                     success = True  # Waiting is always successful
                 else:
                     # Normal move to different position

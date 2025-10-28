@@ -277,7 +277,7 @@ class NegotiationTester:
         # Initialize negotiation capture flag using setattr to avoid linter warnings
         setattr(game_engine, '_negotiation_captured', False)
         
-        def capture_negotiate(conflict_data):
+        def capture_negotiate(conflict_data, agent_validators=None):  # type: ignore
             # Prevent double-negotiation with flag check
             if getattr(game_engine, '_negotiation_captured', False):
                 print("🔄 Skipping duplicate negotiation call - already captured this turn")
@@ -285,7 +285,7 @@ class NegotiationTester:
                     'resolution': 'already_handled',
                     'agent_actions': {},
                     'reasoning': 'Negotiation already captured by HMAS-2 test'
-                }
+                }, []  # Return as tuple
             
             # Set flag to prevent re-negotiation
             setattr(game_engine, '_negotiation_captured', True)
@@ -298,6 +298,38 @@ class NegotiationTester:
             central_model = getattr(game_engine.central_negotiator, 'model', 'unknown')
             
             print(f"🔍 DEBUG: Central Negotiator using model: {central_model}")
+            
+            # Sanitize conflict_data to avoid circular references in JSON serialization
+            def sanitize_for_json(obj, visited=None):
+                """Recursively sanitize objects to remove only actual circular references"""
+                if visited is None:
+                    visited = set()
+                
+                obj_id = id(obj)
+                
+                # Prevent circular references
+                if obj_id in visited:
+                    return None
+                
+                if isinstance(obj, dict):
+                    visited_copy = visited.copy()
+                    visited_copy.add(obj_id)
+                    result = {}
+                    for k, v in obj.items():
+                        if isinstance(k, str):  # Only keep string keys
+                            result[k] = sanitize_for_json(v, visited_copy)
+                    return result
+                elif isinstance(obj, (list, tuple)):
+                    visited_copy = visited.copy()
+                    visited_copy.add(obj_id)
+                    return [sanitize_for_json(item, visited_copy) for item in obj]
+                elif isinstance(obj, (str, int, float, bool, type(None))):
+                    return obj
+                else:
+                    # Skip non-serializable objects
+                    return None
+            
+            sanitized_conflict_data = sanitize_for_json(conflict_data)
             
             # Enhanced HMAS-2 negotiation entry structure
             negotiation_entry = {
@@ -314,7 +346,7 @@ class NegotiationTester:
                     'final_actions': {},
                     'validation_overrides': {}
                 },
-                'conflict_data': conflict_data
+                'conflict_data': sanitized_conflict_data
             }
             
             # Capture prompts
@@ -342,7 +374,16 @@ class NegotiationTester:
             
             # Call original method and capture response
             try:
-                response = original_negotiate(conflict_data)
+                # CRITICAL: Pass agent_validators to enable refinement loop!
+                negotiate_result = original_negotiate(conflict_data, agent_validators=agent_validators)
+                
+                # Unpack tuple if returned (new negotiate_path_conflict signature returns Tuple[Dict, List[Dict]])
+                if isinstance(negotiate_result, tuple):
+                    response, refinement_history = negotiate_result
+                else:
+                    response = negotiate_result
+                    refinement_history = []
+                
                 negotiation_entry['hmas2_stages']['central_negotiation']['llm_response'] = response
                 
                 print(f"\n💬 CENTRAL LLM RESPONSE:")
@@ -357,22 +398,91 @@ class NegotiationTester:
                 negotiation_entry['hmas2_stages']['central_negotiation']['error'] = str(e)
                 print(f"❌ Central LLM Negotiation Error: {e}")
                 response = {'error': str(e), 'fallback': 'wait_action'}
+                refinement_history = []
             
             # Restore original methods
             game_engine.central_negotiator._create_negotiation_system_prompt = original_system_prompt
             game_engine.central_negotiator._create_conflict_description = original_conflict_desc
             
+            # STAGE 2A: Capture Refinement Loop History (already obtained from tuple unpacking above)
+            # If not already obtained, try to get from negotiator (fallback)
+            if not refinement_history:
+                refinement_history = game_engine.central_negotiator.get_refinement_history()
+            
+            if refinement_history:
+                print(f"\n🔄 STAGE 2A: REFINEMENT LOOP HISTORY")
+                print("=" * 60)
+                print(f"Total iterations: {len(refinement_history)}")
+                
+                # Extract only the key information from refinement history to avoid circular refs
+                safe_iterations = []
+                for iteration_record in refinement_history:
+                    iteration = iteration_record.get('iteration', '?')
+                    stage = iteration_record.get('stage', '?')
+                    status = iteration_record.get('final_status', '')
+                    rejected_by = iteration_record.get('rejected_by', [])
+                    
+                    print(f"\n   Iteration {iteration} - Stage: {stage}")
+                    if rejected_by:
+                        print(f"   ❌ Rejected by: {rejected_by}")
+                    if status:
+                        print(f"   Status: {status}")
+                    
+                    # Store only safe data (avoid storing complex objects)
+                    safe_iterations.append({
+                        'iteration': iteration,
+                        'stage': stage,
+                        'final_status': status,
+                        'rejected_by': rejected_by if isinstance(rejected_by, list) else list(rejected_by) if rejected_by else [],
+                        'timestamp': iteration_record.get('timestamp', '')
+                    })
+                
+                # Add to negotiation entry
+                negotiation_entry['hmas2_stages']['refinement_loop'] = {
+                    'total_iterations': len(safe_iterations),
+                    'final_status': safe_iterations[-1].get('final_status', 'unknown') if safe_iterations else 'none',
+                    'iterations': safe_iterations
+                }
+            else:
+                negotiation_entry['hmas2_stages']['refinement_loop'] = {
+                    'total_iterations': 0,
+                    'final_status': 'none',
+                    'iterations': []
+                }
+            
             # Debug output to see what keys exist in the response
             print(f"\n🔍 DEBUG: Response keys: {list(response.keys()) if isinstance(response, dict) else 'Not a dict'}")
             print(f"🔍 DEBUG: Response type: {type(response)}")
             
+            # Check if response has agent actions (either as 'agent_actions' key or as agent IDs directly)
+            has_agent_actions = False
+            if isinstance(response, dict):
+                if 'agent_actions' in response or 'actions' in response:
+                    has_agent_actions = True
+                else:
+                    # Check if any agent IDs are present as top-level keys
+                    for key in response.keys():
+                        if str(key).isdigit():
+                            has_agent_actions = True
+                            break
+            
             # STAGE 2: Capture Agent LLM Validations (if response contains agent actions)
-            if isinstance(response, dict) and ('actions' in response or 'agent_actions' in response):
+            if has_agent_actions:
                 print(f"\n🤖 STAGE 2: AGENT LLM VALIDATIONS")
                 print("=" * 60)
                 
-                # Handle both 'actions' and 'agent_actions' keys
-                actions = response.get('actions') or response.get('agent_actions', {})
+                # Handle different response formats:
+                # 1. Response with 'agent_actions' key
+                # 2. Response with 'actions' key
+                # 3. Response with agent IDs directly as top-level keys
+                if 'agent_actions' in response:
+                    actions = response.get('agent_actions', {})
+                elif 'actions' in response:
+                    actions = response.get('actions', {})
+                else:
+                    # Agent IDs are top-level keys, use response directly (minus non-agent keys)
+                    actions = {k: v for k, v in response.items() if str(k).isdigit()}
+                
                 print(f"🔍 DEBUG: Actions found: {actions}")
                 print(f"🔍 DEBUG: Actions type: {type(actions)}")
                 
@@ -610,17 +720,22 @@ class NegotiationTester:
             
             # CRITICAL FIX: Ensure response has correct format for game engine
             if isinstance(response, dict):
+                # Check if agent IDs are directly in response (as top-level keys)
+                agent_ids_as_keys = [k for k in response.keys() if str(k).isdigit()]
+                
+                # If response has agent IDs as top-level keys, wrap them in 'agent_actions'
+                if agent_ids_as_keys and 'agent_actions' not in response:
+                    # Keep the agent actions at top level OR wrap them - game engine can handle both
+                    # For compatibility with both formats, we'll keep it as-is since game engine now handles both
+                    print(f"🔧 Response has agent IDs as top-level keys: {agent_ids_as_keys}")
+                
                 # If response has 'actions' but not 'agent_actions', fix it
-                if 'actions' in response and 'agent_actions' not in response:
+                elif 'actions' in response and 'agent_actions' not in response:
                     response['agent_actions'] = response['actions']  # type: ignore
                     print(f"🔧 Fixed response format: moved 'actions' to 'agent_actions'")
-                
-                # Ensure agent_actions exists (fallback)
-                if 'agent_actions' not in response:
-                    response['agent_actions'] = {}  # type: ignore
-                    print(f"🔧 Added missing 'agent_actions' to response")
             
-            return response
+            # Return as tuple to match new negotiate_path_conflict signature
+            return response, refinement_history
         
         game_engine.central_negotiator.negotiate_path_conflict = capture_negotiate
         
@@ -807,6 +922,41 @@ class NegotiationTester:
         
         filepath = os.path.join(logs_dir, filename)
         
+        # Function to recursively convert to JSON-safe format
+        def make_json_safe(obj, visited=None):
+            """Recursively convert object to JSON-safe format, avoiding circular references"""
+            if visited is None:
+                visited = set()
+            
+            obj_id = id(obj)
+            
+            # Prevent circular references
+            if obj_id in visited:
+                return None
+            
+            if isinstance(obj, dict):
+                visited.add(obj_id)
+                result = {}
+                for k, v in obj.items():
+                    if isinstance(k, str):
+                        try:
+                            result[k] = make_json_safe(v, visited.copy())
+                        except Exception:
+                            result[k] = None
+                return result
+            elif isinstance(obj, (list, tuple)):
+                visited.add(obj_id)
+                try:
+                    result = [make_json_safe(item, visited.copy()) for item in obj]
+                    return result
+                except Exception:
+                    return None
+            elif isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            else:
+                # For non-serializable objects, skip them
+                return None
+        
         # Add summary statistics
         hmas2_validations = []
         validation_overrides = []
@@ -815,7 +965,7 @@ class NegotiationTester:
                 hmas2_validations.extend(negotiation['hmas2_stages'].get('agent_validations', {}).values())
                 validation_overrides.extend(negotiation['hmas2_stages'].get('validation_overrides', {}).values())
         
-        self.negotiation_log['summary'] = {
+        summary = {
             'total_scenarios': len(self.negotiation_log['conflict_scenarios']),
             'total_negotiations': len(self.negotiation_log['negotiations']),
             'total_conflicts': sum(s.get('total_conflicts', 0) for s in self.negotiation_log['conflict_scenarios']),
@@ -832,12 +982,21 @@ class NegotiationTester:
         }
         
         try:
+            # Create a clean copy of the log without circular references
+            safe_log = make_json_safe(self.negotiation_log)
+            
+            # Ensure we have a dict to add summary to
+            if not isinstance(safe_log, dict):
+                safe_log = {}
+            
+            safe_log['summary'] = summary
+            
             with open(filepath, 'w') as f:
-                json.dump(self.negotiation_log, f, indent=2)
+                json.dump(safe_log, f, indent=2)
             
             if not auto_save:  # Only print detailed info for manual saves
                 print(f"\n💾 Negotiation log saved to: {filepath}")
-                print(f"📊 Summary: {self.negotiation_log['summary']}")
+                print(f"📊 Summary: {summary}")
             else:
                 print(f"   ✅ Auto-saved to: {os.path.basename(filepath)}")
             

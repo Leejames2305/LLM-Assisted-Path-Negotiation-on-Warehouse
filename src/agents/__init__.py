@@ -138,8 +138,12 @@ class RobotAgent:
         
         elif action == 'move':
             path = action_data.get('path', [])
-            if path and len(path) > 1:
-                next_pos = tuple(path[1])  # Convert list to tuple for position
+            # Execute the path in order from the beginning
+            # If path[0] is current position, agent stays in place (effectively a wait)
+            # If path[0] is different, agent moves there
+            # This handles both cases where LLM includes/excludes current position
+            if path and len(path) > 0:
+                next_pos = tuple(path[0])  # Start from the first element
                 return self.move_to(next_pos, map_state)
             else:
                 next_move = self.get_next_move()
