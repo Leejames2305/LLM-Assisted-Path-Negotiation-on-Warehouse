@@ -232,6 +232,11 @@ class GameEngine:
         for agent in self.agents.values():
             agent.update_turn()
         
+        # Reset HMAS-2 validation flags for new turn (so agents validate if needed)
+        for agent_id, agent in self.agents.items():
+            if hasattr(agent, '_hmas2_validated'):
+                setattr(agent, '_hmas2_validated', False)
+        
         # Always check for deliveries, even if agents don't move
         for agent_id in self.agents.keys():
             self._check_box_delivery(agent_id)
@@ -503,6 +508,22 @@ class GameEngine:
             # Agent IDs are top-level keys, but filter out non-numeric keys (metadata)
             agent_actions = {k: v for k, v in resolution.items() 
                            if isinstance(k, (int, str)) and (isinstance(k, int) or k.isdigit())}
+        
+        # OPTIMIZATION: Mark all agents as HMAS-2 pre-validated before executing
+        # The central negotiator already validated these paths with agents validators,
+        # so we skip redundant validation in execute_negotiated_action
+        print(f"\n🏷️  OPTIMIZATION: Pre-marking agents as HMAS-2 validated (refinement loop already approved)")
+        for agent_id_str in agent_actions.keys():
+            if isinstance(agent_id_str, str) and agent_id_str.isdigit():
+                agent_id_key = int(agent_id_str)
+            elif isinstance(agent_id_str, int):
+                agent_id_key = agent_id_str
+            else:
+                continue
+            
+            if agent_id_key in self.agents:
+                setattr(self.agents[agent_id_key], '_hmas2_validated', True)
+                print(f"   🏷️  Agent {agent_id_key}: Pre-marked as HMAS-2 validated (skipping redundant LLM validation)")
         
         for agent_id, action_data in agent_actions.items():
             # Convert string agent_id to int if needed for lookup

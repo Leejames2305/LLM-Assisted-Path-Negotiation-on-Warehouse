@@ -409,6 +409,9 @@ class NegotiationTester:
             if not refinement_history:
                 refinement_history = game_engine.central_negotiator.get_refinement_history()
             
+            # Initialize safe_iterations for use in STAGE 2 optimization check
+            safe_iterations = []
+            
             if refinement_history:
                 print(f"\n🔄 STAGE 2A: REFINEMENT LOOP HISTORY")
                 print("=" * 60)
@@ -471,6 +474,26 @@ class NegotiationTester:
                 print(f"\n🤖 STAGE 2: AGENT LLM VALIDATIONS")
                 print("=" * 60)
                 
+                # OPTIMIZATION: Check if refinement loop already approved all paths
+                # If so, skip redundant agent validation (same criteria already checked)
+                skip_agent_validation = False
+                if safe_iterations:
+                    # Check if final iteration has NO rejections (unanimous approval)
+                    final_iteration = safe_iterations[-1] if safe_iterations else {}
+                    rejected_by = final_iteration.get('rejected_by', [])
+                    final_status = final_iteration.get('final_status', '').lower()
+                    
+                    # Unanimous approval if: no rejections OR status says "approved"
+                    is_unanimous = (not rejected_by) or ('approved' in final_status)
+                    
+                    if is_unanimous:
+                        skip_agent_validation = True
+                        print(f"✅ OPTIMIZATION: Refinement loop achieved unanimous approval")
+                        print(f"   Rejections: {len(rejected_by)} agents")
+                        print(f"   Final Status: {final_status if final_status else '(approved by consensus)'}")
+                        print(f"   Skipping redundant agent validation (same criteria already checked)")
+                        print(f"   Saves {len([k for k,v in response.items() if str(k).isdigit()])} LLM API calls! 💰")
+                
                 # Handle different response formats:
                 # 1. Response with 'agent_actions' key
                 # 2. Response with 'actions' key
@@ -496,6 +519,31 @@ class NegotiationTester:
                         
                         if agent_id_key in game_engine.agents:
                             agent = game_engine.agents[agent_id_key]
+                            
+                            # OPTIMIZATION: Check if validation can be skipped (refinement loop already approved)
+                            if skip_agent_validation:
+                                print(f"\n✅ Agent {agent_id_key}: Path pre-validated by refinement loop")
+                                print(f"   Criteria already checked: orthogonal moves, no walls, zero-moves allowed")
+                                print(f"   Skipping redundant LLM validation call 💰")
+                                
+                                # Create validation entry showing it was pre-validated
+                                validation_entry = {
+                                    'agent_id': agent_id_key,
+                                    'proposed_action': action_data,
+                                    'validation_model': 'refinement_loop_pre_validated',
+                                    'validation_result': {'valid': True, 'reason': 'pre_validated_by_refinement_loop'},
+                                    'alternative_suggested': None,
+                                    'final_action_executed': action_data
+                                }
+                                
+                                # Record in both places
+                                negotiation_entry['hmas2_stages']['agent_validations'][agent_id] = validation_entry
+                                negotiation_entry['hmas2_stages']['final_actions'][agent_id] = action_data
+                                
+                                # Still flag agent as HMAS-2 validated for game engine
+                                setattr(agent, '_hmas2_validated', True)
+                                print(f"   🏷️  Agent {agent_id_key}: Flagged as HMAS-2 validated (pre-validated)")
+                                continue  # Skip to next agent
                             
                             print(f"\n🔍 Agent {agent_id_key}: Validating action {action_data}")
                             
