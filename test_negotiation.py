@@ -359,17 +359,13 @@ class NegotiationTester:
                 print(f"\n💬 CENTRAL LLM RESPONSE PREVIEW:")
                 print("-" * 40)
                 if isinstance(response, dict):
-                    # Show concise action preview for each agent
-                    if 'agent_actions' in response:
-                        for aid, action in response['agent_actions'].items():
-                            action_type = action.get('action', '?')
-                            print(f"  Agent {aid}: {action_type} ✅")
-                    # Show reasoning if available
-                    if 'reasoning' in response and response['reasoning']:
-                        reasoning_preview = response['reasoning'][:80]
-                        print(f"  Reasoning: {reasoning_preview}{'...' if len(response['reasoning']) > 80 else ''}")
+                    # Just print a snippet of the JSON response
+                    response_str = json.dumps(response, indent=2, default=str)[:100]
+                    print(response_str)
+                    if len(json.dumps(response, default=str)) > 100:
+                        print("...")
                 else:
-                    print(str(response)[:200] + "..." if len(str(response)) > 200 else str(response))
+                    print(str(response)[:100])
                 print("-" * 40)
                 
             except Exception as e:
@@ -391,18 +387,34 @@ class NegotiationTester:
             safe_iterations = []
             
             if refinement_history:
-                print(f"\n🔄 REFINEMENT LOOP: {len(refinement_history)} iteration(s)")
-                
+
                 # Extract only the key information from refinement history to avoid circular refs
                 safe_iterations = []
+                iteration_num = 1
                 for iteration_record in refinement_history:
                     iteration = iteration_record.get('iteration', '?')
                     stage = iteration_record.get('stage', '?')
                     status = iteration_record.get('final_status', '')
                     rejected_by = iteration_record.get('rejected_by', [])
+                    validation_results = iteration_record.get('validation_results', {})
                     
-                    if rejected_by:
-                        print(f"   Iteration {iteration}: {len(rejected_by)} agent(s) rejected → {status if status else 'refined'}")
+                    # Only show validation details for validation stage iterations (not initial negotiation)
+                    if stage == 'validation' and validation_results and isinstance(validation_results, dict):
+                        for agent_id, val_result in validation_results.items():
+                            if isinstance(val_result, dict):
+                                valid = val_result.get('valid', False)
+                                reason = val_result.get('reason', 'unknown')
+                                
+                                # Try to get agent model info
+                                agent_idx = agent_id if isinstance(agent_id, int) else int(agent_id) if str(agent_id).isdigit() else agent_id
+                                if agent_idx in game_engine.agents:
+                                    agent = game_engine.agents[agent_idx]
+                                    agent_model = getattr(agent.validator, 'model', 'openai/gpt-oss-20b:free') if hasattr(agent, 'validator') else 'openai/gpt-oss-20b:free'
+                                    
+                                    print(f"🔎 Validation Agent {agent_id}: {[valid, reason, 'action']}\n")
+                    
+                    if rejected_by and stage == 'validation':
+                        print(f"   Iteration {iteration}: {len(rejected_by)} agent(s) rejected")
                     
                     # Store only safe data (avoid storing complex objects)
                     safe_iterations.append({
@@ -470,6 +482,7 @@ class NegotiationTester:
                     actions = {k: v for k, v in response.items() if str(k).isdigit()}
                 
                 if isinstance(actions, dict):
+                    iteration_num = 1
                     for agent_id, action_data in actions.items():
                         # Convert string agent_id to int if needed for lookup - FIXED TYPE HANDLING
                         agent_id_key = int(agent_id) if isinstance(agent_id, str) and agent_id.isdigit() else agent_id
@@ -515,14 +528,23 @@ class NegotiationTester:
                                 # Get the map state for validation
                                 map_state = game_engine.warehouse_map.get_state_dict()
                                 
+                                # Get the actual agent model being used
+                                agent_model = getattr(agent.validator, 'model', 'unknown') if hasattr(agent, 'validator') else 'unknown'
+                                
+                                # Show LLM request being sent
+                                print(f"\n📡 Iteration {iteration_num}: Sending request to {Fore.YELLOW}{agent_model}{Style.RESET_ALL}...")
+                                
                                 # Call the agent's validator - USE THE CONVERTED agent_id_key
                                 validation_result = agent.validator.validate_negotiated_action(
                                     agent_id_key, action_data, map_state  # Use converted ID here too
                                 )
                                 
-                                validation_entry['validation_result'] = validation_result
+                                valid = validation_result.get('valid', False)
+                                reason = validation_result.get('reason', 'unknown')
+                                action_type = action_data.get('action', '?') if isinstance(action_data, dict) else '?'
+                                print(f"🔎 Validation Agent {agent_id}: {[valid, reason, action_type]}")
                                 
-                                print(f"   Agent {agent_id}: {'✅ Approved' if validation_result.get('valid', False) else '❌ Rejected'} ({validation_result.get('reason', 'unknown')})")
+                                validation_entry['validation_result'] = validation_result
                                 
                                 if not validation_result.get('valid', False):
                                     # COUNT ALL REJECTIONS, not just alternatives
@@ -535,7 +557,6 @@ class NegotiationTester:
                                     if 'alternative' in validation_result:
                                         alternative = validation_result['alternative']
                                         validation_entry['alternative_suggested'] = alternative
-                                        print(f"      → Suggested alternative: {alternative.get('action', '?')}")
                                         
                                         # Update the override entry with the alternative
                                         negotiation_entry['hmas2_stages']['validation_overrides'][agent_id]['agent_alternative'] = alternative
@@ -550,6 +571,9 @@ class NegotiationTester:
                                 negotiation_entry['hmas2_stages']['agent_validations'][agent_id] = validation_entry
                                 negotiation_entry['hmas2_stages']['final_actions'][agent_id] = final_action
                                 
+                                # Increment iteration counter for next agent
+                                iteration_num += 1
+                                
                             except Exception as validation_error:
                                 validation_entry['error'] = str(validation_error)
                                 print(f"   ❌ Validation Error for Agent {agent_id}: {validation_error}")
@@ -559,6 +583,9 @@ class NegotiationTester:
                                 validation_entry['final_action_executed'] = fallback_action
                                 negotiation_entry['hmas2_stages']['agent_validations'][agent_id] = validation_entry
                                 negotiation_entry['hmas2_stages']['final_actions'][agent_id] = fallback_action
+                                
+                                # Increment iteration counter even on error
+                                iteration_num += 1
                         else:
                             print(f"⚠️  Agent {agent_id} (key: {agent_id_key}) not found in game_engine.agents: {list(game_engine.agents.keys())}")
                 

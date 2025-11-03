@@ -593,7 +593,6 @@ class GameEngine:
                     success = True  # Waiting is always successful
                 else:
                     # Normal move to different position
-                    print(f"🔍 Agent {agent_id}: Attempting move from {agent.position} to {next_pos}")
                     map_state = self.warehouse_map.get_state_dict()
                     success = agent.move_to(next_pos, map_state)
                 
@@ -614,13 +613,9 @@ class GameEngine:
                         agent.planned_path and 
                         len(agent.planned_path) > 1):
                         
-                        print(f"🔍 Agent {agent_id}: Before path advance - Path: {agent.planned_path[:3]}... (len: {len(agent.planned_path)})")
-                        print(f"🔍 Agent {agent_id}: Current position: {agent.position}")
-                        
                         # Remove the first step (current position) from negotiated path
                         agent.planned_path = agent.planned_path[1:]
                         print(f"🔄 Agent {agent_id}: Advanced negotiated path, {len(agent.planned_path)} steps remaining")
-                        print(f"🔍 Agent {agent_id}: After path advance - Path: {agent.planned_path[:3]}... (len: {len(agent.planned_path)})")
                         
                         # If negotiated path is completed, clear the flag
                         if len(agent.planned_path) <= 1:
