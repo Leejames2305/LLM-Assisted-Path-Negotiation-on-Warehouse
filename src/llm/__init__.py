@@ -52,25 +52,20 @@ class OpenRouterClient:
             payload["provider"] = {
                 "order": self.provider_order
             }
-            print(f"🔧 Using provider order: {self.provider_order}")
         
         # Add reasoning configuration if enabled
         if self.reasoning_enabled or self.reasoning_exclude:
             payload["reasoning"] = {}
             if self.reasoning_enabled:
                 payload["reasoning"]["enabled"] = True
-                print("🧠 Reasoning enabled")
             if self.reasoning_exclude:
                 payload["reasoning"]["exclude"] = True
-                print("🚫 Reasoning tokens excluded from response")
         
         # Add any additional kwargs
         payload.update(kwargs)
         
         try:
             print(f"📡 Sending request to {model}...")
-            if self.provider_order:
-                print(f"   Provider preference: {self.provider_order}")
             
             response = requests.post(self.base_url, headers=self.headers, data=json.dumps(payload), timeout=30)
             response.raise_for_status()
@@ -83,12 +78,8 @@ class OpenRouterClient:
             if 'provider' in data:
                 print(f"✅ Response from provider: {data['provider']}")
             
-            # Log finish reason for debugging
-            print(f"🔍 DEBUG: OpenRouter finish_reason: {finish_reason}")
-            
             if finish_reason == 'length':
-                print("⚠️  WARNING: Response was truncated due to token limit!")
-                print(f"🔍 Truncated content: {content[:200]}...")
+                print("⚠️  WARNING: Response truncated due to token limit!")
             
             return content
         

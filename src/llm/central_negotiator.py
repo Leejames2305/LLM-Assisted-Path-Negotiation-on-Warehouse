@@ -43,7 +43,6 @@ class CentralNegotiator:
         """Toggle spatial hints on/off for benchmarking"""
         self.enable_spatial_hints = enabled
         status = "ENABLED" if enabled else "DISABLED"
-        print(f"🔧 Spatial hints {status}")
         
     def negotiate_path_conflict(
         self, 
@@ -662,9 +661,6 @@ class CentralNegotiator:
         # Try to extract JSON from response
         response = response.strip()
         
-        print(f"🔍 DEBUG: Response length: {len(response)} chars")
-        print(f"🔍 DEBUG: Response preview: {response[:200]}...")
-        
         # Look for JSON in the response
         start_idx = response.find('{')
         end_idx = response.rfind('}') + 1
@@ -673,22 +669,14 @@ class CentralNegotiator:
             json_str = response[start_idx:end_idx]
             try:
                 result = json.loads(json_str)
-                print("✅ Successfully parsed JSON response")
                 return result
             except json.JSONDecodeError as e:
-                print(f"❌ JSON parsing failed: {e}")
-                print(f"🔧 Attempting truncation recovery...")
-                
                 # Try to recover from truncated JSON
                 recovered_json = self._attempt_json_recovery(json_str)
                 if recovered_json:
-                    print("✅ Successfully recovered from truncated JSON!")
                     return recovered_json
-                else:
-                    print("❌ Could not recover truncated JSON")
         
         # If all parsing fails, create a simple resolution
-        print("🔄 Using fallback JSON structure")
         return {
             "resolution": "priority",
             "agent_actions": {},
@@ -915,10 +903,6 @@ class CentralNegotiator:
                 if isinstance(pos, (list, tuple)) and len(pos) == 2:
                     all_planned_positions.add(tuple(pos))
         
-        print(f"🔍 DEBUG: All planned path positions to avoid: {all_planned_positions}")
-        print(f"🔍 DEBUG: Agent current positions: {agents}")
-        print(f"🔍 DEBUG: Box positions: {boxes}")
-        
         wiggle_rooms = []
         
         # Find empty cells that are NOT on any planned path
@@ -952,10 +936,6 @@ class CentralNegotiator:
         
         # Sort by strategic value
         wiggle_rooms.sort(key=lambda w: w['strategic_value'], reverse=True)
-        
-        print(f"🎯 DEBUG: Found {len(wiggle_rooms)} potential wiggle rooms:")
-        for wr in wiggle_rooms:
-            print(f"   {wr['position']}: {wr['type']} (value: {wr['strategic_value']}, connectivity: {wr['connectivity']})")
         
         return wiggle_rooms[:5]  # Return top 5 wiggle rooms
     

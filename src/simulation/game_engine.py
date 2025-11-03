@@ -61,8 +61,6 @@ class GameEngine:
         if not self.warehouse_map or self.warehouse_map.width == 0:
             raise ValueError("Warehouse map not properly initialized. Load a layout first.")
         
-        print(f"Loaded {self.warehouse_map.width}x{self.warehouse_map.height} warehouse map with {self.num_agents} agents")
-        
         # Initialize agents from the layout
         # Agents are already created in main.py, but set up their targets here
         for agent_id, agent in self.agents.items():
@@ -72,9 +70,6 @@ class GameEngine:
                 if box_id in self.warehouse_map.boxes:
                     box_pos = self.warehouse_map.boxes[box_id]
                     agent.set_target(box_pos)  # First go to the box
-                    print(f"Agent {agent_id}: Assigned to pickup box at {box_pos}")
-            else:
-                print(f"⚠️  Agent {agent_id}: No goal assigned in layout")
         
         # Initial pathfinding
         self._plan_initial_paths()
@@ -103,7 +98,6 @@ class GameEngine:
         for agent_id, agent in self.agents.items():
             map_state = self.warehouse_map.get_state_dict()
             path = agent.plan_path(map_state)
-            print(f"Agent {agent_id}: Path planned ({len(path)} steps)")
     
     def detect_stagnation_conflicts(self) -> Dict:
         """Detect when agents have failed moves for multiple turns (actual stagnation, not intentional waiting)"""
@@ -341,7 +335,6 @@ class GameEngine:
                 if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
                     # Use the existing negotiated path instead of replanning
                     forced_moves[agent_id] = agent.planned_path.copy()
-                    print(f"Agent {agent_id}: Using preserved negotiated path with {len(agent.planned_path)} steps")
                 else:
                     # Force path planning ignoring other agents
                     map_state = self.warehouse_map.get_state_dict()
@@ -349,9 +342,6 @@ class GameEngine:
                     
                     if forced_path:
                         forced_moves[agent_id] = forced_path
-                        print(f"Agent {agent_id}: Forced path with {len(forced_path)} steps")
-                    else:
-                        print(f"Agent {agent_id}: No forced path available")
         
         return forced_moves
     
@@ -370,7 +360,6 @@ class GameEngine:
                 if has_negotiated_path:
                     # Agent has a negotiated path - preserve it, don't re-plan
                     planned_moves[agent_id] = agent.planned_path.copy()
-                    print(f"Agent {agent_id}: Using preserved negotiated path ({len(agent.planned_path)} steps)")
                 else:
                     # Check if we need to re-plan (no path, or path doesn't lead to current target)
                     needs_replan = (not agent.planned_path or 
@@ -383,7 +372,6 @@ class GameEngine:
                     
                     if agent.planned_path:
                         planned_moves[agent_id] = agent.planned_path.copy()
-                        print(f"Agent {agent_id}: Normal path with {len(agent.planned_path)} steps")
         
         return planned_moves
     
@@ -512,7 +500,6 @@ class GameEngine:
         # OPTIMIZATION: Mark all agents as HMAS-2 pre-validated before executing
         # The central negotiator already validated these paths with agents validators,
         # so we skip redundant validation in execute_negotiated_action
-        print(f"\n🏷️  OPTIMIZATION: Pre-marking agents as HMAS-2 validated (refinement loop already approved)")
         for agent_id_str in agent_actions.keys():
             if isinstance(agent_id_str, str) and agent_id_str.isdigit():
                 agent_id_key = int(agent_id_str)
@@ -523,7 +510,6 @@ class GameEngine:
             
             if agent_id_key in self.agents:
                 setattr(self.agents[agent_id_key], '_hmas2_validated', True)
-                print(f"   🏷️  Agent {agent_id_key}: Pre-marked as HMAS-2 validated (skipping redundant LLM validation)")
         
         for agent_id, action_data in agent_actions.items():
             # Convert string agent_id to int if needed for lookup
@@ -532,7 +518,6 @@ class GameEngine:
             elif isinstance(agent_id, int):
                 agent_id_key = agent_id
             else:
-                print(f"⚠️  Invalid agent_id format: {agent_id} ({type(agent_id)})")
                 continue
             
             if agent_id_key in self.agents:
@@ -551,40 +536,30 @@ class GameEngine:
                     
                     # IMPORTANT: Mark agent as having a negotiated path to preserve it
                     agent._has_negotiated_path = True
-                    print(f"🔄 Agent {agent_id_key}: Updated planned path with negotiated route: {updated_path}")
-                    print(f"🏷️  Agent {agent_id_key}: Marked as having negotiated path")
                 
                 success = agent.execute_negotiated_action(action_data, map_state)
-                action_type = action_data.get('action', 'unknown')
                 
                 if success:
-                    print(f"✅ Agent {agent_id_key}: {action_type} executed successfully")
-                    
                     # IMPORTANT: After successful move, update the negotiated path by removing the first step
                     if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
                         if len(agent.planned_path) > 1:
                             # Remove the first step and keep the rest
                             agent.planned_path = agent.planned_path[1:]
-                            print(f"🔄 Agent {agent_id_key}: Advanced negotiated path after move, {len(agent.planned_path)} steps remaining")
                         else:
                             # Path completed, clear the negotiated path flag
                             agent._has_negotiated_path = False
                             agent.planned_path = []
-                            print(f"🏁 Agent {agent_id_key}: Negotiated path completed, clearing flag")
                     
                     # Check for box interactions after successful move
+                    action_type = action_data.get('action', 'unknown')
                     if action_type == 'move':
                         self._check_box_pickup(agent_id_key)
                         self._check_box_delivery(agent_id_key)
                         
                 else:
-                    print(f"❌ Agent {agent_id_key}: {action_type} execution failed")
                     # On failure, clear the negotiated path flag to allow replanning
                     if hasattr(agent, '_has_negotiated_path'):
                         agent._has_negotiated_path = False
-                        print(f"🔄 Agent {agent_id_key}: Cleared negotiated path flag due to execution failure")
-            else:
-                print(f"⚠️  Agent {agent_id} (key: {agent_id_key}) not found in agents: {list(self.agents.keys())}")
     
     def _execute_planned_moves(self, planned_moves: Dict):
         """Execute planned moves without conflicts"""
@@ -704,7 +679,6 @@ class GameEngine:
                             # Force immediate path re-planning after target change
                             map_state = self.warehouse_map.get_state_dict()
                             agent.plan_path(map_state)
-                            print(f"🗺️  Agent {agent_id}: Re-planned path to new target ({len(agent.planned_path)} steps)")
     
     def _check_box_delivery(self, agent_id: int):
         """Check if agent can deliver box at current position"""
@@ -920,7 +894,6 @@ class GameEngine:
         self.initialize_simulation()
         
         print(f"\n{Fore.CYAN}🚀 Starting Interactive Simulation{Style.RESET_ALL}")
-        print("Commands: [Enter] = Next step, 'q' = Quit, 'auto' = Auto-run")
         
         auto_mode = False
         

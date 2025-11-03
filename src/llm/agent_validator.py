@@ -34,11 +34,6 @@ class AgentValidator:
             validation_result: {'valid': bool, 'reason': str, 'alternative': Dict/None}
         """
         
-        # Debug output to see what we're working with
-        print(f"🔍 DEBUG: Validating for agent {agent_id}")
-        print(f"🔍 DEBUG: Map state agents: {current_state.get('agents', {})}")
-        print(f"🔍 DEBUG: Action: {proposed_action}")
-        
         # Quick validation for simple wait actions
         if proposed_action.get('action') == 'wait':
             return {
@@ -46,42 +41,31 @@ class AgentValidator:
                 'reason': 'Wait action is always safe'
             }
         
-        # Check if agent position is available - IMPROVED LOGIC
+        # Check if agent position is available
         agents = current_state.get('agents', {})
         current_pos = None
         
-        # Try multiple approaches to find the agent position with better debugging
-        print(f"🔍 DEBUG: Looking for agent_id {agent_id} (type: {type(agent_id)}) in agents: {agents}")
-        print(f"🔍 DEBUG: Agent keys: {list(agents.keys())} (types: {[type(k) for k in agents.keys()]})")
-        
+        # Try multiple approaches to find the agent position
         if agent_id in agents:
             current_pos = agents[agent_id]
-            print(f"🔍 DEBUG: Found agent {agent_id} directly")
         elif str(agent_id) in agents:
             current_pos = agents[str(agent_id)]
-            print(f"🔍 DEBUG: Found agent {agent_id} as string")
         else:
             # Try converting all keys to int and check again
             for key, pos in agents.items():
                 try:
                     if int(key) == int(agent_id):
                         current_pos = pos
-                        print(f"🔍 DEBUG: Found agent {agent_id} via int conversion from key {key}")
                         break
                 except (ValueError, TypeError):
                     continue
         
-        print(f"🔍 DEBUG: Agent {agent_id} current position found: {current_pos}")
-        
         if current_pos is None:
-            print(f"🔍 DEBUG: Agent {agent_id} position not found! Available: {list(agents.keys())}")
             return {
                 'valid': False,
                 'reason': f'Agent {agent_id} position not found in map state',
                 'alternative': {'action': 'wait', 'reason': 'position_unknown'}
             }
-        
-        print(f"🔍 DEBUG: Agent {agent_id} current position: {current_pos}")
         
         system_prompt = self._create_validation_system_prompt()
         user_prompt = self._create_validation_query(agent_id, proposed_action, current_state)
@@ -109,7 +93,6 @@ class AgentValidator:
         if response:
             try:
                 result = self._parse_validation_response(response)
-                print(f"🔍 DEBUG: Validator response: {result}")
                 
                 # If validation failed and no alternative provided, suggest wait
                 if not result.get('valid', False) and 'alternative' not in result:
@@ -117,10 +100,8 @@ class AgentValidator:
                 
                 return result
             except Exception as e:
-                print(f"🔍 DEBUG: Validation parsing error: {e}")
                 return self._create_permissive_fallback_with_alternative()
         else:
-            print(f"🔍 DEBUG: No response from validator")
             return self._create_permissive_fallback_with_alternative()
     
     def check_move_safety(self, agent_id: int, from_pos: Tuple[int, int], to_pos: Tuple[int, int], map_state: Dict) -> bool:

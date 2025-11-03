@@ -103,11 +103,9 @@ class RobotAgent:
         
         # Check if this agent was already validated by HMAS-2
         if getattr(self, '_hmas2_validated', False):
-            print(f"✅ Agent {self.agent_id}: Executing HMAS-2 pre-validated action (skipping redundant validation)")
             return self._execute_action(action_data, map_state)
         
         # Otherwise, perform normal validation
-        print(f"🔍 Agent {self.agent_id}: Performing game engine validation (no HMAS-2 flag)")
         validation_result = self.validator.validate_negotiated_action(
             self.agent_id, action_data, map_state
         )
@@ -164,9 +162,6 @@ class RobotAgent:
             bool: True if move was successful
         """
         
-        # Log detailed validation info
-        print(f"🔍 Agent {self.agent_id}: Validating move {self.position} → {new_position}")
-        
         # Check if position is the same (waiting in place)
         if new_position == self.position:
             print(f"✅ Agent {self.agent_id}: Staying in place (valid wait)")
@@ -203,7 +198,6 @@ class RobotAgent:
         
         # Check if reached target
         if self.position == self.target_position:
-            print(f"Agent {self.agent_id}: Reached target {self.target_position}")
             self.planned_path = []
             # Clear negotiated path flag when target is reached
             if hasattr(self, '_has_negotiated_path'):

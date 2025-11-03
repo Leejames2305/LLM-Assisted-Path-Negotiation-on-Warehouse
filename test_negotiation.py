@@ -114,9 +114,7 @@ class NegotiationTester:
     def run_negotiation_test(self, max_turns: int = 100, enable_spatial_hints: bool = True) -> Dict[str, Any]:
         """Run a negotiation test with user-selected layout"""
         
-        print(f"\n🎯 TESTING NEGOTIATION WITH LLM")
         hints_status = "WITH SPATIAL HINTS" if enable_spatial_hints else "BASELINE (NO HINTS)"
-        print(f"📊 Mode: {hints_status}")
         print("=" * 60)
         
         # Load layout from user selection
@@ -152,7 +150,6 @@ class NegotiationTester:
             else:
                 print(f"   ⚠️  Agent {agent_id}: No goal assigned")
         
-        print(f"\n⚔️  Expected Conflicts: GUARANTEED (agents must navigate through same bottlenecks)")
         print("=" * 50)
         
         # Confirm before proceeding
@@ -182,13 +179,11 @@ class NegotiationTester:
                 if goal_id in warehouse.boxes:
                     box_pos = warehouse.boxes[goal_id]
                     agent.set_target(box_pos)  # Go to box first!
-                    print(f"   Agent {agent_id}: Initial target set to BOX at {box_pos}")
                     
                     # Store the final delivery target for later (after box pickup)
                     if goal_id in warehouse.targets:
                         delivery_target = warehouse.targets[goal_id]
                         setattr(agent, 'delivery_target', delivery_target)
-                        print(f"   Agent {agent_id}: Delivery target will be {delivery_target}")
                 else:
                     print(f"   ⚠️  WARNING: Agent {agent_id} assigned to non-existent box {goal_id}")
             else:
@@ -197,7 +192,6 @@ class NegotiationTester:
             game_engine.agents[agent_id] = agent
         
         # CRITICAL: Plan initial paths for all agents (ignoring other agents for initial planning)
-        print("🧠 Planning initial paths for all agents...")
         map_state = warehouse.get_state_dict()
         
         # Create a temporary pathfinder for initial planning
@@ -224,16 +218,6 @@ class NegotiationTester:
                 
                 # Set the planned path directly
                 agent.planned_path = path
-                
-                # Show what the agent is planning to do
-                if hasattr(agent, 'delivery_target'):
-                    print(f"   Agent {agent_id}: Phase 1 - Go to BOX at {agent.target_position} ({len(path)} steps)")
-                    if len(path) <= 10:  # Show short paths
-                        print(f"      Path to box: {path}")
-                else:
-                    print(f"   Agent {agent_id}: Planned path with {len(path)} steps")
-                    if len(path) <= 10:  # Show short paths
-                        print(f"      Path: {path}")
                 
                 if len(path) == 0:
                     print(f"   ⚠️  WARNING: Agent {agent_id} has NO PATH to target!")
@@ -290,14 +274,8 @@ class NegotiationTester:
             # Set flag to prevent re-negotiation
             setattr(game_engine, '_negotiation_captured', True)
             
-            print(f"\n🤖 CONFLICT DETECTED! Initiating HMAS-2 Negotiation...")
-            print(f"   🏢 CENTRAL LLM: Analyzing conflict between agents {[a.get('id') for a in conflict_data.get('agents', [])]}")
-            print(f"   📍 Conflict points: {conflict_data.get('conflict_points', [])}")
-            
-            # Get the actual models being used (no more hardcoding!)
+            # Get the actual models being used
             central_model = getattr(game_engine.central_negotiator, 'model', 'unknown')
-            
-            print(f"🔍 DEBUG: Central Negotiator using model: {central_model}")
             
             # Sanitize conflict_data to avoid circular references in JSON serialization
             def sanitize_for_json(obj, visited=None):
@@ -353,19 +331,11 @@ class NegotiationTester:
             def capture_system_prompt():
                 prompt = original_system_prompt()
                 negotiation_entry['hmas2_stages']['central_negotiation']['system_prompt'] = prompt
-                print(f"\n📋 CENTRAL LLM SYSTEM PROMPT:")
-                print("=" * 50)
-                print(prompt[:500] + "..." if len(prompt) > 500 else prompt)
-                print("=" * 50)
                 return prompt
             
             def capture_user_prompt(conflict_data):
                 prompt = original_conflict_desc(conflict_data)
                 negotiation_entry['hmas2_stages']['central_negotiation']['user_prompt'] = prompt
-                print(f"\n📝 CENTRAL LLM USER PROMPT:")
-                print("=" * 50)
-                print(prompt)
-                print("=" * 50)
                 return prompt
             
             # Temporarily replace methods to capture prompts
@@ -386,12 +356,20 @@ class NegotiationTester:
                 
                 negotiation_entry['hmas2_stages']['central_negotiation']['llm_response'] = response
                 
-                print(f"\n💬 CENTRAL LLM RESPONSE:")
+                print(f"\n💬 CENTRAL LLM RESPONSE PREVIEW:")
                 print("-" * 40)
                 if isinstance(response, dict):
-                    print(json.dumps(response, indent=2))
+                    # Show concise action preview for each agent
+                    if 'agent_actions' in response:
+                        for aid, action in response['agent_actions'].items():
+                            action_type = action.get('action', '?')
+                            print(f"  Agent {aid}: {action_type} ✅")
+                    # Show reasoning if available
+                    if 'reasoning' in response and response['reasoning']:
+                        reasoning_preview = response['reasoning'][:80]
+                        print(f"  Reasoning: {reasoning_preview}{'...' if len(response['reasoning']) > 80 else ''}")
                 else:
-                    print(str(response))
+                    print(str(response)[:200] + "..." if len(str(response)) > 200 else str(response))
                 print("-" * 40)
                 
             except Exception as e:
@@ -413,9 +391,7 @@ class NegotiationTester:
             safe_iterations = []
             
             if refinement_history:
-                print(f"\n🔄 STAGE 2A: REFINEMENT LOOP HISTORY")
-                print("=" * 60)
-                print(f"Total iterations: {len(refinement_history)}")
+                print(f"\n🔄 REFINEMENT LOOP: {len(refinement_history)} iteration(s)")
                 
                 # Extract only the key information from refinement history to avoid circular refs
                 safe_iterations = []
@@ -425,11 +401,8 @@ class NegotiationTester:
                     status = iteration_record.get('final_status', '')
                     rejected_by = iteration_record.get('rejected_by', [])
                     
-                    print(f"\n   Iteration {iteration} - Stage: {stage}")
                     if rejected_by:
-                        print(f"   ❌ Rejected by: {rejected_by}")
-                    if status:
-                        print(f"   Status: {status}")
+                        print(f"   Iteration {iteration}: {len(rejected_by)} agent(s) rejected → {status if status else 'refined'}")
                     
                     # Store only safe data (avoid storing complex objects)
                     safe_iterations.append({
@@ -453,10 +426,6 @@ class NegotiationTester:
                     'iterations': []
                 }
             
-            # Debug output to see what keys exist in the response
-            print(f"\n🔍 DEBUG: Response keys: {list(response.keys()) if isinstance(response, dict) else 'Not a dict'}")
-            print(f"🔍 DEBUG: Response type: {type(response)}")
-            
             # Check if response has agent actions (either as 'agent_actions' key or as agent IDs directly)
             has_agent_actions = False
             if isinstance(response, dict):
@@ -471,7 +440,6 @@ class NegotiationTester:
             
             # STAGE 2: Capture Agent LLM Validations (if response contains agent actions)
             if has_agent_actions:
-                print(f"\n🤖 STAGE 2: AGENT LLM VALIDATIONS")
                 print("=" * 60)
                 
                 # OPTIMIZATION: Check if refinement loop already approved all paths
@@ -488,11 +456,6 @@ class NegotiationTester:
                     
                     if is_unanimous:
                         skip_agent_validation = True
-                        print(f"✅ OPTIMIZATION: Refinement loop achieved unanimous approval")
-                        print(f"   Rejections: {len(rejected_by)} agents")
-                        print(f"   Final Status: {final_status if final_status else '(approved by consensus)'}")
-                        print(f"   Skipping redundant agent validation (same criteria already checked)")
-                        print(f"   Saves {len([k for k,v in response.items() if str(k).isdigit()])} LLM API calls! 💰")
                 
                 # Handle different response formats:
                 # 1. Response with 'agent_actions' key
@@ -506,25 +469,16 @@ class NegotiationTester:
                     # Agent IDs are top-level keys, use response directly (minus non-agent keys)
                     actions = {k: v for k, v in response.items() if str(k).isdigit()}
                 
-                print(f"🔍 DEBUG: Actions found: {actions}")
-                print(f"🔍 DEBUG: Actions type: {type(actions)}")
-                
                 if isinstance(actions, dict):
                     for agent_id, action_data in actions.items():
                         # Convert string agent_id to int if needed for lookup - FIXED TYPE HANDLING
                         agent_id_key = int(agent_id) if isinstance(agent_id, str) and agent_id.isdigit() else agent_id
-                        
-                        print(f"🔍 DEBUG: Processing agent_id: {agent_id} (type: {type(agent_id)}) -> {agent_id_key} (type: {type(agent_id_key)})")
-                        print(f"🔍 DEBUG: Looking for agent {agent_id} (converted to {agent_id_key}) in agents: {list(game_engine.agents.keys())}")
                         
                         if agent_id_key in game_engine.agents:
                             agent = game_engine.agents[agent_id_key]
                             
                             # OPTIMIZATION: Check if validation can be skipped (refinement loop already approved)
                             if skip_agent_validation:
-                                print(f"\n✅ Agent {agent_id_key}: Path pre-validated by refinement loop")
-                                print(f"   Criteria already checked: orthogonal moves, no walls, zero-moves allowed")
-                                print(f"   Skipping redundant LLM validation call 💰")
                                 
                                 # Create validation entry showing it was pre-validated
                                 validation_entry = {
@@ -542,20 +496,16 @@ class NegotiationTester:
                                 
                                 # Still flag agent as HMAS-2 validated for game engine
                                 setattr(agent, '_hmas2_validated', True)
-                                print(f"   🏷️  Agent {agent_id_key}: Flagged as HMAS-2 validated (pre-validated)")
                                 continue  # Skip to next agent
                             
-                            print(f"\n🔍 Agent {agent_id_key}: Validating action {action_data}")
-                            
-                            # Get the actual agent model being used (no hardcoding!)
+                            # Get the actual agent model being used
                             agent_model = getattr(agent.validator, 'model', 'unknown') if hasattr(agent, 'validator') else 'unknown'
-                            print(f"🔍 DEBUG: Agent {agent_id_key} validator using model: {agent_model}")
                             
-                            # Capture the validation process - USE THE CONVERTED agent_id_key
+                            # Capture the validation process
                             validation_entry = {
-                                'agent_id': agent_id_key,  # Use converted ID
+                                'agent_id': agent_id_key,
                                 'proposed_action': action_data,
-                                'validation_model': agent_model,  # Dynamic model detection!
+                                'validation_model': agent_model,
                                 'validation_result': None,
                                 'alternative_suggested': None,
                                 'final_action_executed': None
@@ -565,10 +515,6 @@ class NegotiationTester:
                                 # Get the map state for validation
                                 map_state = game_engine.warehouse_map.get_state_dict()
                                 
-                                # Debug the map state before passing to validator
-                                print(f"🔍 DEBUG: Map state before validation: {map_state.get('agents', {})}")
-                                print(f"🔍 DEBUG: Map state agent types: {[(k, type(k)) for k in map_state.get('agents', {}).keys()]}")
-                                
                                 # Call the agent's validator - USE THE CONVERTED agent_id_key
                                 validation_result = agent.validator.validate_negotiated_action(
                                     agent_id_key, action_data, map_state  # Use converted ID here too
@@ -576,13 +522,9 @@ class NegotiationTester:
                                 
                                 validation_entry['validation_result'] = validation_result
                                 
-                                print(f"   📋 Validation Result: {validation_result.get('valid', 'Unknown')}")
-                                if 'reason' in validation_result:
-                                    print(f"   💭 Reason: {validation_result['reason']}")
+                                print(f"   Agent {agent_id}: {'✅ Approved' if validation_result.get('valid', False) else '❌ Rejected'} ({validation_result.get('reason', 'unknown')})")
                                 
                                 if not validation_result.get('valid', False):
-                                    print(f"   ❌ Agent {agent_id} REJECTED the central negotiation!")
-                                    
                                     # COUNT ALL REJECTIONS, not just alternatives
                                     negotiation_entry['hmas2_stages']['validation_overrides'][agent_id] = {
                                         'rejected_central_action': action_data,
@@ -593,17 +535,15 @@ class NegotiationTester:
                                     if 'alternative' in validation_result:
                                         alternative = validation_result['alternative']
                                         validation_entry['alternative_suggested'] = alternative
-                                        print(f"   🔄 Agent {agent_id} suggests alternative: {alternative}")
+                                        print(f"      → Suggested alternative: {alternative.get('action', '?')}")
                                         
                                         # Update the override entry with the alternative
                                         negotiation_entry['hmas2_stages']['validation_overrides'][agent_id]['agent_alternative'] = alternative
                                         final_action = alternative
                                     else:
-                                        print(f"   ⏸️  Agent {agent_id} suggests WAIT/NO_ACTION")
                                         final_action = {'action': 'wait', 'reason': 'validation_failed'}
                                         
                                 else:
-                                    print(f"   ✅ Agent {agent_id} APPROVED the central negotiation!")
                                     final_action = action_data
                                 
                                 validation_entry['final_action_executed'] = final_action
@@ -622,18 +562,11 @@ class NegotiationTester:
                         else:
                             print(f"⚠️  Agent {agent_id} (key: {agent_id_key}) not found in game_engine.agents: {list(game_engine.agents.keys())}")
                 
-                print("\n🏁 HMAS-2 NEGOTIATION COMPLETE:")
-                print(f"   Central LLM: {'✅' if 'error' not in negotiation_entry['hmas2_stages']['central_negotiation'] else '❌'}")
-                print(f"   Agent Validations: {len(negotiation_entry['hmas2_stages']['agent_validations'])} agents processed")
-                print(f"   Validation Overrides: {len(negotiation_entry['hmas2_stages']['validation_overrides'])} rejections")
-                
                 # Flag all agents as HMAS-2 validated to skip redundant game engine validation
-                print(f"\n🏷️  Flagging agents as HMAS-2 validated:")
                 for agent_id_str, validation_data in negotiation_entry['hmas2_stages']['agent_validations'].items():
                     agent_id_int = int(agent_id_str) if isinstance(agent_id_str, str) and agent_id_str.isdigit() else agent_id_str
                     if agent_id_int in game_engine.agents:
                         setattr(game_engine.agents[agent_id_int], '_hmas2_validated', True)
-                        print(f"   🏷️  Agent {agent_id_int}: Flagged as HMAS-2 validated")
             
             else:
                 print(f"\n⚠️  Central LLM response format doesn't contain agent actions")
@@ -641,7 +574,6 @@ class NegotiationTester:
                 
                 # Create mock actions based on conflict data for validation testing
                 if 'agents' in conflict_data and len(conflict_data['agents']) > 0:
-                    print(f"\n🤖 STAGE 2: AGENT LLM VALIDATIONS (FALLBACK MODE)")
                     print("=" * 60)
                     
                     actions = {}
@@ -663,7 +595,6 @@ class NegotiationTester:
                                     'reason': 'no_valid_path_available'
                                 }
                     
-                    print(f"🔧 Created mock actions for validation: {actions}")
                 else:
                     actions = {}
                 
@@ -676,17 +607,14 @@ class NegotiationTester:
                         if agent_id_key in game_engine.agents:
                             agent = game_engine.agents[agent_id_key]
                             
-                            print(f"\n🔍 Agent {agent_id_key}: Validating action {action_data}")
-                            
-                            # Get the actual agent model being used (no hardcoding!)
+                            # Get the actual agent model being used
                             agent_model = getattr(agent.validator, 'model', 'unknown') if hasattr(agent, 'validator') else 'unknown'
-                            print(f"🔍 DEBUG: Agent {agent_id_key} validator using model: {agent_model}")
                             
                             # Capture the validation process
                             validation_entry = {
                                 'agent_id': agent_id_key,
                                 'proposed_action': action_data,
-                                'validation_model': agent_model,  # Dynamic model detection!
+                                'validation_model': agent_model,
                                 'validation_result': None,
                                 'alternative_suggested': None,
                                 'final_action_executed': None
@@ -696,20 +624,16 @@ class NegotiationTester:
                                 # Get the map state for validation
                                 map_state = game_engine.warehouse_map.get_state_dict()
                                 
-                                # Call the agent's validator - use converted agent_id_key
+                                # Call the agent's validator
                                 validation_result = agent.validator.validate_negotiated_action(
                                     agent_id_key, action_data, map_state
                                 )
                                 
                                 validation_entry['validation_result'] = validation_result
                                 
-                                print(f"   📋 Validation Result: {validation_result.get('valid', 'Unknown')}")
-                                if 'reason' in validation_result:
-                                    print(f"   💭 Reason: {validation_result['reason']}")
+                                print(f"   Agent {agent_id}: {'✅ Approved' if validation_result.get('valid', False) else '❌ Rejected'} ({validation_result.get('reason', 'unknown')})")
                                 
                                 if not validation_result.get('valid', False):
-                                    print(f"   ❌ Agent {agent_id_key} REJECTED the central negotiation!")
-                                    
                                     # COUNT ALL REJECTIONS, not just alternatives
                                     negotiation_entry['hmas2_stages']['validation_overrides'][agent_id_key] = {
                                         'rejected_central_action': action_data,
@@ -720,17 +644,15 @@ class NegotiationTester:
                                     if 'alternative' in validation_result:
                                         alternative = validation_result['alternative']
                                         validation_entry['alternative_suggested'] = alternative
-                                        print(f"   🔄 Agent {agent_id_key} suggests alternative: {alternative}")
+                                        print(f"      → Suggested alternative: {alternative.get('action', '?')}")
                                         
                                         # Update the override entry with the alternative
                                         negotiation_entry['hmas2_stages']['validation_overrides'][agent_id_key]['agent_alternative'] = alternative
                                         final_action = alternative
                                     else:
-                                        print(f"   ⏸️  Agent {agent_id_key} suggests WAIT/NO_ACTION")
                                         final_action = {'action': 'wait', 'reason': 'validation_failed'}
                                         
                                 else:
-                                    print(f"   ✅ Agent {agent_id_key} APPROVED the central negotiation!")
                                     final_action = action_data
                                 
                                 validation_entry['final_action_executed'] = final_action
@@ -746,13 +668,11 @@ class NegotiationTester:
                                 validation_entry['final_action_executed'] = fallback_action
                                 negotiation_entry['hmas2_stages']['agent_validations'][agent_id_key] = validation_entry
                                 negotiation_entry['hmas2_stages']['final_actions'][agent_id_key] = fallback_action
-                
-                    print("\n🏁 HMAS-2 NEGOTIATION COMPLETE:")
-                    print(f"   Central LLM: {'✅' if 'error' not in negotiation_entry['hmas2_stages']['central_negotiation'] else '❌'}")
-                    print(f"   Agent Validations: {len(negotiation_entry['hmas2_stages']['agent_validations'])} agents processed")
-                    print(f"   Validation Overrides: {len(negotiation_entry['hmas2_stages']['validation_overrides'])} rejections")
-                else:
-                    print(f"\n⚠️  No actions available for validation")
+            
+            print("\n🏁 HMAS-2 NEGOTIATION COMPLETE:")
+            print(f"   Central LLM: {'✅' if 'error' not in negotiation_entry['hmas2_stages']['central_negotiation'] else '❌'}")
+            print(f"   Agent Validations: {len(negotiation_entry['hmas2_stages']['agent_validations'])} agents")
+            print(f"   Validation Rejections: {len(negotiation_entry['hmas2_stages']['validation_overrides'])} agents")
             
             scenario_data['negotiations'].append(negotiation_entry)
             self.negotiation_log['negotiations'].append(negotiation_entry)
@@ -760,8 +680,6 @@ class NegotiationTester:
             # Mark data as changed and check for auto-save
             self._mark_data_changed()
             self._auto_save_check()
-            
-            print(f"\n🏁 HMAS-2 CAPTURE COMPLETE - Returning to game engine...")
             
             # Reset flag after processing to allow next turn's negotiation
             setattr(game_engine, '_negotiation_captured', False)
@@ -775,12 +693,11 @@ class NegotiationTester:
                 if agent_ids_as_keys and 'agent_actions' not in response:
                     # Keep the agent actions at top level OR wrap them - game engine can handle both
                     # For compatibility with both formats, we'll keep it as-is since game engine now handles both
-                    print(f"🔧 Response has agent IDs as top-level keys: {agent_ids_as_keys}")
+                    pass
                 
                 # If response has 'actions' but not 'agent_actions', fix it
                 elif 'actions' in response and 'agent_actions' not in response:
                     response['agent_actions'] = response['actions']  # type: ignore
-                    print(f"🔧 Fixed response format: moved 'actions' to 'agent_actions'")
             
             # Return as tuple to match new negotiate_path_conflict signature
             return response, refinement_history
@@ -788,7 +705,7 @@ class NegotiationTester:
         game_engine.central_negotiator.negotiate_path_conflict = capture_negotiate
         
         # Run simulation for specified turns
-        print(f"\n🚀 Running simulation for up to {max_turns} turns...")
+        print(f"\n🚀 Running simulation...")
         print("Press Enter to start, then Enter for each turn...")
         input()
         
@@ -833,7 +750,6 @@ class NegotiationTester:
             for agent_id, agent in game_engine.agents.items():
                 if hasattr(agent, '_hmas2_validated'):
                     setattr(agent, '_hmas2_validated', False)
-                    print(f"🔄 Agent {agent_id}: Reset HMAS-2 validation flag for new turn")
             
             try:
                 # Run one simulation step
