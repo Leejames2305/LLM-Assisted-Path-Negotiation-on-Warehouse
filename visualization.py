@@ -542,6 +542,18 @@ class SimulationVisualizer:
             stats_text.append(f"Negotiations: {summary.get('negotiation_turns', 'N/A')}")
             stats_text.append(f"Conflicts: {summary.get('total_conflicts', 'N/A')}")
             
+            # Performance metrics if available
+            perf_metrics = summary.get('performance_metrics', {})
+            if perf_metrics:
+                stats_text.append("")
+                stats_text.append("Performance Metrics:")
+                stats_text.append(f"Success Rate: {perf_metrics.get('cooperative_success_rate', 'N/A')}%")
+                stats_text.append(f"Makespan: {perf_metrics.get('makespan_seconds', 'N/A')}s")
+                stats_text.append(f"Collision Rate: {perf_metrics.get('collision_rate', 'N/A')}/turn")
+                stats_text.append(f"Path Efficiency: {perf_metrics.get('path_efficiency', 'N/A')}%")
+                stats_text.append(f"Token Cost: {perf_metrics.get('total_tokens_used', 'N/A')}")
+                stats_text.append(f"Avg Resolution: {perf_metrics.get('avg_conflict_resolution_time_ms', 'N/A')}ms")
+            
             # HMAS-2 metrics if available
             hmas2_metrics = summary.get('hmas2_metrics', {})
             if hmas2_metrics:

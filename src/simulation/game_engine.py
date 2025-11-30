@@ -52,6 +52,15 @@ class GameEngine:
         # Track current negotiation data for logging
         self._current_negotiation_data = None
         
+        # Performance Metrics Tracking
+        self.simulation_start_time = None
+        self.collision_count = 0
+        self.total_token_usage = 0
+        self.negotiation_times = []  # List of (start_time, end_time) tuples
+        self.successful_deliveries = 0
+        self.agent_paths = {}  # Track total path length per agent
+        self.initial_agent_positions = {}  # For path efficiency calculation
+        
     def initialize_simulation(self):
         """Initialize a new simulation"""
         print(f"{Fore.CYAN}Initializing Multi-Robot Warehouse Simulation...{Style.RESET_ALL}")
@@ -70,6 +79,13 @@ class GameEngine:
                 if box_id in self.warehouse_map.boxes:
                     box_pos = self.warehouse_map.boxes[box_id]
                     agent.set_target(box_pos)  # First go to the box
+            
+            # Initialize metrics tracking for this agent
+            self.initial_agent_positions[agent_id] = agent.position
+            self.agent_paths[agent_id] = [agent.position]
+        
+        # Start tracking simulation time
+        self.simulation_start_time = time.time()
         
         # Initial pathfinding
         self._plan_initial_paths()
@@ -279,6 +295,9 @@ class GameEngine:
             print(f"Conflicting agents: {conflict_info['conflicting_agents']}")
             print(f"Conflict points: {conflict_info['conflict_points']}")
             
+            # Track collision for metrics
+            self.collision_count += len(conflict_info['conflict_points'])
+            
             # Use Central Negotiator to resolve conflicts
             resolution = self._negotiate_conflicts(conflict_info, forced_moves)
             self._execute_negotiated_actions(resolution)
@@ -294,6 +313,8 @@ class GameEngine:
                 
                 if normal_conflict_info['has_conflicts']:
                     print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
+                    # Track collision for metrics
+                    self.collision_count += len(normal_conflict_info['conflict_points'])
                     resolution = self._negotiate_conflicts(normal_conflict_info, normal_moves)
                     self._execute_negotiated_actions(resolution)
                     negotiation_occurred = True
@@ -434,6 +455,9 @@ class GameEngine:
         """Use Central Negotiator to resolve conflicts"""
         print("🤖 Initiating LLM-based conflict negotiation...")
         
+        # Track negotiation timing
+        negotiation_start_time = time.time()
+        
         # Prepare conflict data for negotiator
         conflict_data = {
             'agents': [],
@@ -479,6 +503,22 @@ class GameEngine:
             resolution = negotiation_result
             refinement_history = []
             prompts_data = {}
+        
+        # Track negotiation time
+        negotiation_end_time = time.time()
+        negotiation_duration = negotiation_end_time - negotiation_start_time
+        self.negotiation_times.append((negotiation_start_time, negotiation_end_time))
+        
+        # Track token usage from LLM response if available
+        if prompts_data and isinstance(prompts_data, dict):
+            # Try to extract token usage from OpenRouter response
+            llm_response = prompts_data.get('llm_response', {})
+            if isinstance(llm_response, dict):
+                usage = llm_response.get('usage', {})
+                if isinstance(usage, dict):
+                    total_tokens = usage.get('total_tokens', 0)
+                    if total_tokens > 0:
+                        self.total_token_usage += total_tokens
         
         # Check for deadlock (empty dict means turn should be skipped)
         if not resolution:  # Empty dict
@@ -682,6 +722,10 @@ class GameEngine:
                 if success:
                     if next_pos != agent.position:
                         print(f"✅ Agent {agent_id}: Moved to {next_pos}")
+                        # Track path length for metrics
+                        if agent_id not in self.agent_paths:
+                            self.agent_paths[agent_id] = [agent.position]
+                        self.agent_paths[agent_id].append(next_pos)
                     
                     # Reset failure count on successful move
                     self.failed_move_counts[agent_id] = 0
@@ -774,6 +818,9 @@ class GameEngine:
                         delivered_box_id = agent.drop_box()
                         print(f"🎉 Agent {agent_id}: Delivered box {delivered_box_id} to target {target_id}")
                         agent.set_target(None)  # Task complete
+                        
+                        # Track successful delivery for metrics
+                        self.successful_deliveries += 1
                         
                         # Clear failed move history when task is completed
                         if agent_id in self.agent_failed_move_history:
@@ -922,14 +969,131 @@ class GameEngine:
         # Clear negotiation data after logging
         self._current_negotiation_data = None
     
+    def _display_performance_metrics(self, metrics: Dict):
+        """Display formatted performance metrics to console"""
+        print(f"\n{Fore.CYAN}{'=' * 60}")
+        try:
+            print(f"{Fore.CYAN}📊 PERFORMANCE METRICS")
+            print(f"{'=' * 60}{Style.RESET_ALL}")
+        except UnicodeEncodeError:
+            print(f"{Fore.CYAN}{'=' * 60}")
+            print(f"{Fore.CYAN}[PERFORMANCE METRICS]")
+            print(f"{'=' * 60}{Style.RESET_ALL}")
+        
+        # Success Rate
+        success_rate = metrics.get('cooperative_success_rate', 0)
+        print(f"{Fore.GREEN}✓ Cooperative Success Rate: {success_rate}%{Style.RESET_ALL}")
+        
+        # Makespan
+        makespan = metrics.get('makespan_seconds', 0)
+        print(f"{Fore.YELLOW}⏱️  Makespan: {makespan} seconds{Style.RESET_ALL}")
+        
+        # Collisions
+        collision_count = metrics.get('total_collisions', 0)
+        collision_rate = metrics.get('collision_rate', 0)
+        print(f"{Fore.RED}💥 Collisions: {collision_count} (rate: {collision_rate:.3f}/turn){Style.RESET_ALL}")
+        
+        # Path Efficiency
+        path_eff = metrics.get('path_efficiency', 0)
+        print(f"{Fore.CYAN}🗺️  Path Efficiency: {path_eff}%{Style.RESET_ALL}")
+        
+        # Token Cost
+        tokens = metrics.get('total_tokens_used', 0)
+        print(f"{Fore.MAGENTA}💰 Token Cost: {tokens} tokens{Style.RESET_ALL}")
+        
+        # Conflict Resolution Time
+        res_time = metrics.get('avg_conflict_resolution_time_ms', 0)
+        print(f"{Fore.BLUE}⚡ Avg Conflict Resolution Time: {res_time:.2f}ms{Style.RESET_ALL}")
+        
+        # Additional context
+        total_turns = metrics.get('total_turns', 0)
+        total_negotiations = metrics.get('total_negotiations', 0)
+        print(f"\n{Fore.WHITE}Summary: {total_turns} turns, {total_negotiations} negotiations{Style.RESET_ALL}")
+        
+        print(f"{Fore.CYAN}{'=' * 60}{Style.RESET_ALL}\n")
+    
+    def calculate_performance_metrics(self) -> Dict:
+        """
+        Calculate performance metrics for the completed simulation
+        
+        Returns:
+            Dict with metrics:
+            - cooperative_success_rate: percentage of deliveries completed
+            - makespan_seconds: total elapsed time in seconds
+            - collision_rate: collisions per turn
+            - path_efficiency: actual path length vs optimal (lower is better)
+            - total_tokens_used: cumulative token usage from LLM
+            - avg_conflict_resolution_time_ms: average negotiation time in milliseconds
+        """
+        # Calculate makespan in seconds
+        makespan_seconds = 0
+        if self.simulation_start_time:
+            makespan_seconds = time.time() - self.simulation_start_time
+        
+        # Calculate success rate
+        cooperative_success_rate = (self.successful_deliveries / len(self.agents)) * 100 if self.agents else 0
+        
+        # Calculate collision rate (per turn)
+        turns_with_negotiations = len(self.negotiation_times)
+        total_turns = max(self.current_turn, 1)  # Avoid division by zero
+        collision_rate = self.collision_count / total_turns if total_turns > 0 else 0
+        
+        # Calculate path efficiency
+        # Optimal path would be straight line distance from start to end
+        total_actual_path = 0
+        total_optimal_path = 0
+        
+        for agent_id, agent in self.agents.items():
+            if agent_id in self.agent_paths and len(self.agent_paths[agent_id]) > 0:
+                # Actual path length
+                actual_path = len(self.agent_paths[agent_id]) - 1  # -1 because we count edges, not nodes
+                actual_path = max(actual_path, 0)
+                total_actual_path += actual_path
+                
+                # Optimal path (Manhattan distance from start to end)
+                start_pos = self.initial_agent_positions.get(agent_id, self.agent_paths[agent_id][0])
+                end_pos = self.agent_paths[agent_id][-1]
+                
+                optimal_distance = abs(start_pos[0] - end_pos[0]) + abs(start_pos[1] - end_pos[1])
+                total_optimal_path += optimal_distance
+        
+        path_efficiency = (total_optimal_path / total_actual_path * 100) if total_actual_path > 0 else 100
+        path_efficiency = min(path_efficiency, 100)  # Cap at 100%
+        
+        # Calculate average conflict resolution time
+        avg_resolution_time_ms = 0
+        if self.negotiation_times:
+            total_negotiation_time = sum(
+                (end_time - start_time) * 1000 
+                for start_time, end_time in self.negotiation_times
+            )
+            avg_resolution_time_ms = total_negotiation_time / len(self.negotiation_times)
+        
+        return {
+            'cooperative_success_rate': round(cooperative_success_rate, 2),
+            'makespan_seconds': round(makespan_seconds, 2),
+            'collision_rate': round(collision_rate, 3),
+            'path_efficiency': round(path_efficiency, 2),
+            'total_tokens_used': self.total_token_usage,
+            'avg_conflict_resolution_time_ms': round(avg_resolution_time_ms, 2),
+            'total_turns': total_turns,
+            'total_negotiations': turns_with_negotiations,
+            'total_collisions': self.collision_count
+        }
+    
     def save_simulation_log(self, filename: Optional[str] = None):
         """Save simulation log using unified logger"""
         if not self.log_enabled or not self.logger:
             return None
         
-        # Finalize and save log
-        log_path = self.logger.finalize()
-        return log_path
+        # Calculate and pass performance metrics to logger
+        metrics = self.calculate_performance_metrics()
+        
+        # Finalize and save log with metrics
+        log_path = self.logger.finalize(performance_metrics=metrics)
+        
+        # Return metrics for display
+        return log_path, metrics
     
     def run_interactive_simulation(self):
         """Run simulation with step-by-step user input"""
@@ -953,5 +1117,11 @@ class GameEngine:
                 time.sleep(1)  # Auto delay
         
         # Save log when simulation ends
-        self.save_simulation_log()
+        result = self.save_simulation_log()
+        
+        # Display performance metrics
+        if result and isinstance(result, tuple):
+            log_path, metrics = result
+            self._display_performance_metrics(metrics)
+        
         print(f"\n{Fore.GREEN}Simulation completed in {self.current_turn} turns!{Style.RESET_ALL}")

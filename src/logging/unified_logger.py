@@ -169,12 +169,13 @@ class UnifiedLogger:
         self.log_data['turns'].append(turn_entry)
         self._unsaved_data = True
     
-    def finalize(self, emergency: bool = False) -> Optional[str]:
+    def finalize(self, emergency: bool = False, performance_metrics: Optional[Dict] = None) -> Optional[str]:
         """
         Finalize logging and save to file
         
         Args:
             emergency: If True, save with emergency prefix
+            performance_metrics: Optional performance metrics dict to include in summary
         
         Returns:
             Path to saved log file, or None if no data to save
@@ -197,6 +198,7 @@ class UnifiedLogger:
             'negotiation_turns': len(negotiation_turns),
             'total_conflicts': len(negotiation_turns),
             'hmas2_metrics': hmas2_metrics,
+            'performance_metrics': performance_metrics or {},
             'completion_timestamp': datetime.now().isoformat()
         }
         
