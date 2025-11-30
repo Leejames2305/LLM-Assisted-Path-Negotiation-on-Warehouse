@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, Any
 from colorama import init, Fore, Style
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.simulation.game_engine import GameEngine
 from src.map_generator import WarehouseMap
