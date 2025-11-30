@@ -14,6 +14,7 @@ class RobotAgent:
         self.carrying_box = False
         self.box_id = None
         self.planned_path = []
+        self.executed_path = [initial_position]  # Track movement history, starts with initial position
         self.current_action = None
         self.validator = AgentValidator()
         self.pathfinder = None  # Will be initialized with map size
@@ -189,6 +190,9 @@ class RobotAgent:
         self.position = new_position
         print(f"✅ Agent {self.agent_id}: Moved to {new_position}")
         
+        # Track executed path (movement history)
+        self.executed_path.append(new_position)
+        
         # Update planned path - but don't interfere with negotiated paths managed by game engine
         if not (hasattr(self, '_has_negotiated_path') and getattr(self, '_has_negotiated_path', False)):
             # Only update path if this is NOT a negotiated path (let game engine handle negotiated paths)
@@ -283,6 +287,7 @@ class RobotAgent:
             'carrying_box': self.carrying_box,
             'box_id': self.box_id,
             'planned_path': self.planned_path,
+            'executed_path': self.executed_path,
             'is_waiting': self.is_waiting,
             'wait_turns_remaining': self.wait_turns_remaining,
             'priority': self.priority,

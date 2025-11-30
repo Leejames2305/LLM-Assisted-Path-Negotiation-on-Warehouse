@@ -6,9 +6,14 @@ Simulation Visualization Tool
 Visualizes HMAS-2 negotiation simulation results with interactive turn-by-turn playback.
 Creates animated maps showing agent movements, conflicts, and negotiation outcomes.
 
+Supports the unified log format (sim_log_*.json) which includes:
+- Map details, agents/targets/box positions
+- Agents' planned_path and executed_path
+- HMAS-2 negotiation data (prompts, responses, validations)
+
 Features:
 - Interactive turn navigation with play/pause controls
-- Agent path visualization with different styles for planned vs negotiated paths
+- Agent path visualization with different styles for planned vs executed paths
 - Conflict and negotiation highlighting
 - Box pickup/delivery tracking
 - Comprehensive statistics display
@@ -406,28 +411,43 @@ class SimulationVisualizer:
                                     facecolor='white', alpha=0.8))
     
     def draw_agent_paths(self, turn_data):
-        """Draw agent planned paths"""
+        """Draw agent planned and executed paths"""
         agent_states = turn_data.get('agent_states', {})
         
         for i, (agent_id, state) in enumerate(agent_states.items()):
-            if 'planned_path' in state and state['planned_path']:
-                path = state['planned_path']
-                color = self.agent_colors[i % len(self.agent_colors)]
+            color = self.agent_colors[i % len(self.agent_colors)]
+            
+            # Draw executed path (solid line) - movement history
+            if 'executed_path' in state and state['executed_path'] and len(state['executed_path']) > 1:
+                exec_path = state['executed_path']
+                path_x = [pos[0] for pos in exec_path]
+                path_y = [pos[1] for pos in exec_path]
                 
-                # Draw path line
+                self.ax_main.plot(path_x, path_y, color=color, linewidth=3, 
+                                linestyle='-', alpha=0.7, 
+                                label=f"Agent {agent_id} executed")
+            
+            # Draw planned path (dashed line) - future path
+            if 'planned_path' in state and state['planned_path'] and len(state['planned_path']) > 0:
+                path = state['planned_path']
                 path_x = [pos[0] for pos in path]
                 path_y = [pos[1] for pos in path]
                 
-                line_style = '--' if state.get('has_negotiated_path') else ':'
-                alpha = 0.8 if state.get('has_negotiated_path') else 0.4
+                # Use different style for negotiated paths
+                if state.get('has_negotiated_path'):
+                    line_style = '--'
+                    alpha = 0.8
+                else:
+                    line_style = ':'
+                    alpha = 0.5
                 
                 self.ax_main.plot(path_x, path_y, color=color, linewidth=2, 
                                 linestyle=line_style, alpha=alpha, 
-                                label=f"Agent {agent_id} path")
+                                label=f"Agent {agent_id} planned")
                 
-                # Mark path direction with arrows
+                # Mark path direction with arrows (first 3 steps)
                 if len(path) > 1:
-                    for j in range(min(3, len(path)-1)):  # Show first 3 steps
+                    for j in range(min(3, len(path)-1)):
                         dx = path[j+1][0] - path[j][0]
                         dy = path[j+1][1] - path[j][1]
                         self.ax_main.arrow(path[j][0], path[j][1], dx*0.3, dy*0.3, 
@@ -444,6 +464,12 @@ class SimulationVisualizer:
         legend_elements.append(patches.Patch(color='lightcoral', alpha=0.6, label='Targets'))
         legend_elements.append(patches.Patch(color='burlywood', alpha=0.8, label='Boxes'))
         
+        # Add line legend for path types
+        from matplotlib.lines import Line2D
+        legend_elements.append(Line2D([0], [0], color='gray', linewidth=3, linestyle='-', label='Executed Path'))
+        legend_elements.append(Line2D([0], [0], color='gray', linewidth=2, linestyle=':', label='Planned Path'))
+        legend_elements.append(Line2D([0], [0], color='gray', linewidth=2, linestyle='--', label='Negotiated Path'))
+        
         # Add agent colors
         for i, (agent_id, _) in enumerate(self.sim_data['scenario']['initial_agents'].items()):
             if i < len(self.agent_colors):
@@ -451,7 +477,7 @@ class SimulationVisualizer:
                 legend_elements.append(patches.Patch(color=color, alpha=0.8, label=f'Agent {agent_id}'))
         
         self.ax_main.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
-                           fontsize=8, framealpha=0.9)
+                           fontsize=7, framealpha=0.9)
     
     def update_statistics(self, turn_data):
         """Update the statistics panel"""
@@ -481,13 +507,28 @@ class SimulationVisualizer:
                 status += " (Negotiated)"
             
             stats_text.append(status)
+            
+            # Show executed path length
+            exec_path = state.get('executed_path', [])
+            if exec_path:
+                stats_text.append(f"  └─ Steps taken: {len(exec_path)}")
         
         stats_text.append("")
         
-        # Conflict information
-        if turn_data.get('negotiation_occurred'):
-            stats_text.append("NEGOTIATION Turn")
-            stats_text.append("Conflicts resolved via HMAS-2")
+        # Negotiation information
+        negotiation = turn_data.get('negotiation')
+        if turn_data.get('type') == 'negotiation' or negotiation:
+            stats_text.append("🔄 NEGOTIATION Turn")
+            if negotiation and 'hmas2_stages' in negotiation:
+                hmas2 = negotiation['hmas2_stages']
+                central = hmas2.get('central_negotiation', {})
+                stats_text.append(f"Model: {central.get('model_used', 'N/A')}")
+                
+                # Refinement info
+                refinement = hmas2.get('refinement_loop', {})
+                if refinement:
+                    stats_text.append(f"Refinements: {refinement.get('total_iterations', 0)}")
+                    stats_text.append(f"Status: {refinement.get('final_status', 'N/A')}")
         else:
             stats_text.append("ROUTINE Turn")
             stats_text.append("No conflicts detected")
@@ -498,15 +539,24 @@ class SimulationVisualizer:
             stats_text.append("")
             stats_text.append("Simulation Summary:")
             stats_text.append(f"Total Turns: {summary.get('total_turns', 'N/A')}")
-            stats_text.append(f"Negotiations: {summary.get('total_negotiations', 'N/A')}")
+            stats_text.append(f"Negotiations: {summary.get('negotiation_turns', 'N/A')}")
             stats_text.append(f"Conflicts: {summary.get('total_conflicts', 'N/A')}")
+            
+            # HMAS-2 metrics if available
+            hmas2_metrics = summary.get('hmas2_metrics', {})
+            if hmas2_metrics:
+                stats_text.append("")
+                stats_text.append("HMAS-2 Metrics:")
+                stats_text.append(f"Validations: {hmas2_metrics.get('total_validations', 0)}")
+                stats_text.append(f"Approvals: {hmas2_metrics.get('approvals', 0)}")
+                stats_text.append(f"Rejections: {hmas2_metrics.get('rejections', 0)}")
         
         # Display statistics text
         y_pos = 0.95
         for line in stats_text:
             self.ax_stats.text(0.05, y_pos, line, transform=self.ax_stats.transAxes, 
-                             fontsize=10, verticalalignment='top')
-            y_pos -= 0.06
+                             fontsize=9, verticalalignment='top')
+            y_pos -= 0.05
     
     def show(self):
         """Show the visualization"""
@@ -521,7 +571,8 @@ def find_simulation_logs():
     
     log_files = []
     for filename in os.listdir(logs_dir):
-        if filename.startswith("simulation_log_") and filename.endswith(".json"):
+        # Support both old format (simulation_log_*) and new unified format (sim_log_*)
+        if (filename.startswith("simulation_log_") or filename.startswith("sim_log_")) and filename.endswith(".json"):
             log_files.append(os.path.join(logs_dir, filename))
     
     return sorted(log_files, reverse=True)  # Most recent first
@@ -532,21 +583,23 @@ def select_log_file():
     
     if not log_files:
         print("❌ No simulation log files found in logs/ directory")
-        print("   Run a simulation first with test_negotiation.py")
+        print("   Run a simulation first with main.py or test_negotiation.py")
         sys.exit(1)
     
     print("📁 Available simulation logs:")
     for i, log_file in enumerate(log_files, 1):
-        # Extract timestamp from filename
+        # Extract timestamp from filename (support both formats)
         basename = os.path.basename(log_file)
-        timestamp_str = basename.replace("simulation_log_", "").replace(".json", "")
+        timestamp_str = basename.replace("simulation_log_", "").replace("sim_log_", "").replace(".json", "")
         try:
             timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
             formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         except:
             formatted_time = timestamp_str
         
-        print(f"   {i}. {basename} ({formatted_time})")
+        # Mark format type
+        format_type = "unified" if basename.startswith("sim_log_") else "legacy"
+        print(f"   {i}. {basename} ({formatted_time}) [{format_type}]")
     
     while True:
         try:

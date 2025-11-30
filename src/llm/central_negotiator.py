@@ -48,7 +48,7 @@ class CentralNegotiator:
         self, 
         conflict_data: Dict, 
         agent_validators: Optional[Dict[int, Callable]] = None
-    ) -> Tuple[Dict, List[Dict]]:
+    ) -> Tuple[Dict, List[Dict], Dict]:
         """
         Negotiate path conflicts between agents with iterative refinement loop.
         
@@ -73,12 +73,20 @@ class CentralNegotiator:
             Tuple of:
             - final_actions: Dict {agent_id: action} or {} if deadlock
             - refinement_history: List of refinement iteration records
+            - prompts_data: Dict containing system_prompt, user_prompt, model_used
         """
         
         self.refinement_history = []
         current_plan = None
         rejected_agents = set()
         iteration = 0
+        
+        # Track prompts for logging
+        prompts_data = {
+            'system_prompt': '',
+            'user_prompt': '',
+            'model_used': self.model
+        }
         
         logger.info(f"Starting conflict negotiation for agents: {[a.get('id') for a in conflict_data.get('agents', [])]}")
         print(f"🎯 Starting conflict negotiation (max {self.max_refinement_iterations} refinement iterations)")
@@ -87,12 +95,16 @@ class CentralNegotiator:
         if conflict_data.get('deadlock_breaking', False) or conflict_data.get('conflict_type') in ['deadlock', 'stagnation']:
             print("🔧 DEADLOCK BREAKING MODE: Using specialized resolution")
             result = self._create_deadlock_breaking_resolution(conflict_data)
-            return result, []
+            return result, [], prompts_data
         
         # === STAGE 1: INITIAL NEGOTIATION ===
         logger.debug("Stage 1: Getting initial plan from central LLM")
         print(f"\n📋 STAGE 1: INITIAL NEGOTIATION")
-        current_plan = self._get_initial_central_plan(conflict_data)
+        current_plan, captured_prompts = self._get_initial_central_plan_with_prompts(conflict_data)
+        
+        # Store captured prompts
+        prompts_data['system_prompt'] = captured_prompts.get('system_prompt', '')
+        prompts_data['user_prompt'] = captured_prompts.get('user_prompt', '')
         
         self.refinement_history.append({
             "iteration": 0,
@@ -108,7 +120,7 @@ class CentralNegotiator:
         # If no validators provided, return initial plan without refinement
         if not agent_validators:
             logger.debug("No validators provided, returning initial plan")
-            return current_plan, self.refinement_history
+            return current_plan, self.refinement_history, prompts_data
         
         # === STAGE 2-6: REFINEMENT LOOP (max 5 iterations) ===
         while iteration < self.max_refinement_iterations:
@@ -148,7 +160,7 @@ class CentralNegotiator:
             if not rejected_agents:
                 logger.info(f"✓ Plan approved unanimously after iteration {iteration}")
                 print(f"   ✅ All agents approved! Plan accepted.")
-                return current_plan, self.refinement_history
+                return current_plan, self.refinement_history, prompts_data
             
             # If we've exhausted iterations, break before refining again
             if iteration >= self.max_refinement_iterations:
@@ -220,11 +232,11 @@ class CentralNegotiator:
             )
             print(f"   ❌ DEADLOCK: {len(rejected_agents)} agent(s) still rejecting after refinement")
             print(f"   ⏭️  Skipping this turn (no movement executed)")
-            return {}, self.refinement_history
+            return {}, self.refinement_history, prompts_data
         
         logger.info(f"✓ Plan approved after final validation")
         print(f"   ✅ Final validation passed! Plan accepted.")
-        return current_plan, self.refinement_history
+        return current_plan, self.refinement_history, prompts_data
     
     def _get_initial_central_plan(self, conflict_data: Dict) -> Dict:
         """
@@ -236,12 +248,31 @@ class CentralNegotiator:
         Returns:
             Agent actions from LLM
         """
+        plan, _ = self._get_initial_central_plan_with_prompts(conflict_data)
+        return plan
+    
+    def _get_initial_central_plan_with_prompts(self, conflict_data: Dict) -> Tuple[Dict, Dict]:
+        """
+        Get initial conflict resolution plan from central LLM with prompt capture.
+        
+        Args:
+            conflict_data: Conflict information
+        
+        Returns:
+            Tuple of (agent_actions, prompts_dict)
+        """
         system_prompt = self._create_negotiation_system_prompt()
         user_prompt = self._create_conflict_description(conflict_data)
         
         # Add reasoning-specific instructions if using reasoning model
         if self.is_reasoning_model:
             user_prompt = self._add_reasoning_instructions(user_prompt)
+        
+        # Capture prompts for logging
+        prompts_data = {
+            'system_prompt': system_prompt,
+            'user_prompt': user_prompt
+        }
         
         messages = [
             self.client.create_system_message(system_prompt),
@@ -268,17 +299,17 @@ class CentralNegotiator:
                 # 2. If result has agent IDs as top-level keys (0, 1, etc.), use result as is
                 # 3. Otherwise return empty
                 if 'agent_actions' in result:
-                    return result.get('agent_actions', {})
+                    return result.get('agent_actions', {}), prompts_data
                 elif any(str(i) in result for i in range(10)):  # Check for agent IDs as keys
-                    return result
+                    return result, prompts_data
                 else:
-                    return {}
+                    return {}, prompts_data
             except Exception as e:
                 logger.error(f"Error parsing initial negotiation response: {e}")
-                return self._create_fallback_resolution(conflict_data).get('agent_actions', {})
+                return self._create_fallback_resolution(conflict_data).get('agent_actions', {}), prompts_data
         else:
             logger.error("No response from LLM API")
-            return self._create_fallback_resolution(conflict_data).get('agent_actions', {})
+            return self._create_fallback_resolution(conflict_data).get('agent_actions', {}), prompts_data
     
     def _validate_plan(
         self, 

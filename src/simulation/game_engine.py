@@ -13,6 +13,7 @@ from ..map_generator import WarehouseMap, CellType
 from ..agents import RobotAgent
 from ..llm.central_negotiator import CentralNegotiator
 from ..navigation import ConflictDetector, SimplePathfinder
+from ..logging import UnifiedLogger
 
 # Initialize colorama for colored terminal output
 init(autoreset=True)
@@ -44,13 +45,12 @@ class GameEngine:
         self.max_failed_moves = 3  # Trigger deadlock breaking after 3 failures
         self.stagnation_turns = 3  # Number of turns with failed moves to consider stagnation
         
-        # Logging - Use comprehensive format compatible with visualization
+        # Unified Logging
         self.log_enabled = os.getenv('LOG_SIMULATION', 'true').lower() == 'true'
-        self.simulation_log = {
-            'scenario': {},
-            'turns': [],
-            'summary': {}
-        }
+        self.logger = UnifiedLogger() if self.log_enabled else None
+        
+        # Track current negotiation data for logging
+        self._current_negotiation_data = None
         
     def initialize_simulation(self):
         """Initialize a new simulation"""
@@ -74,16 +74,17 @@ class GameEngine:
         # Initial pathfinding
         self._plan_initial_paths()
         
-        # Initialize scenario data for logging
-        if self.log_enabled:
-            self.simulation_log['scenario'] = {
+        # Initialize unified logger with scenario data
+        if self.log_enabled and self.logger:
+            self.logger.initialize({
                 'type': 'interactive_simulation',
                 'map_size': [self.warehouse_map.width, self.warehouse_map.height],
+                'grid': self.warehouse_map.grid.tolist(),
                 'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
                 'initial_targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
-                'grid': self.warehouse_map.grid.tolist(),  # Include grid data for visualization
-                'timestamp': datetime.now().isoformat()
-            }
+                'initial_boxes': {str(k): list(v) for k, v in self.warehouse_map.boxes.items()},
+                'agent_goals': {str(k): v for k, v in self.warehouse_map.agent_goals.items()}
+            })
         
         # Log initial state
         self._log_turn_state("SIMULATION_START")
@@ -270,6 +271,9 @@ class GameEngine:
         # Check for conflicts using forced paths
         conflict_info = self.conflict_detector.detect_path_conflicts(forced_moves, self.current_turn)
         
+        # Track if negotiation occurred this turn
+        negotiation_occurred = False
+        
         if conflict_info['has_conflicts']:
             print(f"{Fore.RED}CONFLICT DETECTED!{Style.RESET_ALL}")
             print(f"Conflicting agents: {conflict_info['conflicting_agents']}")
@@ -278,6 +282,7 @@ class GameEngine:
             # Use Central Negotiator to resolve conflicts
             resolution = self._negotiate_conflicts(conflict_info, forced_moves)
             self._execute_negotiated_actions(resolution)
+            negotiation_occurred = True
         else:
             # PHASE 2: No conflicts in forced paths - try normal planning
             print(f"{Fore.GREEN}No conflicts in forced paths. Trying normal planning...{Style.RESET_ALL}")
@@ -291,6 +296,7 @@ class GameEngine:
                     print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
                     resolution = self._negotiate_conflicts(normal_conflict_info, normal_moves)
                     self._execute_negotiated_actions(resolution)
+                    negotiation_occurred = True
                 else:
                     print(f"{Fore.GREEN}No conflicts detected. Executing planned moves...{Style.RESET_ALL}")
                     self._execute_planned_moves(normal_moves)
@@ -300,6 +306,7 @@ class GameEngine:
                     if deadlock_conflict['has_conflicts']:
                         print(f"🔥 DEADLOCK AFTER MOVES! Forcing resolution...")
                         self._force_deadlock_negotiation(deadlock_conflict['conflicting_agents'], normal_moves)
+                        negotiation_occurred = True
             else:
                 print(f"{Fore.YELLOW}No agents can plan paths - all waiting...{Style.RESET_ALL}")
         
@@ -311,8 +318,8 @@ class GameEngine:
             print(f"{Fore.GREEN}🎉 All agents reached their targets! Simulation complete!{Style.RESET_ALL}")
             self.simulation_complete = True
         
-        # Log turn state
-        self._log_turn_state("TURN_COMPLETE")
+        # Log turn state (with negotiation type if negotiation occurred)
+        self._log_turn_state("negotiation" if negotiation_occurred else "TURN_COMPLETE")
         
         # Display current state
         self.display_map()
@@ -455,22 +462,30 @@ class GameEngine:
                     agent_validators[agent_id] = agent.validator.validate_negotiated_action
         
         # Get negotiation result from Central LLM
-        # New: returns Tuple[Dict, List[Dict]] = (final_actions, refinement_history)
+        # Returns Tuple[Dict, List[Dict], Dict] = (final_actions, refinement_history, prompts)
         negotiation_result = self.central_negotiator.negotiate_path_conflict(
             conflict_data, 
             agent_validators=agent_validators
         )
         
-        # Handle both old format (just Dict) and new format (Tuple)
+        # Handle result format (tuple with prompts data)
         if isinstance(negotiation_result, tuple):
-            resolution, refinement_history = negotiation_result
+            if len(negotiation_result) >= 3:
+                resolution, refinement_history, prompts_data = negotiation_result
+            else:
+                resolution, refinement_history = negotiation_result
+                prompts_data = {}
         else:
             resolution = negotiation_result
             refinement_history = []
+            prompts_data = {}
         
         # Check for deadlock (empty dict means turn should be skipped)
         if not resolution:  # Empty dict
             print(f"🛑 Negotiation deadlock - turn skipped (no movement)")
+            self._current_negotiation_data = self._build_negotiation_log_data(
+                conflict_data, prompts_data, {}, refinement_history, {}, {}
+            )
             return {
                 'agent_actions': {},
                 'resolution': 'deadlock_skipped',
@@ -481,11 +496,79 @@ class GameEngine:
         print(f"🤖 Negotiation complete: {resolution.get('resolution', 'unknown')}")
         print(f"📝 Reasoning: {resolution.get('reasoning', 'No reasoning provided')}")
         
+        # Build negotiation log data for unified logger
+        # Extract agent validations from refinement history or resolution
+        agent_validations = self._extract_agent_validations(resolution, refinement_history)
+        final_actions = self._extract_final_actions(resolution)
+        
+        self._current_negotiation_data = self._build_negotiation_log_data(
+            conflict_data, prompts_data, resolution, refinement_history, agent_validations, final_actions
+        )
+        
         # Add refinement history if available
         if refinement_history:
             resolution['refinement_history'] = refinement_history
         
         return resolution
+    
+    def _build_negotiation_log_data(
+        self, 
+        conflict_data: Dict, 
+        prompts_data: Dict, 
+        llm_response: Dict, 
+        refinement_history: List, 
+        agent_validations: Dict,
+        final_actions: Dict
+    ) -> Dict:
+        """Build structured negotiation data for unified logging"""
+        from ..logging.unified_logger import create_negotiation_data
+        
+        # Extract prompts from prompts_data or use defaults
+        system_prompt = prompts_data.get('system_prompt', '')
+        user_prompt = prompts_data.get('user_prompt', '')
+        model_used = prompts_data.get('model_used', getattr(self.central_negotiator, 'model', 'unknown'))
+        
+        # Build refinement loop structure
+        refinement_loop = {
+            'total_iterations': len(refinement_history),
+            'final_status': refinement_history[-1].get('final_status', 'unknown') if refinement_history else 'none',
+            'iterations': refinement_history
+        }
+        
+        return create_negotiation_data(
+            conflict_data=conflict_data,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            llm_response=llm_response,
+            model_used=model_used,
+            agent_validations=agent_validations,
+            refinement_loop=refinement_loop,
+            final_actions=final_actions
+        )
+    
+    def _extract_agent_validations(self, resolution: Dict, refinement_history: List) -> Dict:
+        """Extract agent validation data from resolution and refinement history"""
+        validations = {}
+        
+        # Check refinement history for validation results
+        for iteration in refinement_history:
+            val_results = iteration.get('validation_results', {})
+            if val_results:
+                for agent_id, result in val_results.items():
+                    validations[str(agent_id)] = {
+                        'agent_id': agent_id,
+                        'validation_result': result,
+                        'alternative_suggested': result.get('alternative') if isinstance(result, dict) else None
+                    }
+        
+        return validations
+    
+    def _extract_final_actions(self, resolution: Dict) -> Dict:
+        """Extract final actions from resolution"""
+        if 'agent_actions' in resolution:
+            return resolution['agent_actions']
+        # Check for agent IDs as top-level keys
+        return {k: v for k, v in resolution.items() if str(k).isdigit()}
     
     def _execute_negotiated_actions(self, resolution: Dict):
         """Execute actions determined by negotiation"""
@@ -797,11 +880,11 @@ class GameEngine:
                 print(f"  🗺️  Path: {status['planned_path'][:5]}{'...' if len(status['planned_path']) > 5 else ''}")
     
     def _log_turn_state(self, event_type: str):
-        """Log current simulation state in comprehensive format"""
-        if not self.log_enabled:
+        """Log current simulation state using unified logger"""
+        if not self.log_enabled or not self.logger:
             return
         
-        # Collect agent states
+        # Collect agent states including executed_path
         agent_states = {}
         for agent_id, agent in self.agents.items():
             status = agent.get_status()
@@ -809,79 +892,43 @@ class GameEngine:
                 'position': list(status['position']) if status['position'] else None,
                 'target_position': list(status['target']) if status['target'] else None,
                 'planned_path': [list(pos) for pos in status['planned_path']] if status['planned_path'] else [],
+                'executed_path': [list(pos) for pos in status.get('executed_path', [])] if status.get('executed_path') else [],
                 'is_waiting': status.get('is_waiting', False),
                 'wait_turns_remaining': status.get('wait_turns_remaining', 0),
                 'has_negotiated_path': getattr(agent, '_has_negotiated_path', False),
-                'is_at_target': status.get('is_at_target', False),
                 'carrying_box': status.get('carrying_box', False),
                 'box_id': status.get('box_id'),
-                'priority': status.get('priority', 0),
-                'current_action': status.get('current_action', 'idle')
+                'priority': status.get('priority', 0)
             }
         
-        # Create comprehensive turn log entry
-        log_entry = {
-            'turn': self.current_turn,
-            'timestamp': datetime.now().isoformat(),
-            'type': 'negotiation' if event_type == 'negotiation' else 'routine',
-            'agent_states': agent_states,
-            'map_state': {
-                'boxes': {str(k): list(v) for k, v in self.warehouse_map.boxes.items()},  # Include current box positions
-                'targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
-                'dimensions': [self.warehouse_map.width, self.warehouse_map.height]
-            },
-            'conflicts_detected': event_type == 'conflict',
-            'negotiation_occurred': event_type == 'negotiation',
-            'results': {
-                'agent_states_after': {},  # Could be populated post-move
-                'map_state_after': {},
-                'simulation_continued': not self.simulation_complete
-            }
+        # Collect map state
+        map_state = {
+            'boxes': {str(k): list(v) for k, v in self.warehouse_map.boxes.items()},
+            'targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
+            'dimensions': [self.warehouse_map.width, self.warehouse_map.height]
         }
         
-        self.simulation_log['turns'].append(log_entry)
+        # Get negotiation data if this was a negotiation turn
+        negotiation_data = self._current_negotiation_data if event_type == 'negotiation' else None
+        
+        # Log the turn
+        self.logger.log_turn(
+            turn_num=self.current_turn,
+            agent_states=agent_states,
+            map_state=map_state,
+            negotiation_data=negotiation_data
+        )
+        
+        # Clear negotiation data after logging
+        self._current_negotiation_data = None
     
     def save_simulation_log(self, filename: Optional[str] = None):
-        """Save comprehensive simulation log to file in visualization-compatible format"""
-        if not self.simulation_log['turns']:
-            return
+        """Save simulation log using unified logger"""
+        if not self.log_enabled or not self.logger:
+            return None
         
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"simulation_log_{timestamp}.json"
-        
-        # Populate scenario information if not already set
-        if not self.simulation_log['scenario']:
-            self.simulation_log['scenario'] = {
-                'type': 'interactive_simulation',
-                'map_size': [self.warehouse_map.width, self.warehouse_map.height],
-                'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
-                'initial_targets': {str(k): list(v) for k, v in self.warehouse_map.targets.items()},
-                'grid': self.warehouse_map.grid.tolist(),  # Include grid data for visualization
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        # Populate summary information
-        negotiation_turns = len([t for t in self.simulation_log['turns'] if t['type'] == 'negotiation'])
-        routine_turns = len([t for t in self.simulation_log['turns'] if t['type'] == 'routine'])
-        
-        self.simulation_log['summary'] = {
-            'total_turns': len(self.simulation_log['turns']),
-            'total_conflicts': len([t for t in self.simulation_log['turns'] if t.get('conflicts_detected', False)]),
-            'total_negotiations': negotiation_turns,
-            'completion_timestamp': datetime.now().isoformat(),
-            'negotiation_turns': negotiation_turns,
-            'routine_turns': routine_turns
-        }
-        
-        log_path = os.path.join("logs", filename)
-        os.makedirs("logs", exist_ok=True)
-        
-        with open(log_path, 'w') as f:
-            json.dump(self.simulation_log, f, indent=2)
-        
-        print(f"Comprehensive simulation log saved to: {log_path}")
-        print(f"📊 Summary: {len(self.simulation_log['turns'])} turns, {negotiation_turns} negotiations")
+        # Finalize and save log
+        log_path = self.logger.finalize()
         return log_path
     
     def run_interactive_simulation(self):
