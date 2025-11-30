@@ -509,17 +509,6 @@ class GameEngine:
         negotiation_duration = negotiation_end_time - negotiation_start_time
         self.negotiation_times.append((negotiation_start_time, negotiation_end_time))
         
-        # Track token usage from LLM response if available
-        if prompts_data and isinstance(prompts_data, dict):
-            # Try to extract token usage from OpenRouter response
-            llm_response = prompts_data.get('llm_response', {})
-            if isinstance(llm_response, dict):
-                usage = llm_response.get('usage', {})
-                if isinstance(usage, dict):
-                    total_tokens = usage.get('total_tokens', 0)
-                    if total_tokens > 0:
-                        self.total_token_usage += total_tokens
-        
         # Check for deadlock (empty dict means turn should be skipped)
         if not resolution:  # Empty dict
             print(f"🛑 Negotiation deadlock - turn skipped (no movement)")
@@ -1069,12 +1058,17 @@ class GameEngine:
             )
             avg_resolution_time_ms = total_negotiation_time / len(self.negotiation_times)
         
+        # Get token usage from the central negotiator's client
+        token_usage = 0
+        if hasattr(self.central_negotiator, 'client') and hasattr(self.central_negotiator.client, 'total_tokens_used'):
+            token_usage = self.central_negotiator.client.total_tokens_used
+        
         return {
             'cooperative_success_rate': round(cooperative_success_rate, 2),
             'makespan_seconds': round(makespan_seconds, 2),
             'collision_rate': round(collision_rate, 3),
             'path_efficiency': round(path_efficiency, 2),
-            'total_tokens_used': self.total_token_usage,
+            'total_tokens_used': token_usage,
             'avg_conflict_resolution_time_ms': round(avg_resolution_time_ms, 2),
             'total_turns': total_turns,
             'total_negotiations': turns_with_negotiations,
