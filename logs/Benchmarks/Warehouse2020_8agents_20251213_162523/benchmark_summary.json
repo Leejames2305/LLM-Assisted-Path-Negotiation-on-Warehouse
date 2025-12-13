@@ -1,0 +1,72 @@
+{
+  "benchmark_info": {
+    "timestamp": "2025-12-13T16:43:15.750099",
+    "layout_name": "Warehouse2020",
+    "config": {
+      "num_agents": 8,
+      "num_rounds": 3,
+      "time_limit_seconds": 300,
+      "seed": 42,
+      "spatial_hints_enabled": true
+    }
+  },
+  "overall_results": {
+    "total_rounds": 3,
+    "successful_rounds": 0,
+    "timeout_rounds": 3,
+    "failed_rounds": 0,
+    "success_rate": 0.0
+  },
+  "average_metrics": {
+    "avg_csr": 0.0,
+    "avg_makespan_seconds": 355.91,
+    "avg_collision_rate": 3.747666666666667,
+    "avg_path_efficiency": 100.0,
+    "total_tokens_used": 122333,
+    "avg_tokens_per_round": 40777.666666666664,
+    "avg_resolution_time_ms": 76662.67333333334,
+    "avg_turns_per_round": 7.333333333333333,
+    "avg_negotiations_per_round": 5.0
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 341.28,
+      "collision_rate": 1.077,
+      "path_efficiency": 100,
+      "total_tokens_used": 49243,
+      "avg_conflict_resolution_time_ms": 56845.46,
+      "total_turns": 13,
+      "total_negotiations": 6,
+      "total_collisions": 14
+    },
+    {
+      "round_num": 2,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 413.88,
+      "collision_rate": 3.833,
+      "path_efficiency": 100,
+      "total_tokens_used": 29776,
+      "avg_conflict_resolution_time_ms": 68967.32,
+      "total_turns": 6,
+      "total_negotiations": 6,
+      "total_collisions": 23
+    },
+    {
+      "round_num": 3,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 312.57,
+      "collision_rate": 6.333,
+      "path_efficiency": 100,
+      "total_tokens_used": 43314,
+      "avg_conflict_resolution_time_ms": 104175.24,
+      "total_turns": 3,
+      "total_negotiations": 3,
+      "total_collisions": 19
+    }
+  ]
+}

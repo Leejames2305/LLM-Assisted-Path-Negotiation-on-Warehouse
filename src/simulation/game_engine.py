@@ -61,6 +61,11 @@ class GameEngine:
         self.agent_paths = {}  # Track total path length per agent
         self.initial_agent_positions = {}  # For path efficiency calculation
         
+        # Benchmark mode controls
+        self.stop_requested = False  # External signal to stop simulation
+        self.timeout_seconds = 0  # Time limit for simulation (0 = no limit)
+        self.silent_mode = False  # Suppress print output for benchmark runs
+        
     def initialize_simulation(self):
         """Initialize a new simulation"""
         print(f"{Fore.CYAN}Initializing Multi-Robot Warehouse Simulation...{Style.RESET_ALL}")
@@ -234,10 +239,23 @@ class GameEngine:
         Returns:
             bool: True if simulation should continue, False if complete
         """
+        # Check for external stop request (benchmark timeout)
+        if self.stop_requested:
+            return False
+        
+        # Check for timeout if configured
+        if self.timeout_seconds > 0 and self.simulation_start_time:
+            elapsed = time.time() - self.simulation_start_time
+            if elapsed >= self.timeout_seconds:
+                if not self.silent_mode:
+                    print(f"\n{Fore.YELLOW}⏱️  Time limit ({self.timeout_seconds}s) reached!{Style.RESET_ALL}")
+                return False
+        
         if self.simulation_complete or self.current_turn >= self.max_turns:
             return False
         
-        print(f"\n{Fore.YELLOW}=== TURN {self.current_turn + 1} ==={Style.RESET_ALL}")
+        if not self.silent_mode:
+            print(f"\n{Fore.YELLOW}=== TURN {self.current_turn + 1} ==={Style.RESET_ALL}")
         
         # Update all agents for new turn
         for agent in self.agents.values():
@@ -1089,6 +1107,58 @@ class GameEngine:
         # Return metrics for display
         return log_path, metrics
     
+    def save_simulation_log_to_path(self, output_dir: str, filename: str) -> Optional[Tuple[str, Dict]]:
+        """
+        Save simulation log to a specific directory with custom filename.
+        Used by benchmark tool to organize logs.
+        
+        Args:
+            output_dir: Directory to save the log file
+            filename: Name of the log file (without path)
+            
+        Returns:
+            Tuple of (log_path, metrics) if successful, None otherwise
+        """
+        if not self.log_enabled or not self.logger:
+            return None
+        
+        # Calculate performance metrics
+        metrics = self.calculate_performance_metrics()
+        
+        # Manually save to specified path instead of default
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+        log_path = os.path.join(output_dir, filename)
+        
+        # Calculate summary for logger
+        turns = self.logger.log_data['turns']
+        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+        routine_turns = [t for t in turns if t.get('type') == 'routine']
+        hmas2_metrics = self.logger._calculate_hmas2_metrics(negotiation_turns)
+        
+        self.logger.log_data['summary'] = {
+            'total_turns': len(turns),
+            'routine_turns': len(routine_turns),
+            'negotiation_turns': len(negotiation_turns),
+            'total_conflicts': len(negotiation_turns),
+            'hmas2_metrics': hmas2_metrics,
+            'performance_metrics': metrics,
+            'completion_timestamp': datetime.now().isoformat()
+        }
+        
+        # Save to specified path
+        import json
+        with open(log_path, 'w', encoding='utf-8') as f:
+            json.dump(self.logger.log_data, f, indent=2, default=str)
+        
+        self.logger._unsaved_data = False
+        return log_path, metrics
+    
+    def reset_token_usage(self):
+        """Reset token usage counter in the central negotiator's client"""
+        if hasattr(self.central_negotiator, 'client') and hasattr(self.central_negotiator.client, 'reset_token_usage'):
+            self.central_negotiator.client.reset_token_usage()
+
     def run_interactive_simulation(self):
         """Run simulation with step-by-step user input"""
         self.initialize_simulation()
