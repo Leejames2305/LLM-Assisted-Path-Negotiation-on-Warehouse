@@ -6,14 +6,8 @@ from typing import Optional, Dict
 
 from .layout_manager import LayoutManager
 
-
+# Interactive layout selection menu
 def select_layout_interactive() -> Optional[Dict]:
-    """
-    Interactive layout selection menu for game startup
-    
-    Returns:
-        Layout dict if successful, None if cancelled
-    """
     manager = LayoutManager()
     layouts = manager.list_available_layouts()
 
@@ -95,17 +89,8 @@ def select_layout_interactive() -> Optional[Dict]:
         print(f"❌ Error: {e}")
         return None
 
-
+# Get layout for starting a game
 def get_layout_for_game(allow_selection: bool = True) -> Optional[Dict]:
-    """
-    Get a layout for starting a game
-    
-    Args:
-        allow_selection: If True, allow user to select layout interactively
-        
-    Returns:
-        Layout dict if successful, None otherwise
-    """
     if allow_selection:
         return select_layout_interactive()
     else:

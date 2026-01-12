@@ -10,18 +10,10 @@ from .constants import CellType
 
 __all__ = ['WarehouseMap', 'CellType']
 
-
+# WarehouseMap with agents, boxes, targets, and walls
 class WarehouseMap:
-    """Warehouse map representation with agents, boxes, targets, and walls"""
 
     def __init__(self, width: int = 8, height: int = 6):
-        """
-        Initialize a warehouse map
-
-        Args:
-            width: Grid width (will be created empty if no layout provided)
-            height: Grid height (will be created empty if no layout provided)
-        """
         self.width = width
         self.height = height
         self.grid = np.full((height, width), CellType.EMPTY.value, dtype=str)
@@ -31,24 +23,8 @@ class WarehouseMap:
         self.agent_goals = {}  # {agent_id: target_id}
 
     @classmethod
+    # Create a warehouse map from a layout dictionary
     def from_layout(cls, layout: Dict) -> 'WarehouseMap':
-        """
-        Create a warehouse map from a layout dictionary
-
-        Args:
-            layout: Layout dict with structure:
-                {
-                    "dimensions": {"width": int, "height": int},
-                    "grid": [list of strings],
-                    "agents": [{"id": int, "x": int, "y": int}, ...],
-                    "boxes": [{"id": int, "x": int, "y": int}, ...],
-                    "targets": [{"id": int, "x": int, "y": int}, ...],
-                    "agent_goals": {str(agent_id): target_id}
-                }
-
-        Returns:
-            WarehouseMap instance initialized from layout
-        """
         width = layout['dimensions']['width']
         height = layout['dimensions']['height']
 
@@ -91,15 +67,13 @@ class WarehouseMap:
         return warehouse
         
     def is_valid_position(self, x: int, y: int) -> bool:
-        """Check if position is within bounds and not a wall"""
         return 0 <= x < self.width and 0 <= y < self.height and self.grid[y, x] != CellType.WALL.value
     
     def is_empty_position(self, x: int, y: int) -> bool:
-        """Check if position is empty (no agents, boxes, or targets)"""
         return self.is_valid_position(x, y) and self.grid[y, x] == CellType.EMPTY.value
     
+    # Move an agent to a new position
     def move_agent(self, agent_id: int, new_x: int, new_y: int) -> bool:
-        """Move an agent to a new position"""
         if agent_id not in self.agents:
             return False
         
@@ -128,8 +102,8 @@ class WarehouseMap:
         
         return True
     
+    # Agent picks up a box
     def pickup_box(self, agent_id: int, box_id: int) -> bool:
-        """Agent picks up a box"""
         if agent_id not in self.agents or box_id not in self.boxes:
             return False
         
@@ -148,8 +122,8 @@ class WarehouseMap:
         
         return False
     
+    # Agent drops a box at a target
     def drop_box(self, agent_id: int, target_id: int) -> bool:
-        """Agent drops a box at a target"""
         if agent_id not in self.agents or target_id not in self.targets:
             return False
         
@@ -170,8 +144,8 @@ class WarehouseMap:
         
         return False
     
+    # Display the map as a string
     def display(self) -> str:
-        """Return a string representation of the map"""
         display_grid = self.grid.copy()
         
         # Add spacing for better visibility
@@ -181,8 +155,8 @@ class WarehouseMap:
         
         return '\n'.join(rows)
     
+    # Get current state as dictionary for logging
     def get_state_dict(self) -> Dict:
-        """Get current state as dictionary for logging"""
         return {
             'agents': self.agents.copy(),
             'boxes': self.boxes.copy(),

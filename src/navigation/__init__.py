@@ -11,23 +11,8 @@ class ConflictDetector:
         self.map_width = map_width
         self.map_height = map_height
     
+    # Detect conflicts in planned paths between agents
     def detect_path_conflicts(self, agents_paths: Dict[int, List[Tuple[int, int]]], current_turn: int = 0) -> Dict:
-        """
-        Detect conflicts in planned paths between agents
-        
-        Args:
-            agents_paths: {agent_id: [(x, y), (x, y), ...]}
-            current_turn: Current simulation turn
-        
-        Returns:
-            conflict_info: {
-                'has_conflicts': bool,
-                'conflict_points': [(x, y), ...],
-                'conflicting_agents': [agent_id, ...],
-                'conflict_turns': [turn, ...]
-            }
-        """
-        
         conflicts = {
             'has_conflicts': False,
             'conflict_points': [],
@@ -69,8 +54,8 @@ class ConflictDetector:
         
         return conflicts
     
+    # Detect when two agents swap positions
     def _detect_swap_conflicts(self, agents_paths: Dict, turn: int, conflicts: Dict, current_turn: int):
-        """Detect when two agents swap positions (crossing paths)"""
         agent_ids = list(agents_paths.keys())
         
         for i in range(len(agent_ids)):
@@ -97,18 +82,8 @@ class SimplePathfinder:
         self.map_width = map_width
         self.map_height = map_height
     
+    # Basic A* pathfinding implementation
     def find_path(self, start: Tuple[int, int], goal: Tuple[int, int], obstacles: Optional[Set[Tuple[int, int]]] = None) -> List[Tuple[int, int]]:
-        """
-        Find path using A* algorithm
-        
-        Args:
-            start: Starting position (x, y)
-            goal: Goal position (x, y)
-            obstacles: Set of obstacle positions
-        
-        Returns:
-            List of positions from start to goal
-        """
         if obstacles is None:
             obstacles = set()
         
@@ -154,21 +129,11 @@ class SimplePathfinder:
         
         return []  # No path found
     
+    # Find path while avoiding other agents
     def find_path_avoiding_agents(self, start: Tuple[int, int], goal: Tuple[int, int], 
                                   agent_positions: Dict[int, Tuple[int, int]], 
                                   exclude_agent: Optional[int] = None) -> List[Tuple[int, int]]:
-        """
-        Find path while avoiding other agents
         
-        Args:
-            start: Starting position
-            goal: Goal position  
-            agent_positions: {agent_id: (x, y)}
-            exclude_agent: Agent ID to exclude from obstacles (usually the moving agent)
-        
-        Returns:
-            Path avoiding other agents
-        """
         obstacles = set()
         
         # Add other agents as obstacles
@@ -178,23 +143,12 @@ class SimplePathfinder:
         
         return self.find_path(start, goal, obstacles)
     
+    # Find path while avoiding walls and other agents
     def find_path_with_obstacles(self, start: Tuple[int, int], goal: Tuple[int, int],
                                 walls: Set[Tuple[int, int]], 
                                 agent_positions: Dict[int, Tuple[int, int]], 
                                 exclude_agent: Optional[int] = None) -> List[Tuple[int, int]]:
-        """
-        Find path while avoiding walls and other agents
-        
-        Args:
-            start: Starting position
-            goal: Goal position
-            walls: Set of wall positions to avoid
-            agent_positions: {agent_id: (x, y)}
-            exclude_agent: Agent ID to exclude from obstacles
-            
-        Returns:
-            Path avoiding walls and other agents
-        """
+
         obstacles = set(walls)  # Start with walls
         
         # Add other agents as obstacles
@@ -204,11 +158,11 @@ class SimplePathfinder:
         
         return self.find_path(start, goal, obstacles)
     
+    # Calculate the cost (length) of a path
     def get_path_cost(self, path: List[Tuple[int, int]]) -> int:
-        """Calculate the cost (length) of a path"""
         return len(path) - 1 if len(path) > 1 else 0
     
+    # Check if position is within map bounds
     def is_valid_position(self, pos: Tuple[int, int]) -> bool:
-        """Check if position is within map bounds"""
         x, y = pos
         return 0 <= x < self.map_width and 0 <= y < self.map_height

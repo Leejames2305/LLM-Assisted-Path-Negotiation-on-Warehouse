@@ -17,14 +17,12 @@ import atexit
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 
-
+# Unified logger to capture simulation data
 class UnifiedLogger:
-    """Unified logger for capturing simulation and negotiation data"""
     
     _instance = None  # Singleton for signal handling
     
     def __init__(self):
-        """Initialize the unified logger"""
         self.log_data = {
             'scenario': {},
             'turns': [],
@@ -40,8 +38,8 @@ class UnifiedLogger:
         # Register signal handlers for emergency save
         self._setup_signal_handlers()
     
+    # Setup signal handlers for emergency save on interrupt
     def _setup_signal_handlers(self):
-        """Setup signal handlers for emergency save on interruption"""
         def signal_handler(signum, frame):
             print(f"\n\n🛑 PROCESS INTERRUPTED! (Signal {signum})")
             print("💾 Saving simulation data before exit...")
@@ -58,8 +56,8 @@ class UnifiedLogger:
             import sys
             sys.exit(0)
         
+        # Cleanup function to save on normal exit
         def cleanup_on_exit():
-            """Cleanup function called on normal exit"""
             if UnifiedLogger._instance is not None and UnifiedLogger._instance._unsaved_data:
                 print("💾 Auto-saving simulation data on exit...")
                 UnifiedLogger._instance.finalize()
@@ -80,21 +78,8 @@ class UnifiedLogger:
         except UnicodeEncodeError:
             print("[LOGGER] Emergency save protection enabled (Ctrl+C safe)")
     
+    # Initialize logging with scenario metadata
     def initialize(self, scenario_data: Dict) -> None:
-        """
-        Initialize logging with scenario metadata
-        
-        Args:
-            scenario_data: {
-                'type': str,           # e.g., 'interactive_simulation'
-                'map_size': [w, h],
-                'grid': [[...], ...],  # 2D grid array
-                'initial_agents': {agent_id: [x, y]},
-                'initial_targets': {target_id: [x, y]},
-                'initial_boxes': {box_id: [x, y]},   # Optional
-                'agent_goals': {agent_id: goal_id}   # Optional
-            }
-        """
         self.log_data['scenario'] = {
             'type': scenario_data.get('type', 'simulation'),
             'map_size': scenario_data.get('map_size', [0, 0]),
@@ -111,52 +96,15 @@ class UnifiedLogger:
         self._initialized = True
         self._unsaved_data = True
     
+    # Log a single turn's data
     def log_turn(
         self,
         turn_num: int,
         agent_states: Dict,
         map_state: Dict,
         negotiation_data: Optional[Dict] = None
-    ) -> None:
-        """
-        Log a single turn's data
-        
-        Args:
-            turn_num: Current turn number
-            agent_states: {
-                agent_id: {
-                    'position': [x, y],
-                    'target_position': [x, y] | None,
-                    'planned_path': [[x, y], ...],
-                    'executed_path': [[x, y], ...],
-                    'carrying_box': bool,
-                    'box_id': int | None,
-                    'is_waiting': bool,
-                    'wait_turns_remaining': int,
-                    'priority': int,
-                    'has_negotiated_path': bool
-                }
-            }
-            map_state: {
-                'boxes': {box_id: [x, y]},
-                'targets': {target_id: [x, y]},
-                'dimensions': [w, h]
-            }
-            negotiation_data: Optional HMAS-2 data when negotiation occurred {
-                'conflict_data': {...},
-                'hmas2_stages': {
-                    'central_negotiation': {
-                        'system_prompt': str,
-                        'user_prompt': str,
-                        'llm_response': {...},
-                        'model_used': str
-                    },
-                    'agent_validations': {...},
-                    'refinement_loop': {...},
-                    'final_actions': {...}
-                }
-            }
-        """
+        ) -> None:
+
         turn_entry = {
             'turn': turn_num,
             'timestamp': datetime.now().isoformat(),
@@ -169,17 +117,9 @@ class UnifiedLogger:
         self.log_data['turns'].append(turn_entry)
         self._unsaved_data = True
     
+    # Finalize and save the log to a file
     def finalize(self, emergency: bool = False, performance_metrics: Optional[Dict] = None) -> Optional[str]:
-        """
-        Finalize logging and save to file
-        
-        Args:
-            emergency: If True, save with emergency prefix
-            performance_metrics: Optional performance metrics dict to include in summary
-        
-        Returns:
-            Path to saved log file, or None if no data to save
-        """
+
         if not self.log_data['turns']:
             print("⚠️  No turn data to save")
             return None
@@ -222,8 +162,8 @@ class UnifiedLogger:
         
         return log_path
     
+    # Calculate negotiation metrics
     def _calculate_hmas2_metrics(self, negotiation_turns: List[Dict]) -> Dict:
-        """Calculate HMAS-2 specific metrics from negotiation turns"""
         total_validations = 0
         approvals = 0
         rejections = 0
@@ -265,16 +205,8 @@ class UnifiedLogger:
             'disagreement_rate': round(disagreement_rate, 3)
         }
     
+    # Recursive conversion to JSON-serializable format
     def _to_json_safe(self, obj: Any, visited: Optional[set] = None) -> Any:
-        """
-        Recursively convert object to JSON-serializable format
-        
-        Handles:
-        - Tuples → lists
-        - numpy arrays → lists
-        - Circular references
-        - Non-serializable objects
-        """
         if visited is None:
             visited = set()
         
@@ -322,18 +254,15 @@ class UnifiedLogger:
             return None
     
     def get_log_data(self) -> Dict:
-        """Get the current log data (useful for testing)"""
         return self.log_data
     
     def has_unsaved_data(self) -> bool:
-        """Check if there is unsaved data"""
         return self._unsaved_data
     
     def get_last_saved_path(self) -> Optional[str]:
-        """Get the path of the last saved log file"""
         return self._log_file_path
 
-
+# Helper function to create negotiation data structure for logging
 def create_negotiation_data(
     conflict_data: Dict,
     system_prompt: str,
@@ -344,24 +273,8 @@ def create_negotiation_data(
     refinement_loop: Optional[Dict] = None,
     final_actions: Optional[Dict] = None,
     validation_overrides: Optional[Dict] = None
-) -> Dict:
-    """
-    Helper function to create properly structured negotiation data for logging
-    
-    Args:
-        conflict_data: Raw conflict information
-        system_prompt: LLM system prompt
-        user_prompt: LLM user prompt
-        llm_response: Raw LLM response
-        model_used: Model identifier string
-        agent_validations: Per-agent validation results
-        refinement_loop: Refinement iteration history
-        final_actions: Final executed actions per agent
-        validation_overrides: Cases where agent overrode central decision
-    
-    Returns:
-        Structured negotiation data dict for logging
-    """
+    ) -> Dict:
+
     return {
         'conflict_data': conflict_data,
         'hmas2_stages': {

@@ -65,9 +65,9 @@ class GameEngine:
         self.stop_requested = False  # External signal to stop simulation
         self.timeout_seconds = 0  # Time limit for simulation (0 = no limit)
         self.silent_mode = False  # Suppress print output for benchmark runs
-        
+    
+    # Initialize a new simulation
     def initialize_simulation(self):
-        """Initialize a new simulation"""
         print(f"{Fore.CYAN}Initializing Multi-Robot Warehouse Simulation...{Style.RESET_ALL}")
         
         # Note: warehouse_map is already loaded from layout in main.py
@@ -113,17 +113,16 @@ class GameEngine:
         print(f"{Fore.GREEN}Simulation initialized successfully!{Style.RESET_ALL}")
         self.display_map()
     
+    # Plan initial paths for all agents
     def _plan_initial_paths(self):
-        """Plan initial paths for all agents"""
         print("Planning initial paths for all agents...")
         
         for agent_id, agent in self.agents.items():
             map_state = self.warehouse_map.get_state_dict()
             path = agent.plan_path(map_state)
     
+    # Detect when agents have failed moves for multiple turns
     def detect_stagnation_conflicts(self) -> Dict:
-        """Detect when agents have failed moves for multiple turns (actual stagnation, not intentional waiting)"""
-        
         # Check for agents with consecutive failed moves (not just staying in same position)
         stagnant_agents = []
         
@@ -179,9 +178,8 @@ class GameEngine:
         
         return {'has_conflicts': False}
     
+    # Detect agents stuck due to too many failed moves
     def detect_move_failure_deadlocks(self, planned_moves: Dict) -> Dict:
-        """Detect agents with too many consecutive failed moves"""
-        
         stuck_agents = []
         
         # Check for agents with too many failed moves
@@ -211,8 +209,8 @@ class GameEngine:
         
         return {'has_conflicts': False}
     
+    # Force deadlock negotiation for stuck agents
     def _force_deadlock_negotiation(self, stuck_agents: List[int], planned_moves: Dict):
-        """Force negotiation when agents are stuck"""
         print("🛠️ DEADLOCK BREAKING: Creating artificial conflict to trigger negotiation")
         
         # Create artificial conflict data for deadlock breaking
@@ -232,13 +230,8 @@ class GameEngine:
                     self.agent_failed_move_history[agent_id] = []
                 print(f"🔄 Agent {agent_id}: Reset failure count and move history after deadlock negotiation")
     
+    # Run one step of the simulation with forced conflict detection
     def run_simulation_step(self) -> bool:
-        """
-        Run one step of the simulation with forced conflict detection
-        
-        Returns:
-            bool: True if simulation should continue, False if complete
-        """
         # Check for external stop request (benchmark timeout)
         if self.stop_requested:
             return False
@@ -367,12 +360,12 @@ class GameEngine:
         self.current_turn += 1
         return not self.simulation_complete
     
+    # Get planned moves for all active agents
     def _get_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
-        """Get planned moves for all active agents (legacy method - now calls normal planning)"""
         return self._get_normal_planned_moves()
     
+    # Get forced planned moves (ignoring other agents) for conflict detection
     def _get_forced_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
-        """Get forced planned moves (ignoring other agents) for conflict detection"""
         forced_moves = {}
         
         for agent_id, agent in self.agents.items():
@@ -391,8 +384,8 @@ class GameEngine:
         
         return forced_moves
     
+    # Get normal planned moves (avoiding other agents)
     def _get_normal_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
-        """Get normal planned moves (avoiding other agents)"""
         planned_moves = {}
         
         for agent_id, agent in self.agents.items():
@@ -421,8 +414,8 @@ class GameEngine:
         
         return planned_moves
     
+    # Plan path ignoring other agents - for conflict detection
     def _plan_forced_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
-        """Plan path ignoring other agents - for conflict detection"""
         # Extract only walls as obstacles (ignore other agents)
         walls = set()
         grid = map_state.get('grid', [])
@@ -442,8 +435,8 @@ class GameEngine:
         
         return forced_path
     
+    # Plan path avoiding other agents - for actual movement
     def _plan_normal_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
-        """Plan path avoiding other agents - for actual movement"""
         # Extract walls
         walls = set()
         grid = map_state.get('grid', [])
@@ -469,8 +462,8 @@ class GameEngine:
         
         return normal_path
     
+    # Use Central Negotiator to resolve conflicts
     def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Dict:
-        """Use Central Negotiator to resolve conflicts"""
         print("🤖 Initiating LLM-based conflict negotiation...")
         
         # Track negotiation timing
@@ -558,6 +551,7 @@ class GameEngine:
         
         return resolution
     
+    # Build structured negotiation log data
     def _build_negotiation_log_data(
         self, 
         conflict_data: Dict, 
@@ -566,8 +560,8 @@ class GameEngine:
         refinement_history: List, 
         agent_validations: Dict,
         final_actions: Dict
-    ) -> Dict:
-        """Build structured negotiation data for unified logging"""
+        ) -> Dict:
+
         from ..logging.unified_logger import create_negotiation_data
         
         # Extract prompts from prompts_data or use defaults
@@ -593,8 +587,8 @@ class GameEngine:
             final_actions=final_actions
         )
     
+    # Extract agent validation results from negotiation data and refinement history
     def _extract_agent_validations(self, resolution: Dict, refinement_history: List) -> Dict:
-        """Extract agent validation data from resolution and refinement history"""
         validations = {}
         
         # Check refinement history for validation results
@@ -610,15 +604,15 @@ class GameEngine:
         
         return validations
     
+    # Extract final actions from negotiation resolution
     def _extract_final_actions(self, resolution: Dict) -> Dict:
-        """Extract final actions from resolution"""
         if 'agent_actions' in resolution:
             return resolution['agent_actions']
         # Check for agent IDs as top-level keys
         return {k: v for k, v in resolution.items() if str(k).isdigit()}
     
+    # Execute actions determined by negotiation
     def _execute_negotiated_actions(self, resolution: Dict):
-        """Execute actions determined by negotiation"""
         # Handle both formats: response with 'agent_actions' key or agent IDs directly as keys
         if 'agent_actions' in resolution:
             agent_actions = resolution.get('agent_actions', {})
@@ -627,9 +621,9 @@ class GameEngine:
             agent_actions = {k: v for k, v in resolution.items() 
                            if isinstance(k, (int, str)) and (isinstance(k, int) or k.isdigit())}
         
-        # OPTIMIZATION: Mark all agents as HMAS-2 pre-validated before executing
+        # Mark all agents as HMAS-2 pre-validated before executing
         # The central negotiator already validated these paths with agents validators,
-        # so we skip redundant validation in execute_negotiated_action
+        # so skip redundant validation in execute_negotiated_action
         for agent_id_str in agent_actions.keys():
             if isinstance(agent_id_str, str) and agent_id_str.isdigit():
                 agent_id_key = int(agent_id_str)
@@ -654,7 +648,7 @@ class GameEngine:
                 agent = self.agents[agent_id_key]
                 map_state = self.warehouse_map.get_state_dict()
                 
-                # CRITICAL FIX: Update agent's planned path with negotiated path
+                # Update agent's planned path with negotiated path
                 negotiated_path = action_data.get('path', [])
                 if negotiated_path and len(negotiated_path) > 0:
                     # Convert path elements to tuples for consistency
@@ -664,13 +658,13 @@ class GameEngine:
                     updated_path = [tuple(pos) if isinstance(pos, (list, tuple)) else pos for pos in negotiated_path]
                     agent.set_path(updated_path)
                     
-                    # IMPORTANT: Mark agent as having a negotiated path to preserve it
+                    # Mark agent as having a negotiated path to preserve it
                     agent._has_negotiated_path = True
                 
                 success = agent.execute_negotiated_action(action_data, map_state)
                 
                 if success:
-                    # IMPORTANT: After successful move, update the negotiated path by removing the first step
+                    # After successful move, update the negotiated path by removing the first step
                     if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
                         if len(agent.planned_path) > 1:
                             # Remove the first step and keep the rest
@@ -691,8 +685,8 @@ class GameEngine:
                     if hasattr(agent, '_has_negotiated_path'):
                         agent._has_negotiated_path = False
     
+    # Execute planned moves without conflicts
     def _execute_planned_moves(self, planned_moves: Dict):
-        """Execute planned moves without conflicts"""
         for agent_id, path in planned_moves.items():
             if agent_id in self.agents and len(path) > 0:
                 agent = self.agents[agent_id]
@@ -716,7 +710,7 @@ class GameEngine:
                 
                 next_pos = path[start_index]
                 
-                # CRITICAL FIX: Handle "waiting in place" moves (when next_pos == current_pos)
+                # Handle "waiting in place" moves (when next_pos == current_pos)
                 if next_pos == agent.position:
                     # This is a "wait" move - agent should stay in current position
                     print(f"⏸️  Agent {agent_id}: Waiting at {agent.position}")
@@ -737,11 +731,11 @@ class GameEngine:
                     # Reset failure count on successful move
                     self.failed_move_counts[agent_id] = 0
                     
-                    # IMPORTANT: Clear failed move history on successful move or wait
+                    # Clear failed move history on successful move or wait
                     if agent_id in self.agent_failed_move_history:
                         self.agent_failed_move_history[agent_id] = []
                     
-                    # CRITICAL FIX: If agent has a negotiated path, advance it properly
+                    # If agent has a negotiated path, advance it properly
                     if (hasattr(agent, '_has_negotiated_path') and 
                         getattr(agent, '_has_negotiated_path', False) and 
                         agent.planned_path and 
@@ -782,8 +776,8 @@ class GameEngine:
                     
                     print(f"❌ Agent {agent_id}: Move to {next_pos} failed ({self.failed_move_counts[agent_id]} consecutive failures)")
     
+    # Check if agent can pick up a box at current position
     def _check_box_pickup(self, agent_id: int):
-        """Check if agent can pick up a box at current position"""
         agent = self.agents[agent_id]
         
         # Only pick up if not already carrying and at box position
@@ -809,8 +803,8 @@ class GameEngine:
                             map_state = self.warehouse_map.get_state_dict()
                             agent.plan_path(map_state)
     
+    # Check if agent can deliver box at current position
     def _check_box_delivery(self, agent_id: int):
-        """Check if agent can deliver box at current position"""
         agent = self.agents[agent_id]
         
         # Only deliver if carrying box and at target position
@@ -834,8 +828,8 @@ class GameEngine:
                             self.agent_failed_move_history[agent_id] = []
                             print(f"🧹 Agent {agent_id}: Cleared failed move history (task completed)")
     
+    # Update warehouse map with current agent positions
     def _update_map_state(self):
-        """Update warehouse map with current agent positions"""
         # Clear agent positions on map, but preserve other elements
         for y in range(self.height):
             for x in range(self.width):
@@ -859,8 +853,8 @@ class GameEngine:
             # Update warehouse map's agent tracking
             self.warehouse_map.agents[agent_id] = agent.position
     
+    # Check if all tasks are complete
     def _check_completion(self) -> bool:
-        """Check if all warehouse tasks are completed (all boxes delivered)"""
         # Check if all boxes have been delivered (removed from the map)
         if self.warehouse_map.boxes:
             return False  # Still boxes to be delivered
@@ -872,8 +866,8 @@ class GameEngine:
                 
         return True
     
+    # Display current warehouse map with color coding
     def display_map(self):
-        """Display the current warehouse map with colors"""
         print(f"\n{Fore.CYAN}Current Warehouse State:{Style.RESET_ALL}")
         
         # Add column numbers
@@ -901,8 +895,8 @@ class GameEngine:
             
             print(row)
     
+    # Display detailed status of all agents
     def _display_agent_status(self):
-        """Display detailed status of all agents"""
         print(f"\n{Fore.CYAN}Agent Status:{Style.RESET_ALL}")
         for agent_id, agent in self.agents.items():
             status = agent.get_status()
@@ -933,8 +927,8 @@ class GameEngine:
             if status['planned_path'] and len(status['planned_path']) > 1:
                 print(f"  🗺️  Path: {status['planned_path'][:5]}{'...' if len(status['planned_path']) > 5 else ''}")
     
+    # Log current simulation state
     def _log_turn_state(self, event_type: str):
-        """Log current simulation state using unified logger"""
         if not self.log_enabled or not self.logger:
             return
         
@@ -976,8 +970,8 @@ class GameEngine:
         # Clear negotiation data after logging
         self._current_negotiation_data = None
     
+    # Display performance metrics in console
     def _display_performance_metrics(self, metrics: Dict):
-        """Display formatted performance metrics to console"""
         print(f"\n{Fore.CYAN}{'=' * 60}")
         try:
             print(f"{Fore.CYAN}📊 PERFORMANCE METRICS")
@@ -1019,19 +1013,8 @@ class GameEngine:
         
         print(f"{Fore.CYAN}{'=' * 60}{Style.RESET_ALL}\n")
     
+    # Calculate performance metrics after simulation completion, including success rate, makespan, conflict resolution time etc
     def calculate_performance_metrics(self) -> Dict:
-        """
-        Calculate performance metrics for the completed simulation
-        
-        Returns:
-            Dict with metrics:
-            - cooperative_success_rate: percentage of deliveries completed
-            - makespan_seconds: total elapsed time in seconds
-            - collision_rate: collisions per turn
-            - path_efficiency: actual path length vs optimal (lower is better)
-            - total_tokens_used: cumulative token usage from LLM
-            - avg_conflict_resolution_time_ms: average negotiation time in milliseconds
-        """
         # Calculate makespan in seconds
         makespan_seconds = 0
         if self.simulation_start_time:
@@ -1093,8 +1076,8 @@ class GameEngine:
             'total_collisions': self.collision_count
         }
     
+    # Save simulation log
     def save_simulation_log(self, filename: Optional[str] = None):
-        """Save simulation log using unified logger"""
         if not self.log_enabled or not self.logger:
             return None
         
@@ -1107,18 +1090,8 @@ class GameEngine:
         # Return metrics for display
         return log_path, metrics
     
+    # Save simulation log to a specific directory with custom filename
     def save_simulation_log_to_path(self, output_dir: str, filename: str) -> Optional[Tuple[str, Dict]]:
-        """
-        Save simulation log to a specific directory with custom filename.
-        Used by benchmark tool to organize logs.
-        
-        Args:
-            output_dir: Directory to save the log file
-            filename: Name of the log file (without path)
-            
-        Returns:
-            Tuple of (log_path, metrics) if successful, None otherwise
-        """
         if not self.log_enabled or not self.logger:
             return None
         
@@ -1154,13 +1127,13 @@ class GameEngine:
         self.logger._unsaved_data = False
         return log_path, metrics
     
+    # Reset token usage counter in the central negotiator's client
     def reset_token_usage(self):
-        """Reset token usage counter in the central negotiator's client"""
         if hasattr(self.central_negotiator, 'client') and hasattr(self.central_negotiator.client, 'reset_token_usage'):
             self.central_negotiator.client.reset_token_usage()
 
+    # Run interactive simulation with user input for each step
     def run_interactive_simulation(self):
-        """Run simulation with step-by-step user input"""
         self.initialize_simulation()
         
         print(f"\n{Fore.CYAN}🚀 Starting Interactive Simulation{Style.RESET_ALL}")

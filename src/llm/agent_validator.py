@@ -17,23 +17,12 @@ class AgentValidator:
         # Check if we're using a reasoning model for validation
         self.is_reasoning_model = OpenRouterConfig.is_reasoning_model(self.model)
     
+    # Check if model supports reasoning features
     def _is_reasoning_model(self, model: str) -> bool:
-        """Check if the model supports reasoning features (delegated to config)"""
         return OpenRouterConfig.is_reasoning_model(model)
     
+    # Checks if a negotiated action is safe and executable
     def validate_negotiated_action(self, agent_id: int, proposed_action: Dict, current_state: Dict) -> Dict:
-        """
-        Validate if a negotiated action is safe and executable for an agent
-        
-        Args:
-            agent_id: The agent's ID
-            proposed_action: {'action': 'move'/'wait', 'path': [...], 'priority': int}
-            current_state: Current map and agent state
-        
-        Returns:
-            validation_result: {'valid': bool, 'reason': str, 'alternative': Dict/None}
-        """
-        
         # Quick validation for simple wait actions
         if proposed_action.get('action') == 'wait':
             return {
@@ -104,20 +93,8 @@ class AgentValidator:
         else:
             return self._create_permissive_fallback_with_alternative()
     
+    # Quick safety check for a single move
     def check_move_safety(self, agent_id: int, from_pos: Tuple[int, int], to_pos: Tuple[int, int], map_state: Dict) -> bool:
-        """
-        Quick safety check for a single move
-        
-        Args:
-            agent_id: Agent making the move
-            from_pos: Current position (x, y)
-            to_pos: Target position (x, y)
-            map_state: Current map state
-        
-        Returns:
-            bool: True if move is safe, False otherwise
-        """
-        
         # First do basic validation - this should be deterministic, not LLM-based
         to_x, to_y = to_pos
         from_x, from_y = from_pos
@@ -145,11 +122,8 @@ class AgentValidator:
         
         return True
     
+    # Suggest alternative action when original action fails validation
     def suggest_alternative_action(self, agent_id: int, failed_action: Dict, current_state: Dict) -> Optional[Dict]:
-        """
-        Suggest alternative action when original action fails validation
-        """
-        
         system_prompt = """You are helping a robot find an alternative action when its planned action is invalid.
 
         Suggest alternatives like:
@@ -157,12 +131,14 @@ class AgentValidator:
         - Move to a different adjacent cell
         - Take a longer but safer path
 
-        Respond with JSON: {"action": "move/wait", "path": [[x,y]...], "reasoning": "explanation"}"""
+        Respond with JSON: {"action": "move/wait", "path": [[x,y]...], "reasoning": "explanation"}
+        """
         
         user_prompt = f"""Agent {agent_id} cannot execute: {failed_action}
         Current state: {current_state}
 
-        Suggest a safe alternative action."""
+        Suggest a safe alternative action.
+        """
         
         messages = [
             self.client.create_system_message(system_prompt),
@@ -184,8 +160,8 @@ class AgentValidator:
         
         return None
     
+    # System prompt for validation
     def _create_validation_system_prompt(self) -> str:
-        """Create system prompt for action validation"""
         return """You are an Agent Validator for warehouse robots. Your job is to perform basic safety validation of negotiated actions from a trusted central coordinator.
 
         CRITICAL VALIDATION RULES - CHECK THE ENTIRE PATH:
@@ -222,10 +198,11 @@ class AgentValidator:
             "reason": "specific reason"
         }
 
-        VALIDATION PHILOSOPHY: Reject any path with diagonals or walls. Accept zero-moves (staying in place). Otherwise approve."""
+        VALIDATION PHILOSOPHY: Reject any path with diagonals or walls. Accept zero-moves (staying in place). Otherwise approve.
+        """
     
+    # Validation query with entire path checking
     def _create_validation_query(self, agent_id: int, proposed_action: Dict, current_state: Dict) -> str:
-        """Create validation query with entire path checking"""
         # Extract agent positions and find this agent's current position
         agents = current_state.get('agents', {})
         current_pos = agents.get(agent_id) or agents.get(str(agent_id))
@@ -271,7 +248,7 @@ class AgentValidator:
 
         2. WALL CHECK:
            Verify no position in path contains a wall (#):
-"""
+        """
         
         # Add map grid for reference
         if grid:
@@ -293,7 +270,7 @@ class AgentValidator:
            All positions must be within x:[0-{max_x}] and y:[0-{max_y}]
 
         PATH VALIDATION SUMMARY:
-"""
+        """
         
         # Analyze path for issues
         issues = []
@@ -344,12 +321,13 @@ class AgentValidator:
         - "diagonal_move_at_step_2: (3,4)→(2,5) (dx=1, dy=1)"
         - "out_of_bounds_at_step_4: (10,6) exceeds max (9,7)"
 
-        Respond with JSON: {{"valid": true/false, "reason": "specific_reason_with_details"}}"""
+        Respond with JSON: {{"valid": true/false, "reason": "specific_reason_with_details"}}
+        """
         
         return query
     
+    # Add reasoning instructions for validation
     def _add_validation_reasoning_instructions(self, base_prompt: str) -> str:
-        """Add reasoning instructions for validation"""
         reasoning_instructions = """
         EFFICIENT VALIDATION REASONING:
         1. Focus on immediate safety: Can this agent make this specific move right now?
@@ -362,8 +340,8 @@ class AgentValidator:
         """
         return reasoning_instructions + base_prompt
     
+    # Parse validation response from LLM
     def _parse_validation_response(self, response: str) -> Dict:
-        """Parse validation response"""
         response = response.strip()
         
         # Look for JSON
@@ -390,30 +368,30 @@ class AgentValidator:
         
         return self._create_permissive_fallback()
     
+    # Permissive fallback if parsing fails, trusting central coordinator
     def _create_permissive_fallback(self) -> Dict:
-        """Create permissive fallback validation result that trusts central coordinator"""
         return {
             "valid": True,  # Trust the central coordinator by default
             "reason": "Validation response unclear, trusting central coordinator decision"
         }
     
+    # Permissive fallback that counts as rejection with wait alternative
     def _create_permissive_fallback_with_alternative(self) -> Dict:
-        """Create permissive fallback with alternative for counting rejections properly"""
         return {
             "valid": False,  # Mark as failed for proper counting
             "reason": "Validation failed, suggesting wait as safe alternative",
             "alternative": {"action": "wait", "reason": "validation_error"}
         }
     
+    # Safe fallback that trusts central coordinator
     def _create_safe_fallback(self) -> Dict:
-        """Create fallback validation result - now more permissive"""
         return {
             "valid": True,  # Trust central coordinator in fallback scenarios too
             "reason": "Using permissive fallback, trusting central coordinator",
         }
     
+    # Basic move validation without LLM
     def _basic_move_validation(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], map_state: Dict) -> bool:
-        """Basic move validation without LLM"""
         try:
             # Check if move is to adjacent cell
             dx = abs(to_pos[0] - from_pos[0])

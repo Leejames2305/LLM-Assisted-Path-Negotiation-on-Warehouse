@@ -15,9 +15,8 @@ from src.map_generator.layout_manager import LayoutManager
 from src.map_generator.layout_validator import LayoutValidator
 from src.map_generator.constants import EMPTY_LAYOUT_TEMPLATE, CellType
 
-
+# Interactive terminal layout editor
 class LayoutEditor:
-    """Interactive terminal editor for warehouse layouts"""
 
     def __init__(self):
         self.manager = LayoutManager()
@@ -28,7 +27,6 @@ class LayoutEditor:
         self.saved = True
 
     def run(self):
-        """Main editor loop"""
         self._print_header()
 
         while True:
@@ -62,8 +60,8 @@ class LayoutEditor:
             else:
                 print("❌ Invalid option. Please try again.")
 
+    # Print ASCII header
     def _print_header(self):
-        """Print ASCII header"""
         print("\n")
         print("╔" + "═" * 58 + "╗")
         print("║" + " WAREHOUSE LAYOUT EDITOR ".center(58) + "║")
@@ -71,8 +69,8 @@ class LayoutEditor:
         print("╚" + "═" * 58 + "╝")
         print()
 
+    # Create a new layout from scratch
     def _create_new_layout(self):
-        """Create a new layout from scratch"""
         print("\n" + "=" * 60)
         print("CREATE NEW LAYOUT")
         print("=" * 60)
@@ -95,8 +93,8 @@ class LayoutEditor:
         except ValueError:
             print("❌ Invalid input. Please enter numbers.")
 
+    # Load an existing layout
     def _load_layout(self):
-        """Load an existing layout for editing"""
         print("\n" + "=" * 60)
         print("LOAD LAYOUT")
         print("=" * 60)
@@ -141,12 +139,12 @@ class LayoutEditor:
         except ValueError:
             print("❌ Invalid input")
 
+    # View details of all available layouts
     def _view_layouts(self):
-        """View details of all available layouts"""
         print(self.manager.list_layout_details())
 
+    # Delete a layout
     def _delete_layout(self):
-        """Delete a layout"""
         print("\n" + "=" * 60)
         print("DELETE LAYOUT")
         print("=" * 60)
@@ -174,8 +172,8 @@ class LayoutEditor:
         except ValueError:
             print("❌ Invalid input")
 
+    # Main editing loop for a layout
     def _edit_layout(self):
-        """Main editing loop for a layout"""
         while True:
             self._display_grid()
             print("\n" + "=" * 60)
@@ -267,8 +265,8 @@ class LayoutEditor:
             except Exception as e:
                 print(f"❌ Error: {e}")
 
+    # Display the current grid
     def _display_grid(self):
-        """Display the current grid"""
         if not self.current_layout:
             print("❌ No layout loaded")
             return
@@ -319,8 +317,8 @@ class LayoutEditor:
         # Print legend
         print("\nLegend: # = Wall | · = Empty | A = Agent | B = Box | T = Target")
 
+    # Toggle a wall at position
     def _toggle_wall(self, x: int, y: int):
-        """Toggle a wall at position"""
         if not self.current_layout:
             return
         
@@ -348,8 +346,8 @@ class LayoutEditor:
         layout = cast(Dict, self.current_layout)
         layout['grid'] = [''.join(row) for row in grid_list]
 
+    # Place/move an agent
     def _place_agent(self, agent_id: int, x: int, y: int):
-        """Place or move an agent"""
         if not self._is_valid_entity_position(x, y):
             print(f"❌ Cannot place agent at ({x}, {y})")
             return
@@ -364,8 +362,8 @@ class LayoutEditor:
         agents.append({'id': agent_id, 'x': x, 'y': y})
         print(f"✅ Placed agent {agent_id} at ({x}, {y})")
 
+    # Place/move a box
     def _place_box(self, box_id: int, x: int, y: int):
-        """Place or move a box"""
         if not self._is_valid_entity_position(x, y):
             print(f"❌ Cannot place box at ({x}, {y})")
             return
@@ -380,8 +378,8 @@ class LayoutEditor:
         boxes.append({'id': box_id, 'x': x, 'y': y})
         print(f"✅ Placed box {box_id} at ({x}, {y})")
 
+    # Place/move a target
     def _place_target(self, target_id: int, x: int, y: int):
-        """Place or move a target"""
         if not self._is_valid_entity_position(x, y):
             print(f"❌ Cannot place target at ({x}, {y})")
             return
@@ -396,8 +394,8 @@ class LayoutEditor:
         targets.append({'id': target_id, 'x': x, 'y': y})
         print(f"✅ Placed target {target_id} at ({x}, {y})")
 
+    # Check if position is valid for entity placement
     def _is_valid_entity_position(self, x: int, y: int) -> bool:
-        """Check if position is valid for entity placement"""
         if not self.current_layout:
             return False
             
@@ -417,8 +415,8 @@ class LayoutEditor:
 
         return True
 
+    # Set an agent's goal to a target
     def _set_goal(self, agent_id: int, target_id: int):
-        """Set an agent's goal to a target"""
         if not self.current_layout:
             return
             
@@ -438,8 +436,8 @@ class LayoutEditor:
         goals[str(agent_id)] = target_id
         print(f"✅ Set agent {agent_id} goal to target {target_id}")
 
+    # Randomly place entities
     def _random_placement(self, mode: str, count: int):
-        """Randomly place entities"""
         if not self.current_layout:
             return
             
@@ -480,8 +478,8 @@ class LayoutEditor:
                 layout['targets'].append({'id': i, 'x': x, 'y': y})
             print(f"✅ Randomly placed {count} targets")
 
+    # Clear all entities but keep walls
     def _clear_entities(self):
-        """Clear all entities (agents, boxes, targets) but keep walls"""
         if not self.current_layout:
             return
             
@@ -494,8 +492,8 @@ class LayoutEditor:
             layout['agent_goals'] = {}
             print("✅ Entities cleared")
 
+    # Show current layout information
     def _show_info(self):
-        """Show layout information"""
         if not self.current_layout:
             print("❌ No layout loaded")
             return
@@ -514,8 +512,8 @@ class LayoutEditor:
         print(f"Agent Goals:   {len(layout['agent_goals'])}")
         print("-" * 60)
 
+    # Validate the current layout
     def _validate_layout(self):
-        """Validate the current layout"""
         if not self.current_layout:
             print("❌ No layout loaded")
             return
@@ -529,8 +527,8 @@ class LayoutEditor:
         else:
             print("❌ " + self.validator.get_error_summary())
 
+    # Save the current layout
     def _save_layout(self):
-        """Save the current layout"""
         if not self.current_layout:
             print("❌ No layout to save")
             return
@@ -580,7 +578,6 @@ class LayoutEditor:
 
 
 def main():
-    """Main entry point"""
     try:
         editor = LayoutEditor()
         editor.run()

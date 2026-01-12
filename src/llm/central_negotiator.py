@@ -34,47 +34,22 @@ class CentralNegotiator:
             print("🚫 Spatial hints DISABLED - Baseline negotiation mode")
         
         print(f"🔄 Refinement loop ENABLED - Max iterations: {self.max_refinement_iterations}")
-        
+    
+    # Check if model supports reasoning features
     def _is_reasoning_model(self, model: str) -> bool:
-        """Check if the model supports reasoning features (delegated to config)"""
         return OpenRouterConfig.is_reasoning_model(model)
     
+    # Toggle spatial hints on/off
     def set_spatial_hints(self, enabled: bool):
-        """Toggle spatial hints on/off for benchmarking"""
         self.enable_spatial_hints = enabled
         status = "ENABLED" if enabled else "DISABLED"
-        
+    
+    # Main negotiation method, get plan from central LLM, validate, refine 5 times if needed
     def negotiate_path_conflict(
         self, 
         conflict_data: Dict, 
         agent_validators: Optional[Dict[int, Callable]] = None
-    ) -> Tuple[Dict, List[Dict], Dict]:
-        """
-        Negotiate path conflicts between agents with iterative refinement loop.
-        
-        Attempts to resolve conflicts by:
-        1. Getting initial plan from central LLM
-        2. Validating with all agents
-        3. If rejected: refining based on feedback (up to 5 iterations)
-        4. If all agents approve: return plan
-        5. If deadlock after 5 iterations: return empty dict to skip turn
-        
-        Args:
-            conflict_data: {
-                'agents': [{'id': 0, 'current_pos': (x, y), 'target_pos': (x, y), 'planned_path': [(x,y), ...]}, ...],
-                'conflict_points': [(x, y), ...],
-                'map_state': {...},
-                'turn': int,
-                'deadlock_breaking': bool (optional)
-            }
-            agent_validators: Dict mapping agent_id to validator function (optional, for testing)
-        
-        Returns:
-            Tuple of:
-            - final_actions: Dict {agent_id: action} or {} if deadlock
-            - refinement_history: List of refinement iteration records
-            - prompts_data: Dict containing system_prompt, user_prompt, model_used
-        """
+        ) -> Tuple[Dict, List[Dict], Dict]:
         
         self.refinement_history = []
         current_plan = None
@@ -238,29 +213,13 @@ class CentralNegotiator:
         print(f"   ✅ Final validation passed! Plan accepted.")
         return current_plan, self.refinement_history, prompts_data
     
+    # Get initial plan from central LLM
     def _get_initial_central_plan(self, conflict_data: Dict) -> Dict:
-        """
-        Get initial conflict resolution plan from central LLM.
-        
-        Args:
-            conflict_data: Conflict information
-        
-        Returns:
-            Agent actions from LLM
-        """
         plan, _ = self._get_initial_central_plan_with_prompts(conflict_data)
         return plan
     
+    # Get initial plan with prompt capture
     def _get_initial_central_plan_with_prompts(self, conflict_data: Dict) -> Tuple[Dict, Dict]:
-        """
-        Get initial conflict resolution plan from central LLM with prompt capture.
-        
-        Args:
-            conflict_data: Conflict information
-        
-        Returns:
-            Tuple of (agent_actions, prompts_dict)
-        """
         system_prompt = self._create_negotiation_system_prompt()
         user_prompt = self._create_conflict_description(conflict_data)
         
@@ -311,23 +270,14 @@ class CentralNegotiator:
             logger.error("No response from LLM API")
             return self._create_fallback_resolution(conflict_data).get('agent_actions', {}), prompts_data
     
+    # Validate plan with all involved agents
     def _validate_plan(
         self, 
         plan: Dict, 
         conflict_data: Dict,
         agent_validators: Dict[int, Callable]
-    ) -> Dict[int, Dict[str, any]]:  # type: ignore
-        """
-        Validate plan with all involved agents.
-        
-        Args:
-            plan: Agent actions from central LLM
-            conflict_data: Conflict information
-            agent_validators: Validator functions for each agent
-        
-        Returns:
-            Dict mapping agent_id to validation result
-        """
+        ) -> Dict[int, Dict[str, any]]:  # type: ignore
+
         validation_results = {}
         map_state = conflict_data.get('map_state', {})
         
@@ -366,21 +316,13 @@ class CentralNegotiator:
         
         return validation_results
     
+    # Build feedback summary from rejected agents for refinement
     def _build_feedback_summary(
         self, 
         validation_results: Dict[int, Dict[str, any]],  # type: ignore
         rejected_agents: set
-    ) -> Dict[str, any]:  # type: ignore
-        """
-        Build concise feedback from rejected validators to send to LLM.
-        
-        Args:
-            validation_results: Results from all validators
-            rejected_agents: Set of agent IDs that rejected
-        
-        Returns:
-            Dict with rejection reasons and alternatives
-        """
+        ) -> Dict[str, any]:  # type: ignore
+
         feedback = {
             "total_rejected": len(rejected_agents),
             "rejection_count": len(rejected_agents),
@@ -397,23 +339,14 @@ class CentralNegotiator:
         
         return feedback
     
+    # Send refinement request to LLM based on feedback
     def _refine_plan(
         self, 
         current_plan: Dict, 
         feedback_summary: Dict[str, any],  # type: ignore
         conflict_data: Dict
-    ) -> Dict:
-        """
-        Send feedback to central LLM to refine the plan.
-        
-        Args:
-            current_plan: Previously rejected plan
-            feedback_summary: Feedback from validators
-            conflict_data: Conflict information
-        
-        Returns:
-            Refined agent actions from LLM
-        """
+        ) -> Dict:
+
         refinement_prompt = self._build_refinement_prompt(
             current_plan,
             feedback_summary,
@@ -458,23 +391,13 @@ class CentralNegotiator:
             logger.error(f"Error during plan refinement: {str(e)}")
             return current_plan
     
+    # Build refinement prompt with detailed feedback
     def _build_refinement_prompt(
         self, 
         current_plan: Dict, 
         feedback_summary: Dict[str, any],  # type: ignore
         conflict_data: Dict
-    ) -> str:
-        """
-        Build detailed prompt for LLM to refine based on validator feedback.
-        
-        Args:
-            current_plan: Previously rejected plan
-            feedback_summary: Validator feedback
-            conflict_data: Conflict information
-        
-        Returns:
-            Formatted prompt string
-        """
+        ) -> str:
         
         # Format rejections with full details
         rejections_text = ""
@@ -542,17 +465,12 @@ class CentralNegotiator:
             "reasoning": "Detailed explanation of how rejections were addressed"
         }}
 
-        Return ONLY valid JSON, no additional text."""
+        Return ONLY valid JSON, no additional text.
+        """
         
         return prompt
     
     def _get_refinement_system_prompt(self) -> str:
-        """
-        System prompt for refinement requests.
-        
-        Returns:
-            System prompt string
-        """
         return """You are an expert robot conflict resolver specializing in plan refinement.
 
         Your task is to refine a previously rejected multi-agent conflict resolution plan based on specific validator feedback.
@@ -572,19 +490,15 @@ class CentralNegotiator:
         - Maintain safety constraints: no collisions, valid moves only
 
         OUTPUT REQUIREMENT:
-        Return ONLY valid JSON with no markdown formatting or text outside the JSON structure."""
+        Return ONLY valid JSON with no markdown formatting or text outside the JSON structure.
+        """
     
+    # Get refinement history from last negotiation
     def get_refinement_history(self) -> List[Dict]:
-        """
-        Get the complete refinement history from the last negotiation.
-        
-        Returns:
-            List of refinement iteration records
-        """
         return self.refinement_history
     
+    # Create system prompt for negotiation
     def _create_negotiation_system_prompt(self) -> str:
-        """Create system prompt for negotiation with rerouting always available"""
         return """You are an expert robot conflict resolver. Respond ONLY with valid JSON.
 
         RULES: Robots deliver boxes, one per cell, avoid collisions.
@@ -613,10 +527,11 @@ class CentralNegotiator:
             "reasoning": "Brief explanation of chosen strategy"
         }
 
-        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!"""
+        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!
+        """
     
+    # Create conflict description for user prompt
     def _create_conflict_description(self, conflict_data: Dict) -> str:
-        """Create human-readable conflict description with optional spatial hints"""
         description = f"TURN {conflict_data.get('turn', 0)} - PATH CONFLICT DETECTED\n\n"
         
         description += "AGENTS IN CONFLICT:\n"
@@ -672,8 +587,8 @@ class CentralNegotiator:
         description += "\nPlease provide a negotiation solution in JSON format."
         return description
     
+    # Add reasoning instructions for reasoning-capable models
     def _add_reasoning_instructions(self, base_prompt: str) -> str:
-        """Add specific instructions for reasoning models"""
         reasoning_instructions = """
         REASONING APPROACH:
         1. Analyze the spatial configuration and movement constraints
@@ -687,8 +602,8 @@ class CentralNegotiator:
         """
         return reasoning_instructions + base_prompt
     
+    # Parse LLM response with truncation handling
     def _parse_negotiation_response(self, response: str) -> Dict:
-        """Parse LLM response into structured format with truncation handling"""
         # Try to extract JSON from response
         response = response.strip()
         
@@ -714,8 +629,8 @@ class CentralNegotiator:
             "reasoning": "Failed to parse LLM response, using default priority resolution"
         }
     
+    # Attempt to recover from truncated JSON
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
-        """Attempt to recover from truncated JSON"""
         try:
             # Common truncation fixes
             fixed_json = json_str.rstrip()
@@ -740,8 +655,8 @@ class CentralNegotiator:
         except json.JSONDecodeError:
             return None
     
+    # Create resolution specifically for deadlock breaking
     def _create_deadlock_breaking_resolution(self, conflict_data: Dict) -> Dict:
-        """Create resolution specifically for deadlock breaking"""
         agents = conflict_data.get('agents', [])
         
         print("🔧 Creating deadlock-breaking resolution")
@@ -793,8 +708,8 @@ class CentralNegotiator:
             "reasoning": "Deadlock detected - forcing priority movement and step-aside maneuvers to break the deadlock"
         }
     
+    # Find safe adjacent position to step aside
     def _find_safe_step_aside(self, current_pos: List[int], conflict_data: Dict) -> Optional[List[int]]:
-        """Find a safe adjacent position to step aside temporarily"""
         x, y = current_pos
         adjacent_positions = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
         
@@ -810,8 +725,8 @@ class CentralNegotiator:
         
         return None
     
+    # Create simple fallback resolution
     def _create_fallback_resolution(self, conflict_data: Dict) -> Dict:
-        """Create a simple fallback resolution when LLM fails"""
         agents = conflict_data.get('agents', [])
         
         # Simple priority-based resolution
@@ -831,17 +746,8 @@ class CentralNegotiator:
             "reasoning": "Fallback resolution: First agent moves, others wait"
         }
     
+    # Get path guidance from LLM for pathfinding
     def get_path_guidance(self, agent_data: Dict, map_state: Dict) -> Optional[List[Tuple[int, int]]]:
-        """
-        Get path guidance from LLM for pathfinding
-        
-        Args:
-            agent_data: {'id': int, 'current_pos': (x, y), 'target_pos': (x, y), 'carrying_box': bool}
-            map_state: Full map state
-        
-        Returns:
-            List of positions representing suggested path
-        """
         system_prompt = """You are a pathfinding assistant for warehouse robots. Provide efficient paths avoiding obstacles and other robots.
 
         RESPONSE FORMAT (JSON):
@@ -850,7 +756,8 @@ class CentralNegotiator:
             "reasoning": "Brief explanation"
         }
 
-        Consider: walls (#), other agents (A), boxes (B), targets (T)."""
+        Consider: walls (#), other agents (A), boxes (B), targets (T).
+        """
         
         user_prompt = f"""Find path for Agent {agent_data['id']}:
         Current: {agent_data['current_pos']}
@@ -859,7 +766,8 @@ class CentralNegotiator:
 
         Map state: {map_state}
 
-        Provide optimal path as JSON."""
+        Provide optimal path as JSON.
+        """
         
         messages = [
             self.client.create_system_message(system_prompt),
@@ -882,17 +790,8 @@ class CentralNegotiator:
         
         return None
     
+    # Validate coordinate within bounds and accessibility
     def _is_valid_coordinate(self, x: int, y: int, grid: List[List[str]]) -> bool:
-        """
-        Validate that a coordinate is within bounds and accessible (not a wall)
-        
-        Args:
-            x, y: Coordinates to check
-            grid: The warehouse grid
-            
-        Returns:
-            bool: True if coordinate is valid and accessible
-        """
         if not grid:
             return False
             
@@ -906,8 +805,8 @@ class CentralNegotiator:
         cell = grid[y][x]
         return cell == '.'  # Only empty floor is valid for wiggle rooms
     
+    # Analyze wiggle rooms in the map for rerouting options
     def _analyze_wiggle_rooms(self, conflict_data: Dict) -> List[Dict]:
-        """Identify potential wiggle rooms/waiting areas for rerouting"""
         # Only analyze if spatial hints are enabled
         if not self.enable_spatial_hints:
             return []
@@ -949,7 +848,7 @@ class CentralNegotiator:
                 if pos in agents.values() or pos in boxes.values():
                     continue
                 
-                # CRITICAL: Must not be on any agent's planned path
+                # MUST NOT be on any agent's planned path
                 if pos in all_planned_positions:
                     continue
                 
@@ -970,9 +869,9 @@ class CentralNegotiator:
         
         return wiggle_rooms[:5]  # Return top 5 wiggle rooms
     
+    # Evaluate if a position is a good wiggle room
     def _evaluate_wiggle_potential(self, x: int, y: int, grid: List[List[str]], 
                                  conflict_data: Dict, agent_paths: Dict) -> Dict:
-        """Evaluate if a position is a good wiggle room"""
         height, width = len(grid), len(grid[0])
         pos = (x, y)
         
@@ -1075,9 +974,9 @@ class CentralNegotiator:
             'connectivity': adjacent_open
         }
     
+    # Create ASCII map visualization
     def _create_map_visualization(self, grid: List[List[str]], agents: Dict, boxes: Dict, 
                                 targets: Dict, wiggle_rooms: List[Dict]) -> str:
-        """Create ASCII map with current positions and optionally wiggle rooms highlighted"""
         if not grid:
             return "No grid available\n"
         

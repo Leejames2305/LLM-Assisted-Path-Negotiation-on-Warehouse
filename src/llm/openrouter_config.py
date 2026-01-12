@@ -8,51 +8,50 @@ from typing import List, Optional, Dict
 
 class OpenRouterConfig:
     @staticmethod
+    # Get provider order from environment variable
     def get_provider_order() -> Optional[List[str]]:
-        """Get configured provider order"""
         provider_order_str = os.getenv('OPENROUTER_PROVIDER_ORDER', '')
         if provider_order_str:
             return [p.strip() for p in provider_order_str.split(',') if p.strip()]
         return None
     
     @staticmethod
+    # Check if reasoning is enabled
     def is_reasoning_enabled() -> bool:
-        """Check if reasoning is enabled"""
         return os.getenv('OPENROUTER_REASONING_ENABLED', 'false').lower() == 'true'
     
     @staticmethod
+    # Check if reasoning tokens should be excluded
     def should_exclude_reasoning() -> bool:
-        """Check if reasoning tokens should be excluded"""
         return os.getenv('OPENROUTER_REASONING_EXCLUDE', 'false').lower() == 'true'
     
     @staticmethod
+    # OpenRouter API key
     def get_api_key() -> Optional[str]:
-        """Get OpenRouter API key"""
         return os.getenv('OPENROUTER_API_KEY')
     
     @staticmethod
+    # Get X-Referer for API requests
     def get_referer() -> str:
-        """Get HTTP referer for API requests"""
         return os.getenv('OPENROUTER_REFERER', 'https://github.com/Leejames2305/LLM-Assisted-Path-Negotiation-on-Warehouse')
     
     @staticmethod
+    # Get X-Title for API requests
     def get_title() -> str:
-        """Get X-Title for API requests"""
         return os.getenv('OPENROUTER_TITLE', 'LLM Multi-Robot Navigation')
     
     @staticmethod
+    # Get central negotiator model, default to GLM-4.5-Air
     def get_central_model() -> str:
-        """Get central negotiator model"""
         return os.getenv('CENTRAL_LLM_MODEL', 'zai/glm-4.5-air:free')
     
     @staticmethod
+    # Get agent validator model, default to Gemma-2-9B-IT
     def get_agent_model() -> str:
-        """Get agent validator model"""
         return os.getenv('AGENT_LLM_MODEL', 'google/gemma-2-9b-it:free')
     
     @staticmethod
     def print_config():
-        """Print current OpenRouter configuration"""
         print("🔧 OpenRouter Configuration:")
         print(f"   API Key: {'✅ Set' if OpenRouterConfig.get_api_key() else '❌ Not set'}")
         print(f"   Provider Order: {OpenRouterConfig.get_provider_order()}")
@@ -64,8 +63,8 @@ class OpenRouterConfig:
         print(f"   Title: {OpenRouterConfig.get_title()}")
     
     @staticmethod
+    # Validate configuration
     def validate_config() -> Dict[str, bool]:
-        """Validate configuration and return status"""
         status = {
             'api_key_set': bool(OpenRouterConfig.get_api_key()),
             'models_configured': bool(OpenRouterConfig.get_central_model() and OpenRouterConfig.get_agent_model()),
@@ -87,7 +86,6 @@ class OpenRouterConfig:
     
     @staticmethod
     def get_reasoning_keywords() -> List[str]:
-        """Get keywords that typically indicate reasoning-capable models"""
         return [
             'o1',          # OpenAI o1 series
             'reasoning',   # Models with 'reasoning' in name
@@ -99,10 +97,6 @@ class OpenRouterConfig:
     
     @staticmethod
     def is_reasoning_model(model: str) -> bool:
-        """
-        Dynamically check if a model supports reasoning features
-        Uses multiple detection methods rather than hard-coded lists
-        """
         model_lower = model.lower()
         
         # Method 1: Check for reasoning keywords
@@ -152,7 +146,6 @@ class OpenRouterConfig:
     
     @staticmethod
     def _is_excluded_from_reasoning(model_lower: str) -> bool:
-        """Check if a model should be excluded from reasoning detection"""
         # Some high-end models that don't support reasoning features
         exclusions = [
             'turbo',       # Often indicates speed over reasoning
@@ -170,7 +163,6 @@ class OpenRouterConfig:
     
     @staticmethod
     def get_recommended_settings_for_model(model: str) -> Dict:
-        """Get recommended settings for a specific model"""
         settings = {
             'max_tokens': 20000,
             'temperature': 0.3,
@@ -198,7 +190,6 @@ class OpenRouterConfig:
     
     @staticmethod
     def suggest_provider_order_for_task(task_type: str) -> Optional[List[str]]:
-        """Suggest provider order based on task type"""
         suggestions = {
             'reasoning': ['OpenAI', 'Anthropic', 'Google'],
             'fast_validation': ['DeepInfra', 'Together AI', 'Fireworks AI'],
@@ -211,7 +202,6 @@ class OpenRouterConfig:
     
     @staticmethod
     def debug_request_payload(model: str, **kwargs) -> Dict:
-        """Generate debug information for a request payload"""
         config = OpenRouterConfig.get_recommended_settings_for_model(model)
         provider_order = OpenRouterConfig.get_provider_order()
         

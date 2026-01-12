@@ -33,15 +33,15 @@ class OpenRouterClient:
         self.total_completion_tokens = 0
         self.request_count = 0
     
+    # Parse provider order from environment variable
     def _parse_provider_order(self) -> Optional[List[str]]:
-        """Parse provider order from environment variable"""
         provider_order_str = os.getenv('OPENROUTER_PROVIDER_ORDER', '')
         if provider_order_str:
             return [p.strip() for p in provider_order_str.split(',') if p.strip()]
         return None
     
+    # Get cumulative token usage
     def get_token_usage(self) -> Dict:
-        """Get cumulative token usage statistics"""
         return {
             'total_tokens': self.total_tokens_used,
             'prompt_tokens': self.total_prompt_tokens,
@@ -49,29 +49,15 @@ class OpenRouterClient:
             'request_count': self.request_count
         }
     
+    # Reset cumulative token usage count
     def reset_token_usage(self):
-        """Reset token usage counters"""
         self.total_tokens_used = 0
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.request_count = 0
     
+    # Send request to OpenRouter with advanced parameters
     def send_request(self, model: str, messages: List[Dict], max_tokens: int = 1000, temperature: float = 0.7, return_full_response: bool = False, **kwargs) -> Union[Optional[str], Tuple[Optional[str], Dict]]:
-        """
-        Send a request to OpenRouter API with new advanced parameters
-        
-        Args:
-            model: The model to use
-            messages: List of message dicts
-            max_tokens: Maximum tokens in response
-            temperature: Temperature for sampling
-            return_full_response: If True, returns (content, usage_dict) tuple
-            **kwargs: Additional parameters
-            
-        Returns:
-            If return_full_response=False: content string or None
-            If return_full_response=True: (content, usage_dict) tuple
-        """
         if not self.api_key:
             raise ValueError("OpenRouter API key not found. Please set OPENROUTER_API_KEY in .env file")
         
@@ -162,13 +148,10 @@ class OpenRouterClient:
             return None
     
     def create_system_message(self, content: str) -> Dict:
-        """Create a system message"""
         return {"role": "system", "content": content}
     
     def create_user_message(self, content: str) -> Dict:
-        """Create a user message"""
         return {"role": "user", "content": content}
     
     def create_assistant_message(self, content: str) -> Dict:
-        """Create an assistant message"""
         return {"role": "assistant", "content": content}

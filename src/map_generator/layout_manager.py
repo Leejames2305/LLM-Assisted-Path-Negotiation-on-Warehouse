@@ -16,27 +16,21 @@ from .constants import (
     LAYOUT_SCHEMA_VERSION,
 )
 
-
+# Manage layout files: load, save, list, validate
 class LayoutManager:
-    """Manages layout files - load, save, list, validate"""
 
     def __init__(self):
         self.validator = LayoutValidator()
         self._ensure_directories()
 
     @staticmethod
+    # Ensure layout directories exist
     def _ensure_directories():
-        """Ensure layout directories exist"""
         os.makedirs(PREBUILT_LAYOUT_DIR, exist_ok=True)
         os.makedirs(CUSTOM_LAYOUT_DIR, exist_ok=True)
 
+    # List all available layouts
     def list_available_layouts(self) -> Dict[str, List[str]]:
-        """
-        List all available layouts (prebuilt and custom)
-
-        Returns:
-            Dict with 'prebuilt' and 'custom' keys containing layout names
-        """
         layouts = {'prebuilt': [], 'custom': []}
 
         # Get prebuilt layouts
@@ -53,17 +47,8 @@ class LayoutManager:
 
         return layouts
 
+    # Load a layout from file
     def load_layout(self, layout_name: str, is_custom: bool = False) -> Optional[Dict]:
-        """
-        Load a layout from file
-
-        Args:
-            layout_name: Name of layout (without .json extension)
-            is_custom: If True, load from custom dir; if False, load from prebuilt
-
-        Returns:
-            Layout dict if successful, None otherwise
-        """
         if is_custom:
             filepath = os.path.join(CUSTOM_LAYOUT_DIR, f'{layout_name}.json')
         else:
@@ -100,19 +85,8 @@ class LayoutManager:
             print(f"❌ Error loading layout {layout_name}: {e}")
             return None
 
+    # Save a layout to file with validation
     def save_layout(self, layout: Dict, layout_name: str, is_custom: bool = True, overwrite: bool = False) -> bool:
-        """
-        Save a layout to file with validation
-
-        Args:
-            layout: Layout dictionary
-            layout_name: Name to save as (without .json extension)
-            is_custom: If True, save to custom dir; if False, save to prebuilt
-            overwrite: If True, overwrite existing files
-
-        Returns:
-            True if successful, False otherwise
-        """
         # Validate layout first
         is_valid, errors, warnings = self.validator.validate(layout)
 
@@ -154,17 +128,8 @@ class LayoutManager:
             print(f"❌ Error saving layout: {e}")
             return False
 
+    # Delete a layout file
     def delete_layout(self, layout_name: str, is_custom: bool = True) -> bool:
-        """
-        Delete a layout file
-
-        Args:
-            layout_name: Name of layout to delete (without .json extension)
-            is_custom: If True, delete from custom dir; if False, delete from prebuilt
-
-        Returns:
-            True if successful, False otherwise
-        """
         if is_custom:
             filepath = os.path.join(CUSTOM_LAYOUT_DIR, f'{layout_name}.json')
         else:
@@ -188,17 +153,8 @@ class LayoutManager:
             print(f"❌ Error deleting layout: {e}")
             return False
 
+    # Create an empty layout template
     def create_empty_layout(self, width: int = 8, height: int = 6) -> Dict:
-        """
-        Create an empty layout template with specified dimensions
-
-        Args:
-            width: Grid width
-            height: Grid height
-
-        Returns:
-            Empty layout dictionary
-        """
         layout = EMPTY_LAYOUT_TEMPLATE.copy()
         layout['dimensions'] = {'width': width, 'height': height}
 
@@ -209,17 +165,8 @@ class LayoutManager:
 
         return layout
 
+    # Get layout info without full loading
     def get_layout_info(self, layout_name: str, is_custom: bool = False) -> Optional[Dict]:
-        """
-        Get information about a layout without full loading
-
-        Args:
-            layout_name: Name of layout
-            is_custom: If True, look in custom dir; if False, look in prebuilt
-
-        Returns:
-            Dict with layout metadata or None if not found
-        """
         if is_custom:
             filepath = os.path.join(CUSTOM_LAYOUT_DIR, f'{layout_name}.json')
         else:
@@ -247,18 +194,8 @@ class LayoutManager:
             print(f"⚠️  Could not read layout info: {e}")
             return None
 
+    # Duplicate an existing layout
     def duplicate_layout(self, source_name: str, dest_name: str, is_custom: bool = True) -> bool:
-        """
-        Duplicate an existing layout
-
-        Args:
-            source_name: Name of layout to copy from
-            dest_name: Name to save copy as
-            is_custom: If True, duplicate in custom dir; if False, duplicate in prebuilt
-
-        Returns:
-            True if successful, False otherwise
-        """
         layout = self.load_layout(source_name, is_custom)
         if layout is None:
             return False
@@ -266,13 +203,8 @@ class LayoutManager:
         layout['name'] = dest_name
         return self.save_layout(layout, dest_name, is_custom, overwrite=False)
 
+    # List layout details in formatted string
     def list_layout_details(self) -> str:
-        """
-        Get a formatted string with details of all available layouts
-
-        Returns:
-            Formatted string listing all layouts with details
-        """
         layouts = self.list_available_layouts()
         output = "\n" + "=" * 70 + "\n"
         output += "AVAILABLE LAYOUTS\n"
@@ -309,16 +241,8 @@ class LayoutManager:
         return output
 
     @staticmethod
+    # Validate a layout file without loading it fully
     def validate_layout_file(filepath: str) -> Tuple[bool, str]:
-        """
-        Validate a layout file without loading it fully
-
-        Args:
-            filepath: Path to JSON layout file
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
         validator = LayoutValidator()
 
         if not os.path.exists(filepath):

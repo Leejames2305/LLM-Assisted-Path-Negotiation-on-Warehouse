@@ -24,9 +24,8 @@ from .constants import (
     ValidationError,
 )
 
-
+# Validate warehouse layouts for correctness and playability
 class LayoutValidator:
-    """Validates warehouse layouts for correctness and playability"""
 
     def __init__(self):
         self.errors: List[str] = []
@@ -34,12 +33,6 @@ class LayoutValidator:
         self.is_valid = False
 
     def validate(self, layout: Dict) -> Tuple[bool, List[str], List[str]]:
-        """
-        Validate a complete layout dictionary
-        
-        Returns:
-            Tuple of (is_valid, errors, warnings)
-        """
         self.errors = []
         self.warnings = []
 
@@ -92,9 +85,8 @@ class LayoutValidator:
         return True, self.errors, self.warnings
 
     # ==================== VALIDATION PHASES ====================
-
+    # Validate basic structure
     def _validate_structure(self, layout: Dict):
-        """Validate basic layout structure"""
         required_fields = ['version', 'name', 'dimensions', 'grid', 'agents', 'boxes', 'targets', 'agent_goals']
 
         for field in required_fields:
@@ -110,8 +102,8 @@ class LayoutValidator:
             )
             self.errors.append(error)
 
+    # Validate width and height
     def _validate_dimensions(self, width: Optional[int], height: Optional[int]):
-        """Validate width and height"""
         if not isinstance(width, int):
             self.errors.append(VALIDATION_ERRORS['INVALID_WIDTH'].format(min=MIN_WIDTH, max=MAX_WIDTH))
             return
@@ -128,8 +120,8 @@ class LayoutValidator:
             error = VALIDATION_ERRORS['INVALID_HEIGHT'].format(min=MIN_HEIGHT, max=MAX_HEIGHT)
             self.errors.append(error)
 
+    # Validate grid structure and content
     def _validate_grid(self, grid: List[str], width: int, height: int):
-        """Validate grid structure and content"""
         if not isinstance(grid, list):
             self.errors.append(VALIDATION_ERRORS['INVALID_GRID_FORMAT'])
             return
@@ -157,6 +149,7 @@ class LayoutValidator:
                     )
                     self.errors.append(error)
 
+    # Validate agents, boxes, and targets
     def _validate_entities(
         self,
         agents: List[Dict],
@@ -165,8 +158,8 @@ class LayoutValidator:
         grid: List[str],
         width: int,
         height: int
-    ):
-        """Validate agents, boxes, and targets"""
+        ):
+    
         # Check counts
         if len(agents) < MIN_AGENTS:
             error = VALIDATION_ERRORS['NO_AGENTS'].format(min=MIN_AGENTS)
@@ -297,14 +290,15 @@ class LayoutValidator:
 
             target_positions[target_id] = (x, y)
 
+    # Validate all goals are valid and complete
     def _validate_goals(
         self,
         agents: List[Dict],
         boxes: List[Dict],
         targets: List[Dict],
         agent_goals: Dict[str, int]
-    ):
-        """Validate that all goals are valid and complete"""
+        ):
+
         box_ids = {box['id'] for box in boxes}
         target_ids = {target['id'] for target in targets}
         agent_ids = {agent['id'] for agent in agents}
@@ -357,6 +351,7 @@ class LayoutValidator:
                 warning = VALIDATION_ERRORS['UNUSED_TARGET'].format(target_id=target_id)
                 self.warnings.append(warning)
 
+    # Validate that all agents can reach their targets (reachability check)
     def _validate_reachability(
         self,
         agents: List[Dict],
@@ -366,8 +361,8 @@ class LayoutValidator:
         grid: List[str],
         width: int,
         height: int
-    ):
-        """Validate that all agents can reach their targets (reachability check)"""
+        ):
+
         # Build wall positions
         walls = set()
         for y, row in enumerate(grid):
@@ -412,6 +407,7 @@ class LayoutValidator:
                     )
                     self.errors.append(error)
 
+    # Check if a position is reachable using BFS
     def _can_reach(
         self,
         start: Tuple[int, int],
@@ -419,8 +415,8 @@ class LayoutValidator:
         walls: Set[Tuple[int, int]],
         width: int,
         height: int
-    ) -> bool:
-        """BFS to check if goal is reachable from start"""
+        ) -> bool:
+
         if start == goal:
             return True
 
@@ -445,8 +441,8 @@ class LayoutValidator:
 
         return False
 
+    # Get a formatted summary of all errors
     def get_error_summary(self) -> str:
-        """Get a formatted summary of all errors"""
         if not self.errors:
             return VALIDATION_SUCCESS['VALID_LAYOUT']
 

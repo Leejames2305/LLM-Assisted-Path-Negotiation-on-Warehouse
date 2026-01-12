@@ -23,9 +23,9 @@ class RobotAgent:
         self.is_waiting = False
         self.wait_turns_remaining = 0
         self.priority = 1
-        
+    
+    # Set the agent's target position
     def set_target(self, target_position: Tuple[int, int]):
-        """Set the agent's target position"""
         self.target_position = target_position
         self.planned_path = []  # Reset path when target changes
         
@@ -33,8 +33,8 @@ class RobotAgent:
         if hasattr(self, '_has_negotiated_path'):
             self._has_negotiated_path = False
     
+    # Plan a path to the target using pathfinding
     def plan_path(self, map_state: Dict) -> List[Tuple[int, int]]:
-        """Plan a path to the target using pathfinding"""
         if not self.target_position:
             return []
         
@@ -70,12 +70,12 @@ class RobotAgent:
         self.planned_path = path
         return path
     
+    # Directly set the planned path (used for negotiated paths)
     def set_path(self, path: List[Tuple[int, int]]):
-        """Directly set the planned path (used for negotiated paths)"""
         self.planned_path = path
     
+    # Get the next position to move to
     def get_next_move(self) -> Optional[Tuple[int, int]]:
-        """Get the next position to move to"""
         if not self.planned_path or len(self.planned_path) <= 1:
             return None
         
@@ -90,18 +90,8 @@ class RobotAgent:
         
         return None
     
+    # Execute an action received from central negotiator, return true if successful
     def execute_negotiated_action(self, action_data: Dict, map_state: Dict) -> bool:
-        """
-        Execute an action received from central negotiator
-        
-        Args:
-            action_data: {'action': 'move'/'wait', 'path': [...], 'priority': int, 'wait_turns': int}
-            map_state: Current map state
-        
-        Returns:
-            bool: True if action was executed successfully
-        """
-        
         # Check if this agent was already validated by HMAS-2
         if getattr(self, '_hmas2_validated', False):
             return self._execute_action(action_data, map_state)
@@ -126,8 +116,8 @@ class RobotAgent:
         # Execute the validated action
         return self._execute_action(action_data, map_state)
     
+    # Internal method to execute an action
     def _execute_action(self, action_data: Dict, map_state: Dict) -> bool:
-        """Internal method to execute an action"""
         action = action_data.get('action', 'wait')
         
         if action == 'wait':
@@ -151,18 +141,8 @@ class RobotAgent:
         
         return False
     
+    # Move agent to new position with safety checks, return true if successful
     def move_to(self, new_position: Tuple[int, int], map_state: Dict) -> bool:
-        """
-        Move agent to new position with safety checks and detailed logging
-        
-        Args:
-            new_position: Target position (x, y)
-            map_state: Current map state
-        
-        Returns:
-            bool: True if move was successful
-        """
-        
         # Check if position is the same (waiting in place)
         if new_position == self.position:
             print(f"✅ Agent {self.agent_id}: Staying in place (valid wait)")
@@ -209,8 +189,8 @@ class RobotAgent:
         
         return True
     
+    # Log detailed reasons why a move failed
     def _log_move_failure_reason(self, new_position: Tuple[int, int], map_state: Dict):
-        """Log detailed reasons why a move failed"""
         x, y = new_position
         grid = map_state.get('grid', [])
         
@@ -240,14 +220,14 @@ class RobotAgent:
         
         print(f"   ❓ Reason: Unknown safety check failure")
     
+    # Make agent wait for specified turns
     def wait(self, turns: int = 1):
-        """Make agent wait for specified turns"""
         self.is_waiting = True
         self.wait_turns_remaining = turns
         self.current_action = f"waiting_{turns}_turns"
     
+    # Update agent state for new turn
     def update_turn(self):
-        """Update agent state for new turn"""
         if self.is_waiting and self.wait_turns_remaining > 0:
             self.wait_turns_remaining -= 1
             if self.wait_turns_remaining <= 0:
@@ -261,16 +241,16 @@ class RobotAgent:
                 self.planned_path = []
                 print(f"🔄 Agent {self.agent_id}: Cleared negotiated path flag (reached target)")
     
+    # Agent picking up a box
     def pickup_box(self, box_id: int):
-        """Agent picks up a box"""
         if not self.carrying_box:
             self.carrying_box = True
             self.box_id = box_id
             return True
         return False
     
+    # Agent dropping the box it's carrying
     def drop_box(self) -> Optional[int]:
-        """Agent drops the box it's carrying"""
         if self.carrying_box:
             dropped_box_id = self.box_id
             self.carrying_box = False
@@ -278,8 +258,8 @@ class RobotAgent:
             return dropped_box_id
         return None
     
+    # Get current status of the agent
     def get_status(self) -> Dict:
-        """Get agent's current status"""
         return {
             'id': self.agent_id,
             'position': self.position,
@@ -294,8 +274,8 @@ class RobotAgent:
             'current_action': self.current_action
         }
     
+    # Calculate Manhattan distance to target
     def distance_to_target(self) -> float:
-        """Calculate Manhattan distance to target"""
         if not self.target_position:
             return float('inf')
         
