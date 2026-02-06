@@ -30,6 +30,32 @@ This project doesn't have automated tests yet. When making changes, please manua
   - Data logging capabilities, saved in the `logs/` directory.
   - Visualization tools, using `visualization.py` on the generated log files.
 
+## Writing comments
+When writing comments in the codebase, please follow these guidelines:
+- Use simple sentences to explain the purpose of the functions.
+- DO NOT over-comment any function, such as listing down all input and output variables, those are NOT NEEDED.
+- For complex logic, provide a brief explanation of the approach taken.
+- For single line comments, use `#` followed by a space before the comment text.
+- For multi-line comments, use triple quotes `"""` to enclose the comment block.
+
+## Writing documentation
+When writing documentation for the project, please adhere to the following guidelines:
+- Keep most documentation in the `docs/` directory, unless specified otherwise.
+- Keep it concise and to the point.
+- Use bullet points or numbered lists for clarity.
+- AVOID large paragraphs of text.
+- Include code snippets or examples where applicable.
+
+## Writing commit messages
+When writing commit messages, please follow these conventions:
+- Use the present tense (e.g., "Add feature" instead of "Added feature").
+- Follow the Conventional Commits format: `<type>(<scope>): <subject>`
+  - `<type>`: feat, fix, docs, style, refactor, test, chore
+  - `<scope>`: optional, indicates the area of the code affected
+  - `<subject>`: brief description of the change
+- Add yourself as co-author for commits generated with its assistance:
+  - `Co-authored-by: whoyouare <agent@example.com>`
+
 ## PR instructions
 - Title format: `[feat/bugfix/etc.] <Title...>`
 - Description should include:
