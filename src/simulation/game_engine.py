@@ -111,6 +111,7 @@ class GameEngine:
         self._log_turn_state("SIMULATION_START")
         
         print(f"{Fore.GREEN}Simulation initialized successfully!{Style.RESET_ALL}")
+        self._update_map_state()
         self.display_map()
     
     # Plan initial paths for all agents
@@ -508,7 +509,7 @@ class GameEngine:
             if len(negotiation_result) >= 3:
                 resolution, refinement_history, prompts_data = negotiation_result
             else:
-                resolution, refinement_history = negotiation_result
+                resolution, refinement_history = negotiation_result  # type: ignore
                 prompts_data = {}
         else:
             resolution = negotiation_result
@@ -842,7 +843,12 @@ class GameEngine:
             if self.warehouse_map.grid[target_y, target_x] == CellType.EMPTY.value:
                 self.warehouse_map.grid[target_y, target_x] = CellType.TARGET.value
         
-        # Place agents at new positions (this will overwrite targets if agent is on them)
+        # Restore boxes that might have been overwritten
+        for box_id, (box_x, box_y) in self.warehouse_map.boxes.items():
+            if self.warehouse_map.grid[box_y, box_x] == CellType.EMPTY.value:
+                self.warehouse_map.grid[box_y, box_x] = CellType.BOX.value
+        
+        # Place agents at new positions (this will overwrite targets/boxes if agent is on them)
         for agent_id, agent in self.agents.items():
             x, y = agent.position
             if agent.carrying_box:
@@ -870,28 +876,36 @@ class GameEngine:
     def display_map(self):
         print(f"\n{Fore.CYAN}Current Warehouse State:{Style.RESET_ALL}")
         
-        # Add column numbers
-        header = "   " + " ".join([str(i) for i in range(self.width)])
+        # Compute fixed widths for scalable rendering
+        row_label_width = len(str(self.height - 1))
+        col_width = max(3, len(str(self.width - 1)) + 1)
+        
+        # Add column numbers with fixed-width formatting
+        header = " " * (row_label_width + 2) + "".join(f"{i:^{col_width}}" for i in range(self.width))
         print(header)
         
         for y in range(self.height):
-            row = f"{y}: "
+            row = f"{y:>{row_label_width}}: "
             for x in range(self.width):
                 cell = self.warehouse_map.grid[y, x]
                 
+                # Padding to center cell symbol within col_width
+                pad_left = (col_width - 1) // 2
+                pad_right = col_width - 1 - pad_left
+                
                 # Color coding
                 if cell == CellType.AGENT.value:
-                    row += f"{Fore.BLUE}{cell}{Style.RESET_ALL} "
+                    row += " " * pad_left + f"{Fore.BLUE}{cell}{Style.RESET_ALL}" + " " * pad_right
                 elif cell == CellType.AGENT_WITH_BOX.value:
-                    row += f"{Fore.MAGENTA}{cell}{Style.RESET_ALL} "
+                    row += " " * pad_left + f"{Fore.MAGENTA}{cell}{Style.RESET_ALL}" + " " * pad_right
                 elif cell == CellType.BOX.value:
-                    row += f"{Fore.YELLOW}{cell}{Style.RESET_ALL} "
+                    row += " " * pad_left + f"{Fore.YELLOW}{cell}{Style.RESET_ALL}" + " " * pad_right
                 elif cell == CellType.TARGET.value:
-                    row += f"{Fore.GREEN}{cell}{Style.RESET_ALL} "
+                    row += " " * pad_left + f"{Fore.GREEN}{cell}{Style.RESET_ALL}" + " " * pad_right
                 elif cell == CellType.WALL.value:
-                    row += f"{Back.BLACK}{cell}{Style.RESET_ALL} "
+                    row += " " * pad_left + f"{Back.BLACK}{cell}{Style.RESET_ALL}" + " " * pad_right
                 else:
-                    row += f"{cell} "
+                    row += f"{cell:^{col_width}}"
             
             print(row)
     
@@ -1099,7 +1113,6 @@ class GameEngine:
         metrics = self.calculate_performance_metrics()
         
         # Manually save to specified path instead of default
-        import os
         os.makedirs(output_dir, exist_ok=True)
         log_path = os.path.join(output_dir, filename)
         
@@ -1120,7 +1133,6 @@ class GameEngine:
         }
         
         # Save to specified path
-        import json
         with open(log_path, 'w', encoding='utf-8') as f:
             json.dump(self.logger.log_data, f, indent=2, default=str)
         
