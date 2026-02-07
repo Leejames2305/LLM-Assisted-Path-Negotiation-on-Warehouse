@@ -144,5 +144,4 @@ The format of the `logs/sim_log_*.json` files are as follows:
 🔄 STAGE 2: VALIDATION (Iteration 2/5)
    Results: 2 agents, 0 rejections
    ✅ All agents approved! Plan accepted.
-🤖 Negotiation complete: priority
 ```

@@ -542,9 +542,6 @@ class GameEngine:
                 'refinement_history': refinement_history
             }
         
-        print(f"🤖 Negotiation complete: {resolution.get('resolution', 'unknown')}")
-        print(f"📝 Reasoning: {resolution.get('reasoning', 'No reasoning provided')}")
-        
         # Build negotiation log data for unified logger
         # Extract agent validations from refinement history or resolution
         agent_validations = self._extract_agent_validations(resolution, refinement_history)
