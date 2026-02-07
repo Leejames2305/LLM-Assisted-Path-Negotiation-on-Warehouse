@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from src.agents import RobotAgent
 
 
-def test_move_failure_out_of_bounds():
-    """Test that out of bounds moves return proper failure reason"""
+def test_move_failure_not_adjacent():
+    """Test that non-adjacent moves (like diagonal or too far) return proper failure reason"""
     agent = RobotAgent(agent_id=1, initial_position=(2, 2))
     
     # Create a simple 5x5 map state
@@ -26,13 +26,13 @@ def test_move_failure_out_of_bounds():
         'boxes': {}
     }
     
-    # Try to move out of bounds (to negative coordinates)
+    # Try to move to a non-adjacent position (too far away)
     success, reason = agent.move_to((-1, 2), map_state)
     
-    assert success == False, "Move should fail for out of bounds position"
+    assert success == False, "Move should fail for non-adjacent position"
     assert reason is not None, "Failure reason should not be None"
     assert "not_adjacent" in reason, f"Expected 'not_adjacent' in reason, got: {reason}"
-    print(f"✅ Out of bounds test passed. Reason: {reason}")
+    print(f"✅ Non-adjacent move test passed. Reason: {reason}")
 
 
 def test_move_failure_wall_collision():
@@ -143,7 +143,7 @@ def test_stay_in_place():
 if __name__ == "__main__":
     print("Running move failure reason tests...\n")
     
-    test_move_failure_out_of_bounds()
+    test_move_failure_not_adjacent()
     test_move_failure_wall_collision()
     test_move_failure_agent_collision()
     test_successful_move()

@@ -165,9 +165,9 @@ class RobotAgent:
         
         if not is_safe:
             print(f"❌ Agent {self.agent_id}: Safety check failed for {new_position}")
-            # Get the failure reason
+            # Get the failure reason and log it
             failure_reason = self._get_move_failure_reason(new_position, map_state)
-            self._log_move_failure_reason(new_position, map_state)
+            print(f"   Reason: {failure_reason}")
             return False, failure_reason
         
         # If safe, make the move
@@ -199,11 +199,11 @@ class RobotAgent:
         grid = map_state.get('grid', [])
         
         # Check bounds
-        if y < 0 or y >= len(grid) or x < 0 or x >= len(grid[0]) if grid else True:
+        if not grid or y < 0 or y >= len(grid) or x < 0 or x >= len(grid[0]):
             return f"out_of_bounds: ({x}, {y})"
         
         # Check wall collision
-        if grid and grid[y][x] == '#':
+        if grid[y][x] == '#':
             return f"wall_collision: ({x}, {y})"
         
         # Check agent collisions
@@ -219,37 +219,6 @@ class RobotAgent:
                 return f"box_collision: Box {box_id} at {box_pos}"
         
         return "unknown_safety_check_failure"
-    
-    # Log detailed reasons why a move failed
-    def _log_move_failure_reason(self, new_position: Tuple[int, int], map_state: Dict):
-        x, y = new_position
-        grid = map_state.get('grid', [])
-        
-        # Check bounds
-        if y < 0 or y >= len(grid) or x < 0 or x >= len(grid[0]) if grid else True:
-            print(f"   📏 Reason: Position ({x}, {y}) is out of bounds")
-            return
-        
-        # Check wall collision
-        if grid and grid[y][x] == '#':
-            print(f"   🧱 Reason: Position ({x}, {y}) is a wall")
-            return
-        
-        # Check agent collisions
-        agents = map_state.get('agents', {})
-        for other_id, other_pos in agents.items():
-            if other_id != self.agent_id and other_pos == new_position:
-                print(f"   🤖 Reason: Collision with Agent {other_id} at {other_pos}")
-                return
-        
-        # Check box collisions
-        boxes = map_state.get('boxes', {})
-        for box_id, box_pos in boxes.items():
-            if box_pos == new_position:
-                print(f"   📦 Reason: Collision with Box {box_id} at {box_pos}")
-                return
-        
-        print(f"   ❓ Reason: Unknown safety check failure")
     
     # Make agent wait for specified turns
     def wait(self, turns: int = 1):
