@@ -166,7 +166,8 @@ class GameEngine:
                     'target_pos': agent.target_position,
                     'planned_path': current_path,
                     'stuck_reason': 'failed_moves',
-                    'failed_move_count': len(self.agent_failed_move_history.get(aid, []))
+                    'failed_move_count': len(self.agent_failed_move_history.get(aid, [])),
+                    'failed_move_history': self.agent_failed_move_history.get(aid, [])
                 })
             
             return {
@@ -202,7 +203,8 @@ class GameEngine:
                         'target_pos': self.agents[aid].target_position,
                         'planned_path': planned_moves.get(aid, []),
                         'stuck_reason': 'failed_moves',
-                        'failure_count': self.failed_move_counts.get(aid, 0)
+                        'failure_count': self.failed_move_counts.get(aid, 0),
+                        'failed_move_history': self.agent_failed_move_history.get(aid, [])
                     } for aid in stuck_agents if aid in self.agents
                 ],
                 'deadlock_breaking': True  # Special flag for negotiator
@@ -479,15 +481,21 @@ class GameEngine:
         }
         
         # Add agent data for conflicting agents
-        for agent_id in conflict_info['conflicting_agents']:
-            if agent_id in self.agents:
-                agent = self.agents[agent_id]
-                conflict_data['agents'].append({
-                    'id': agent_id,
-                    'current_pos': agent.position,
-                    'target_pos': agent.target_position,
-                    'planned_path': planned_moves.get(agent_id, [])
-                })
+        # Use pre-built agent data from conflict_info if available (includes failed_move_history)
+        if 'agents' in conflict_info and conflict_info['agents']:
+            # Use the detailed agent data from conflict detection
+            conflict_data['agents'] = conflict_info['agents']
+        else:
+            # Fallback: build basic agent data (shouldn't normally happen)
+            for agent_id in conflict_info['conflicting_agents']:
+                if agent_id in self.agents:
+                    agent = self.agents[agent_id]
+                    conflict_data['agents'].append({
+                        'id': agent_id,
+                        'current_pos': agent.position,
+                        'target_pos': agent.target_position,
+                        'planned_path': planned_moves.get(agent_id, [])
+                    })
         
         # Prepare validators for refinement loop
         agent_validators = {}
@@ -719,7 +727,7 @@ class GameEngine:
                 else:
                     # Normal move to different position
                     map_state = self.warehouse_map.get_state_dict()
-                    success = agent.move_to(next_pos, map_state)
+                    success, failure_reason = agent.move_to(next_pos, map_state)
                 
                 if success:
                     if next_pos != agent.position:
@@ -768,14 +776,15 @@ class GameEngine:
                     self.agent_failed_move_history[agent_id].append({
                         'turn': self.current_turn,
                         'attempted_move': next_pos,
-                        'from_position': agent.position
+                        'from_position': agent.position,
+                        'failure_reason': failure_reason
                     })
                     
                     # Keep only recent failed move history
                     if len(self.agent_failed_move_history[agent_id]) > self.stagnation_turns:
                         self.agent_failed_move_history[agent_id] = self.agent_failed_move_history[agent_id][-self.stagnation_turns:]
                     
-                    print(f"❌ Agent {agent_id}: Move to {next_pos} failed ({self.failed_move_counts[agent_id]} consecutive failures)")
+                    print(f"❌ Agent {agent_id}: Move to {next_pos} failed ({self.failed_move_counts[agent_id]} consecutive failures) - Reason: {failure_reason}")
     
     # Check if agent can pick up a box at current position
     def _check_box_pickup(self, agent_id: int):
