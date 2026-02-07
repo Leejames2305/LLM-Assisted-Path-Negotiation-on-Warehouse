@@ -26,8 +26,8 @@ def test_move_failure_not_adjacent():
         'boxes': {}
     }
     
-    # Try to move to a non-adjacent position (too far away)
-    success, reason = agent.move_to((-1, 2), map_state)
+    # Try to move to a non-adjacent position (too far away - 2 steps)
+    success, reason = agent.move_to((4, 2), map_state)
     
     assert success == False, "Move should fail for non-adjacent position"
     assert reason is not None, "Failure reason should not be None"

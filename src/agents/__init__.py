@@ -133,12 +133,16 @@ class RobotAgent:
             # This handles both cases where LLM includes/excludes current position
             if path and len(path) > 0:
                 next_pos = tuple(path[0])  # Start from the first element
-                success, _ = self.move_to(next_pos, map_state)
+                success, failure_reason = self.move_to(next_pos, map_state)
+                if not success and failure_reason:
+                    print(f"   ⚠️ Action execution failed: {failure_reason}")
                 return success
             else:
                 next_move = self.get_next_move()
                 if next_move:
-                    success, _ = self.move_to(next_move, map_state)
+                    success, failure_reason = self.move_to(next_move, map_state)
+                    if not success and failure_reason:
+                        print(f"   ⚠️ Action execution failed: {failure_reason}")
                     return success
         
         return False
