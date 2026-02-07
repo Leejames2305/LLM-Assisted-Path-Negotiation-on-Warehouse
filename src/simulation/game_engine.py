@@ -166,7 +166,8 @@ class GameEngine:
                     'target_pos': agent.target_position,
                     'planned_path': current_path,
                     'stuck_reason': 'failed_moves',
-                    'failed_move_count': len(self.agent_failed_move_history.get(aid, []))
+                    'failed_move_count': len(self.agent_failed_move_history.get(aid, [])),
+                    'failed_move_history': self.agent_failed_move_history.get(aid, [])
                 })
             
             return {
@@ -202,7 +203,8 @@ class GameEngine:
                         'target_pos': self.agents[aid].target_position,
                         'planned_path': planned_moves.get(aid, []),
                         'stuck_reason': 'failed_moves',
-                        'failure_count': self.failed_move_counts.get(aid, 0)
+                        'failure_count': self.failed_move_counts.get(aid, 0),
+                        'failed_move_history': self.agent_failed_move_history.get(aid, [])
                     } for aid in stuck_agents if aid in self.agents
                 ],
                 'deadlock_breaking': True  # Special flag for negotiator

@@ -429,6 +429,16 @@ class CentralNegotiator:
                     f"  Target: {target_pos}\n"
                     f"  Original Planned Path: {planned_path}\n"
                 )
+                
+                # Add failure history context
+                failed_history = agent.get('failed_move_history', [])
+                if failed_history:
+                    agents_info += f"  Recent Move Failures:\n"
+                    for failure in failed_history[-3:]:  # Last 3 failures
+                        turn = failure.get('turn', '?')
+                        attempted = failure.get('attempted_move', '?')
+                        reason = failure.get('failure_reason', 'unknown')
+                        agents_info += f"    • Turn {turn}: {attempted} - {reason}\n"
         
         prompt = f"""REFINEMENT REQUEST - Your previous conflict resolution plan was rejected.
 
@@ -513,10 +523,19 @@ class CentralNegotiator:
            - Create paths that use available space efficiently
            - Consider "stepping aside" into empty cells
            - Look for alternative routes around conflicts
+           - IMPORTANT: Avoid positions that previously caused failures
         
         3. "wait": Conservative pause
            - All agents pause movement
            - Use for complex deadlocks
+
+        ANALYZING FAILURE HISTORY:
+        - When agents have recent move failures, analyze the failure reasons
+        - wall_collision: Agent tried to move into a wall - avoid that position
+        - agent_collision: Agent collided with another agent - coordinate timing
+        - out_of_bounds: Move exceeded map boundaries - stay within bounds
+        - not_adjacent: Move was diagonal or too far - ensure orthogonal moves only
+        - Use failure patterns to inform better path planning
 
         RESPONSE FORMAT:
         {
@@ -543,6 +562,16 @@ class CentralNegotiator:
             
             description += f"- Agent {agent_id}: At {current}, going to {target}\n"
             description += f"  Planned path: {path}\n"
+            
+            # Add failure history if available
+            failed_history = agent.get('failed_move_history', [])
+            if failed_history:
+                description += f"  Recent move failures ({len(failed_history)}):\n"
+                for failure in failed_history[-3:]:  # Show last 3 failures
+                    turn = failure.get('turn', '?')
+                    attempted = failure.get('attempted_move', '?')
+                    reason = failure.get('failure_reason', 'unknown')
+                    description += f"    • Turn {turn}: Tried to move to {attempted} - Failed: {reason}\n"
         
         description += f"\nCONFLICT POINTS: {conflict_data.get('conflict_points', [])}\n"
         
