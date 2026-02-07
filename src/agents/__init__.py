@@ -216,12 +216,6 @@ class RobotAgent:
             if other_id != self.agent_id and other_pos == new_position:
                 return f"agent_collision: Agent {other_id} at {other_pos}"
         
-        # Check box collisions
-        boxes = map_state.get('boxes', {})
-        for box_id, box_pos in boxes.items():
-            if box_pos == new_position:
-                return f"box_collision: Box {box_id} at {box_pos}"
-        
         return "unknown_safety_check_failure"
     
     # Make agent wait for specified turns
