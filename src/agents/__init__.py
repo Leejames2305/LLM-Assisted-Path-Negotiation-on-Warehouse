@@ -158,7 +158,7 @@ class RobotAgent:
         dx = abs(new_position[0] - self.position[0])
         dy = abs(new_position[1] - self.position[1])
         if dx + dy != 1:
-            reason = f"not_adjacent (dx={dx}, dy={dy})"
+            reason = f"not_adjacent: dx={dx}, dy={dy}"
             print(f"❌ Agent {self.agent_id}: Move {reason}")
             return False, reason
         
