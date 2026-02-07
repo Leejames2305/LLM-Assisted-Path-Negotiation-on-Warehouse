@@ -133,27 +133,30 @@ class RobotAgent:
             # This handles both cases where LLM includes/excludes current position
             if path and len(path) > 0:
                 next_pos = tuple(path[0])  # Start from the first element
-                return self.move_to(next_pos, map_state)
+                success, _ = self.move_to(next_pos, map_state)
+                return success
             else:
                 next_move = self.get_next_move()
                 if next_move:
-                    return self.move_to(next_move, map_state)
+                    success, _ = self.move_to(next_move, map_state)
+                    return success
         
         return False
     
-    # Move agent to new position with safety checks, return true if successful
-    def move_to(self, new_position: Tuple[int, int], map_state: Dict) -> bool:
+    # Move agent to new position with safety checks, return (success, reason)
+    def move_to(self, new_position: Tuple[int, int], map_state: Dict) -> Tuple[bool, Optional[str]]:
         # Check if position is the same (waiting in place)
         if new_position == self.position:
             print(f"✅ Agent {self.agent_id}: Staying in place (valid wait)")
-            return True
+            return True, None
         
         # Basic adjacency check
         dx = abs(new_position[0] - self.position[0])
         dy = abs(new_position[1] - self.position[1])
         if dx + dy != 1:
-            print(f"❌ Agent {self.agent_id}: Move not adjacent (dx={dx}, dy={dy})")
-            return False
+            reason = f"not_adjacent (dx={dx}, dy={dy})"
+            print(f"❌ Agent {self.agent_id}: Move {reason}")
+            return False, reason
         
         # Detailed safety check using validator
         is_safe = self.validator.check_move_safety(
@@ -162,9 +165,10 @@ class RobotAgent:
         
         if not is_safe:
             print(f"❌ Agent {self.agent_id}: Safety check failed for {new_position}")
-            # Log WHY it failed
+            # Get the failure reason
+            failure_reason = self._get_move_failure_reason(new_position, map_state)
             self._log_move_failure_reason(new_position, map_state)
-            return False
+            return False, failure_reason
         
         # If safe, make the move
         self.position = new_position
@@ -187,7 +191,34 @@ class RobotAgent:
             if hasattr(self, '_has_negotiated_path'):
                 self._has_negotiated_path = False
         
-        return True
+        return True, None
+    
+    # Get detailed reason why a move failed
+    def _get_move_failure_reason(self, new_position: Tuple[int, int], map_state: Dict) -> str:
+        x, y = new_position
+        grid = map_state.get('grid', [])
+        
+        # Check bounds
+        if y < 0 or y >= len(grid) or x < 0 or x >= len(grid[0]) if grid else True:
+            return f"out_of_bounds: ({x}, {y})"
+        
+        # Check wall collision
+        if grid and grid[y][x] == '#':
+            return f"wall_collision: ({x}, {y})"
+        
+        # Check agent collisions
+        agents = map_state.get('agents', {})
+        for other_id, other_pos in agents.items():
+            if other_id != self.agent_id and other_pos == new_position:
+                return f"agent_collision: Agent {other_id} at {other_pos}"
+        
+        # Check box collisions
+        boxes = map_state.get('boxes', {})
+        for box_id, box_pos in boxes.items():
+            if box_pos == new_position:
+                return f"box_collision: Box {box_id} at {box_pos}"
+        
+        return "unknown_safety_check_failure"
     
     # Log detailed reasons why a move failed
     def _log_move_failure_reason(self, new_position: Tuple[int, int], map_state: Dict):

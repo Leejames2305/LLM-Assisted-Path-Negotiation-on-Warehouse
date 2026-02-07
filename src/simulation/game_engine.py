@@ -719,7 +719,7 @@ class GameEngine:
                 else:
                     # Normal move to different position
                     map_state = self.warehouse_map.get_state_dict()
-                    success = agent.move_to(next_pos, map_state)
+                    success, failure_reason = agent.move_to(next_pos, map_state)
                 
                 if success:
                     if next_pos != agent.position:
@@ -768,14 +768,15 @@ class GameEngine:
                     self.agent_failed_move_history[agent_id].append({
                         'turn': self.current_turn,
                         'attempted_move': next_pos,
-                        'from_position': agent.position
+                        'from_position': agent.position,
+                        'failure_reason': failure_reason
                     })
                     
                     # Keep only recent failed move history
                     if len(self.agent_failed_move_history[agent_id]) > self.stagnation_turns:
                         self.agent_failed_move_history[agent_id] = self.agent_failed_move_history[agent_id][-self.stagnation_turns:]
                     
-                    print(f"❌ Agent {agent_id}: Move to {next_pos} failed ({self.failed_move_counts[agent_id]} consecutive failures)")
+                    print(f"❌ Agent {agent_id}: Move to {next_pos} failed ({self.failed_move_counts[agent_id]} consecutive failures) - Reason: {failure_reason}")
     
     # Check if agent can pick up a box at current position
     def _check_box_pickup(self, agent_id: int):
