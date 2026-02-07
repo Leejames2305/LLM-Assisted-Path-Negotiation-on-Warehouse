@@ -481,15 +481,21 @@ class GameEngine:
         }
         
         # Add agent data for conflicting agents
-        for agent_id in conflict_info['conflicting_agents']:
-            if agent_id in self.agents:
-                agent = self.agents[agent_id]
-                conflict_data['agents'].append({
-                    'id': agent_id,
-                    'current_pos': agent.position,
-                    'target_pos': agent.target_position,
-                    'planned_path': planned_moves.get(agent_id, [])
-                })
+        # Use pre-built agent data from conflict_info if available (includes failed_move_history)
+        if 'agents' in conflict_info and conflict_info['agents']:
+            # Use the detailed agent data from conflict detection
+            conflict_data['agents'] = conflict_info['agents']
+        else:
+            # Fallback: build basic agent data (shouldn't normally happen)
+            for agent_id in conflict_info['conflicting_agents']:
+                if agent_id in self.agents:
+                    agent = self.agents[agent_id]
+                    conflict_data['agents'].append({
+                        'id': agent_id,
+                        'current_pos': agent.position,
+                        'target_pos': agent.target_position,
+                        'planned_path': planned_moves.get(agent_id, [])
+                    })
         
         # Prepare validators for refinement loop
         agent_validators = {}
