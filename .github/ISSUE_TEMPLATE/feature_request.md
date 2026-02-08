@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-**Describe the feature **
+**Describe the feature**
 A clear and concise description of what you want to happen.
 
 **Affected current module & features**
