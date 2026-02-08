@@ -405,8 +405,13 @@ def _parse_with_retry(self, response: str, expected_schema: Dict) -> Dict:
     if recovered and self._validate_schema(recovered, expected_schema):
         return recovered
     
-    # Log the failure for debugging
-    logger.warning(f"Failed to parse response: {response[:100]}...")
+    # Log the failure for debugging with full context
+    logger.warning(
+        f"Failed to parse response after recovery attempts. "
+        f"Expected schema: {expected_schema.get('type', 'unknown')}. "
+        f"Response preview: {response[:200]}... "
+        f"(total length: {len(response)} chars)"
+    )
     
     # Return safe fallback
     return self._create_safe_fallback(expected_schema)
