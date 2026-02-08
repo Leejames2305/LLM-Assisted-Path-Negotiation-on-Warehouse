@@ -48,3 +48,6 @@ python visualization.py logs/sim_log....
 
 ## 📄 Docs
 Additional documentations are located at [here](docs/Basics.md)
+
+### Open Issues & Improvements
+- [LLM Prompt Improvements](docs/ISSUE_LLM_PROMPT_IMPROVEMENTS.md) - Detailed proposal for enhancing negotiator and validator prompts
