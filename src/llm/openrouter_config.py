@@ -87,12 +87,9 @@ class OpenRouterConfig:
     @staticmethod
     def get_reasoning_keywords() -> List[str]:
         return [
-            'o1',          # OpenAI o1 series
             'reasoning',   # Models with 'reasoning' in name
-            'reasoner',    # DeepSeek reasoner variants
-            'think',       # Models that emphasize thinking
-            'analysis',    # Analysis-focused models
-            'logic'        # Logic-focused models
+            'thinking',    # Kimi Thinking Series
+            'think'        # Models that emphasize thinking
         ]
     
     @staticmethod
@@ -105,12 +102,12 @@ class OpenRouterConfig:
         
         # Method 2: Check for high-end model indicators
         high_end_indicators = [
-            'gpt-4',       # GPT-4 variants tend to have better reasoning
-            'claude-3',    # Claude-3 series
-            'opus',        # Anthropic's highest tier
-            'ultra',       # Google's premium tier
-            'max',         # Often indicates top-tier models
-            'pro',         # Professional/premium variants
+            'gpt',       # GPT-5 variants tend to have better reasoning
+            'claude',    # Claude series
+            'gemini',    # Google's premium tier
+            'grok',      # Grok models
+            'glm',       # GLM models
+            'deepseek'   # DeepSeek models
         ]
         is_high_end = any(indicator in model_lower for indicator in high_end_indicators)
         
@@ -148,16 +145,8 @@ class OpenRouterConfig:
     def _is_excluded_from_reasoning(model_lower: str) -> bool:
         # Some high-end models that don't support reasoning features
         exclusions = [
-            'turbo',       # Often indicates speed over reasoning
-            'fast',        # Speed-optimized variants
-            'lite',        # Lightweight versions
-            'mini',        # Unless it's o1-mini, which is special
-            'free'         # Free tier models usually lack advanced features
+            'verynano'       # Non-existent
         ]
-        
-        # Special case: o1-mini is actually a reasoning model despite having 'mini'
-        if 'o1' in model_lower and 'mini' in model_lower:
-            return False
             
         return any(exclusion in model_lower for exclusion in exclusions)
     
@@ -177,15 +166,7 @@ class OpenRouterConfig:
                 'reasoning_enabled': True,
                 'reasoning_exclude': False
             })
-        
-        # Model-specific overrides
-        if 'gemma' in model.lower():
-            settings['temperature'] = 0.2
-        elif 'claude' in model.lower():
-            settings['temperature'] = 0.4
-        elif 'gpt-4' in model.lower():
-            settings['temperature'] = 0.2
-        
+
         return settings
     
     @staticmethod
