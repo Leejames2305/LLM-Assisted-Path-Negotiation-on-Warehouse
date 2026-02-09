@@ -184,6 +184,7 @@ class LayoutEditor:
             print("b <id> <x> <y>      - Place/move box")
             print("t <id> <x> <y>      - Place/move target")
             print("goal <agent> <tgt>  - Set agent goal to target")
+            print("rand w <count>      - Random wall placement")
             print("rand a <count>      - Random agent placement")
             print("rand b <count>      - Random box placement")
             print("rand t <count>      - Random target placement")
@@ -230,11 +231,11 @@ class LayoutEditor:
                 elif action == "rand" and len(command) >= 3:
                     mode = command[1]
                     count = int(command[2])
-                    if mode in ['a', 'b', 't']:
+                    if mode in ['w', 'a', 'b', 't']:
                         self._random_placement(mode, count)
                         self.saved = False
                     else:
-                        print("❌ Invalid mode. Use 'a', 'b', or 't'")
+                        print("❌ Invalid mode. Use 'w', 'a', 'b', or 't'")
 
                 elif action == "clear":
                     self._clear_entities()
@@ -460,7 +461,18 @@ class LayoutEditor:
 
         selected = random.sample(valid_positions, count)
 
-        if mode == 'a':
+        if mode == 'w':
+            # Convert grid to list of lists for editing
+            grid_list = [list(row) for row in grid]
+            
+            for x, y in selected:
+                grid_list[y][x] = '#'
+            
+            # Update grid
+            layout['grid'] = [''.join(row) for row in grid_list]
+            print(f"✅ Randomly placed {count} walls")
+
+        elif mode == 'a':
             layout['agents'] = []
             for i, (x, y) in enumerate(selected):
                 layout['agents'].append({'id': i, 'x': x, 'y': y})
