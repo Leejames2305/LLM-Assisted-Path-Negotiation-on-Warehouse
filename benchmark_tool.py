@@ -36,10 +36,9 @@ from src.logging import UnifiedLogger
 init(autoreset=True)
 load_dotenv()
 
-
+# Configuration for benchmark runs
 @dataclass
 class BenchmarkConfig:
-    """Configuration for benchmark runs"""
     num_agents: int
     num_rounds: int
     time_limit_seconds: int
@@ -48,7 +47,7 @@ class BenchmarkConfig:
     
     @classmethod
     def from_env(cls) -> 'BenchmarkConfig':
-        """Load configuration from environment variables"""
+        # Load configuration from environment variables
         return cls(
             num_agents=int(os.getenv('BENCHMARK_NUM_AGENTS', '2')),
             num_rounds=int(os.getenv('BENCHMARK_NUM_ROUNDS', '5')),
@@ -57,10 +56,9 @@ class BenchmarkConfig:
             spatial_hints_enabled=os.getenv('BENCHMARK_SPATIAL_HINTS_ENABLED', 'true').lower() == 'true'
         )
 
-
+# Results from a single benchmark round
 @dataclass
 class RoundResult:
-    """Results from a single benchmark round"""
     round_num: int
     status: str  # 'success', 'timeout', 'failed'
     cooperative_success_rate: float
@@ -75,7 +73,7 @@ class RoundResult:
 
 
 def load_benchmark_config() -> BenchmarkConfig:
-    """Load and display benchmark configuration from .env"""
+    # Load and display benchmark configuration from .env
     config = BenchmarkConfig.from_env()
     
     print(f"\n{Fore.CYAN}📊 Benchmark Configuration:{Style.RESET_ALL}")
@@ -87,17 +85,8 @@ def load_benchmark_config() -> BenchmarkConfig:
     
     return config
 
-
+# List all walkable cells in the grid that are not walls
 def get_walkable_cells(grid: List[str]) -> List[Tuple[int, int]]:
-    """
-    Extract all walkable cell positions from the grid.
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        
-    Returns:
-        List of (x, y) positions that are walkable (not walls)
-    """
     walkable = []
     for y, row in enumerate(grid):
         for x, cell in enumerate(row):
@@ -105,19 +94,8 @@ def get_walkable_cells(grid: List[str]) -> List[Tuple[int, int]]:
                 walkable.append((x, y))
     return walkable
 
-
+# Use BFS to check if goal is reachable from start
 def bfs_reachable(grid: List[str], start: Tuple[int, int], goal: Tuple[int, int]) -> bool:
-    """
-    Check if goal is reachable from start using BFS pathfinding.
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        start: Starting position (x, y)
-        goal: Target position (x, y)
-        
-    Returns:
-        True if goal is reachable from start
-    """
     if start == goal:
         return True
     
@@ -145,18 +123,8 @@ def bfs_reachable(grid: List[str], start: Tuple[int, int], goal: Tuple[int, int]
     
     return False
 
-
+# Get all walkable cells adjacent to the given position (including the position itself)
 def get_adjacent_walkable_cells(grid: List[str], pos: Tuple[int, int]) -> List[Tuple[int, int]]:
-    """
-    Get all walkable cells adjacent to the given position (including the position itself).
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        pos: Position (x, y) to check adjacents for
-        
-    Returns:
-        List of adjacent walkable positions including the position itself
-    """
     x, y = pos
     height = len(grid)
     width = len(grid[0]) if grid else 0
@@ -173,31 +141,138 @@ def get_adjacent_walkable_cells(grid: List[str], pos: Tuple[int, int]) -> List[T
     
     return adjacents
 
+# Get all cells reachable from start using BFS
+def bfs_all_reachable(grid: List[str], start: Tuple[int, int]) -> set:
+    height = len(grid)
+    width = len(grid[0]) if grid else 0
+    
+    visited = set()
+    queue = deque([start])
+    visited.add(start)
+    
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+    
+    while queue:
+        x, y = queue.popleft()
+        
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            
+            if 0 <= nx < width and 0 <= ny < height:
+                if (nx, ny) not in visited and grid[ny][nx] != '#':
+                    visited.add((nx, ny))
+                    queue.append((nx, ny))
+    
+    return visited
 
+# Generate a random grid with walls while ensuring connectivity
+def generate_random_grid(width: int, height: int, wall_count: int, seed: int, min_walkable: int = 4) -> Optional[Tuple[List[str], int]]:
+    rng = random.Random(seed)
+    
+    # Initialize grid with borders as walls and interior as floor
+    # Work on mutable grid throughout to avoid repeated conversions
+    grid_list = []
+    for y in range(height):
+        if y == 0 or y == height - 1:
+            grid_list.append(list('#' * width))
+        else:
+            grid_list.append(list('#' + '.' * (width - 2) + '#'))
+    
+    # Calculate available internal cells
+    internal_cells = []
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            internal_cells.append((x, y))
+    
+    max_walls = len(internal_cells)
+    
+    # Clamp wall_count to available space
+    if wall_count > max_walls:
+        wall_count = max_walls
+    
+    # Try to place walls while maintaining connectivity
+    # Maximum attempts = wall_count * 10 to allow retries when placement fails
+    max_attempts = wall_count * 10
+    walls_placed = 0
+    failed_attempts = 0
+    # Cap consecutive failures to keep generation time predictable
+    max_consecutive_failures = max(10, wall_count)
+    
+    # Shuffle internal cells for random selection
+    rng.shuffle(internal_cells)
+    cell_index = 0
+    
+    for attempt in range(max_attempts):
+        if walls_placed >= wall_count:
+            break
+        
+        # Pick random internal cell
+        if cell_index >= len(internal_cells):
+            break
+        
+        wall_pos = internal_cells[cell_index]
+        x, y = wall_pos
+        cell_index += 1
+        
+        # Skip if already a wall
+        if grid_list[y][x] == '#':
+            continue
+        
+        # Tentatively place wall
+        original_cell = grid_list[y][x]
+        grid_list[y][x] = '#'
+        test_grid = [''.join(row) for row in grid_list]
+        
+        # Check if all walkable cells are still connected
+        walkable = get_walkable_cells(test_grid)
+        
+        if len(walkable) < min_walkable:
+            # Not enough walkable cells, revert
+            grid_list[y][x] = original_cell
+            failed_attempts += 1
+            if failed_attempts >= max_consecutive_failures:
+                break
+            continue
+        
+        # Pick any walkable cell as start and check if all others are reachable
+        start = walkable[0]
+        reachable = bfs_all_reachable(test_grid, start)
+        
+        if len(reachable) == len(walkable):
+            # All walkable cells are connected, accept this wall
+            walls_placed += 1
+            failed_attempts = 0
+        else:
+            # Revert wall placement
+            grid_list[y][x] = original_cell
+            failed_attempts += 1
+            if failed_attempts >= max_consecutive_failures:
+                break
+    
+    # Convert to immutable grid
+    grid = [''.join(row) for row in grid_list]
+    
+    # Ensure we have sufficient walkable cells for entities
+    walkable = get_walkable_cells(grid)
+    if len(walkable) < min_walkable:
+        return None
+    
+    # Return None if we couldn't place at least 80% of requested walls
+    # This indicates the parameters are incompatible
+    if walls_placed < wall_count * 0.8:
+        return None
+    
+    return (grid, walls_placed)
+
+
+# Generate random valid positions for agents, boxes, and targets, agents spawn near boxes, targets reachable, no overlaps, all on walkable cells
 def generate_random_positions(
     layout: Dict,
     num_agents: int,
     seed: int,
     round_num: int
 ) -> Optional[Dict[str, List[Dict]]]:
-    """
-    Generate random valid positions for agents, boxes, and targets.
     
-    Uses seeded RNG for reproducibility. Ensures:
-    - Agents spawn at the same position or adjacent to their boxes (easy pickup)
-    - Targets are randomly distributed but reachable
-    - No position overlaps
-    - All positions are on walkable cells
-    
-    Args:
-        layout: Base layout dictionary
-        num_agents: Number of agents/boxes/targets to generate
-        seed: Base random seed
-        round_num: Round number (used to vary positions each round)
-        
-    Returns:
-        Dict with 'agents', 'boxes', 'targets' lists, or None if generation fails
-    """
     grid = layout['grid']
     walkable = get_walkable_cells(grid)
     
@@ -299,19 +374,9 @@ def generate_random_positions(
         'targets': targets
     }
 
-
+# Create a new layout with randomized entity positions
 def create_benchmark_layout(base_layout: Dict, positions: Dict, num_agents: int) -> Dict:
-    """
-    Create a new layout with randomized entity positions.
-    
-    Args:
-        base_layout: Original layout to clone
-        positions: Dict with 'agents', 'boxes', 'targets' from generate_random_positions
-        num_agents: Number of agents
-        
-    Returns:
-        New layout dict with updated positions
-    """
+
     # Deep copy the base layout
     new_layout = copy.deepcopy(base_layout)
     
@@ -344,25 +409,14 @@ def create_benchmark_layout(base_layout: Dict, positions: Dict, num_agents: int)
     
     return new_layout
 
-
+# Run a single benchmark round
 def run_single_round(
     layout: Dict,
     round_num: int,
     config: BenchmarkConfig,
     output_dir: str
 ) -> RoundResult:
-    """
-    Execute a single benchmark round.
     
-    Args:
-        layout: Layout configuration for this round
-        round_num: Current round number (1-indexed)
-        config: Benchmark configuration
-        output_dir: Directory for saving logs
-        
-    Returns:
-        RoundResult with metrics and status
-    """
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"📍 ROUND {round_num}/{config.num_rounds}")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -475,15 +529,9 @@ def run_single_round(
             total_collisions=0
         )
 
-
+# Save benchmark results to CSV file
 def save_benchmark_csv(results: List[RoundResult], output_dir: str):
-    """
-    Save benchmark results to CSV file.
-    
-    Args:
-        results: List of RoundResult objects
-        output_dir: Directory to save CSV
-    """
+
     csv_path = os.path.join(output_dir, 'benchmark_results.csv')
     
     fieldnames = [
@@ -513,22 +561,14 @@ def save_benchmark_csv(results: List[RoundResult], output_dir: str):
     
     print(f"📄 Results CSV saved: {csv_path}")
 
-
+# Save benchmark summary JSON with aggregate statistics
 def save_benchmark_summary(
     results: List[RoundResult],
     config: BenchmarkConfig,
     layout_name: str,
     output_dir: str
 ):
-    """
-    Save benchmark summary JSON with aggregate statistics.
-    
-    Args:
-        results: List of RoundResult objects
-        config: Benchmark configuration
-        layout_name: Name of the layout used
-        output_dir: Directory to save summary
-    """
+
     # Calculate aggregate statistics
     success_count = sum(1 for r in results if r.status == 'success')
     timeout_count = sum(1 for r in results if r.status == 'timeout')
@@ -575,9 +615,144 @@ def save_benchmark_summary(
     
     return summary
 
+# Create a layout dictionary from a generated grid
+def create_layout_from_grid(grid: List[str], name: str = "random_map") -> Dict:
 
+    height = len(grid)
+    width = len(grid[0]) if grid else 0
+    
+    return {
+        'version': 1,
+        'name': name,
+        'description': 'Randomly generated map',
+        'dimensions': {
+            'width': width,
+            'height': height
+        },
+        'grid': grid,
+        'agents': [],
+        'boxes': [],
+        'targets': [],
+        'agent_goals': {}
+    }
+
+# Prompt user for random map generation parameters and generate the map
+def prompt_for_random_map_generation(seed: int, num_agents: int) -> Optional[Dict]:
+    print(f"\n{Fore.CYAN}{'='*60}")
+    print(f"🎲 RANDOM MAP GENERATION")
+    print(f"{'='*60}{Style.RESET_ALL}")
+    
+    try:
+        # Get map width
+        width_input = input(f"\n{Fore.CYAN}Map width (8-50, default 20): {Style.RESET_ALL}").strip()
+        width = int(width_input) if width_input else 20
+        
+        if width < 8 or width > 50:
+            print(f"{Fore.RED}❌ Width must be between 8 and 50{Style.RESET_ALL}")
+            return None
+        
+        # Get map height
+        height_input = input(f"{Fore.CYAN}Map height (8-50, default 15): {Style.RESET_ALL}").strip()
+        height = int(height_input) if height_input else 15
+        
+        if height < 8 or height > 50:
+            print(f"{Fore.RED}❌ Height must be between 8 and 50{Style.RESET_ALL}")
+            return None
+        
+        # Calculate max internal walls
+        max_internal_cells = (width - 2) * (height - 2)
+        
+        # Calculate minimum walkable cells needed for the configured agents
+        # Need at least 2 cells per agent (conservative estimate)
+        min_walkable = max(4, num_agents * 2)
+        
+        # Warn if grid is too small for agent count
+        if max_internal_cells < min_walkable:
+            print(f"{Fore.RED}❌ Grid too small for {num_agents} agents. Need at least {min_walkable} walkable cells.{Style.RESET_ALL}")
+            return None
+        
+        # Get wall specification (percentage or count)
+        print(f"\n{Fore.YELLOW}Specify walls as percentage (%) or absolute count:{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}(Grid will have {max_internal_cells} internal cells, needs {min_walkable} walkable for {num_agents} agents){Style.RESET_ALL}")
+        wall_input = input(f"{Fore.CYAN}Walls (e.g., '20%' or '50', default 15%): {Style.RESET_ALL}").strip()
+        
+        if not wall_input:
+            wall_input = "15%"
+        
+        # Parse wall input
+        if wall_input.endswith('%'):
+            # Percentage
+            try:
+                percentage = float(wall_input[:-1])
+                if percentage < 0 or percentage > 70:
+                    print(f"{Fore.RED}❌ Percentage must be between 0 and 70{Style.RESET_ALL}")
+                    return None
+                wall_count = int(max_internal_cells * percentage / 100)
+            except ValueError:
+                print(f"{Fore.RED}❌ Invalid percentage format{Style.RESET_ALL}")
+                return None
+        else:
+            # Absolute count
+            try:
+                wall_count = int(wall_input)
+                if wall_count < 0 or wall_count > max_internal_cells:
+                    print(f"{Fore.RED}❌ Wall count must be between 0 and {max_internal_cells}{Style.RESET_ALL}")
+                    return None
+            except ValueError:
+                print(f"{Fore.RED}❌ Invalid wall count format{Style.RESET_ALL}")
+                return None
+        
+        # Check if enough space will remain for agents
+        if max_internal_cells - wall_count < min_walkable:
+            print(f"{Fore.RED}❌ Too many walls! With {wall_count} walls, not enough space for {num_agents} agents.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Try reducing walls or increasing map size.{Style.RESET_ALL}")
+            return None
+        
+        # Generate the grid
+        print(f"\n{Fore.YELLOW}🔨 Generating random map ({width}x{height} with ~{wall_count} walls)...{Style.RESET_ALL}")
+        result = generate_random_grid(width, height, wall_count, seed, min_walkable)
+        
+        if result is None:
+            print(f"{Fore.RED}❌ Failed to generate valid map with requested parameters{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Try reducing wall density or adjusting map size.{Style.RESET_ALL}")
+            return None
+        
+        grid, actual_walls = result
+        
+        # Create layout
+        layout = create_layout_from_grid(grid, f"random_{width}x{height}")
+        
+        # Display generated map
+        print(f"\n{Fore.GREEN}✅ Map generated successfully!{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}Preview:{Style.RESET_ALL}")
+        for row in grid:
+            print(f"  {row}")
+        
+        walkable = get_walkable_cells(grid)
+        total_cells = width * height
+        wall_cells = sum(row.count('#') for row in grid)
+        
+        print(f"\n{Fore.CYAN}Map Statistics:{Style.RESET_ALL}")
+        print(f"  Total cells: {total_cells}")
+        print(f"  Wall cells: {wall_cells} ({wall_cells/total_cells*100:.1f}%)")
+        print(f"  Internal walls placed: {actual_walls} (requested: {wall_count})")
+        print(f"  Walkable cells: {len(walkable)} (minimum needed: {min_walkable})")
+        
+        if actual_walls < wall_count:
+            print(f"\n{Fore.YELLOW}ℹ️  Note: Placed {actual_walls}/{wall_count} walls to maintain connectivity{Style.RESET_ALL}")
+        
+        return layout
+        
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
+        return None
+    except ValueError as e:
+        print(f"{Fore.RED}❌ Invalid input: {e}{Style.RESET_ALL}")
+        return None
+
+# Display final benchmark summary to console
 def display_final_summary(summary: Dict):
-    """Display final benchmark summary to console."""
+
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"📊 BENCHMARK SUMMARY")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -608,18 +783,9 @@ def display_final_summary(summary: Dict):
     
     print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
 
-
+# Run the complete benchmark with ALL rounds
 def run_benchmark(base_layout: Dict, config: BenchmarkConfig) -> List[RoundResult]:
-    """
-    Run the complete benchmark with all rounds.
-    
-    Args:
-        base_layout: Base layout to use for benchmark
-        config: Benchmark configuration
-        
-    Returns:
-        List of RoundResult objects
-    """
+
     layout_name = base_layout.get('name', 'unknown').replace(' ', '_')
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -669,9 +835,9 @@ def run_benchmark(base_layout: Dict, config: BenchmarkConfig) -> List[RoundResul
     
     return results
 
-
+# Main entry point
 def main():
-    """Main entry point for benchmark tool."""
+
     print(f"{Fore.CYAN}{'='*60}")
     print(f"🔬 LLM Multi-Robot Navigation Benchmark Tool")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -695,13 +861,27 @@ def main():
         print(f"{Fore.RED}❌ Invalid number of rounds ({config.num_rounds}). Must be >= 1.{Style.RESET_ALL}")
         return
     
-    # Select layout
-    print(f"\n{Fore.CYAN}Select a layout for benchmarking:{Style.RESET_ALL}")
-    base_layout = select_layout_interactive()
+    # Select layout or generate random map
+    print(f"\n{Fore.CYAN}Choose layout mode:{Style.RESET_ALL}")
+    print(f"  1. Select existing layout")
+    print(f"  2. Generate random map")
     
-    if base_layout is None:
-        print(f"{Fore.RED}No layout selected. Exiting.{Style.RESET_ALL}")
-        return
+    mode_choice = input(f"\n{Fore.CYAN}Select mode (1/2, default 1): {Style.RESET_ALL}").strip()
+    
+    if mode_choice == '2':
+        # Generate random map
+        base_layout = prompt_for_random_map_generation(config.seed, config.num_agents)
+        if base_layout is None:
+            print(f"{Fore.RED}Random map generation cancelled. Exiting.{Style.RESET_ALL}")
+            return
+    else:
+        # Select existing layout
+        print(f"\n{Fore.CYAN}Select a layout for benchmarking:{Style.RESET_ALL}")
+        base_layout = select_layout_interactive()
+        
+        if base_layout is None:
+            print(f"{Fore.RED}No layout selected. Exiting.{Style.RESET_ALL}")
+            return
     
     # Confirm benchmark start
     print(f"\n{Fore.YELLOW}Ready to start benchmark:{Style.RESET_ALL}")

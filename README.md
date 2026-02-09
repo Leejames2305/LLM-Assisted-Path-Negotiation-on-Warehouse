@@ -36,6 +36,10 @@ Run the simulation:
 ```cmd
 python main.py
 ```
+Run the benchmark tool:
+```cmd
+python benchmark_tool.py
+```
 Run the map editor:
 ```cmd
 python -m src.tools.layout_editor
