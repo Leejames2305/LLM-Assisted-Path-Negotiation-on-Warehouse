@@ -12,7 +12,7 @@ from .openrouter_config import OpenRouterConfig
 class AgentValidator:
     def __init__(self, model: Optional[str] = None):
         self.client = OpenRouterClient()
-        self.model = model or os.getenv('AGENT_LLM_MODEL', 'google/gemma-2-9b-it:free')
+        self.model = model or os.getenv('AGENT_LLM_MODEL', 'nvidia/nemotron-3-nano-30b-a3b:free')
         
         # Check if we're using a reasoning model for validation
         self.is_reasoning_model = OpenRouterConfig.is_reasoning_model(self.model)
@@ -70,7 +70,7 @@ class AgentValidator:
         
         # Adjust parameters for reasoning models - use lower token limits for efficiency
         max_tokens = 15000 if self.is_reasoning_model else 10000
-        temperature = 0.05 if self.is_reasoning_model else 0.1  # Very low temperature for consistent validation
+        temperature = 0.2 if self.is_reasoning_model else 0.3  # Very low temperature for consistent validation
         
         response = self.client.send_request(
             model=self.model,
@@ -81,7 +81,7 @@ class AgentValidator:
         
         if response:
             try:
-                result = self._parse_validation_response(response)
+                result = self._parse_validation_response(response)  # type: ignore
                 
                 # If validation failed and no alternative provided, suggest wait
                 if not result.get('valid', False) and 'alternative' not in result:
@@ -154,7 +154,7 @@ class AgentValidator:
         
         if response:
             try:
-                return json.loads(response.strip())
+                return json.loads(response.strip())  # type: ignore
             except:
                 return {"action": "wait", "path": [], "reasoning": "Safe fallback: wait"}
         
@@ -162,30 +162,29 @@ class AgentValidator:
     
     # System prompt for validation
     def _create_validation_system_prompt(self) -> str:
-        return """You are an Agent Validator for warehouse robots. Your job is to perform basic safety validation of negotiated actions from a trusted central coordinator.
+        return """You are an Agent Validator for warehouse robots. Your job is to perform safety validation of negotiated actions from a trusted central coordinator.
 
-        CRITICAL VALIDATION RULES - CHECK THE ENTIRE PATH:
-        
-        1. NO DIAGONAL MOVES ALLOWED
-           - Moves must be orthogonal only: up, down, left, right
-           - Each step from (x,y) can ONLY go to: (x±1,y), (x,y±1)
-           - Any diagonal move like (x±1,y±1) is INVALID
-           - Check ALL moves in the path, not just the first move
-        
-        2. ZERO-MOVES ARE ACCEPTABLE
-           - A step like (x,y) → (x,y) is valid (agent stays in place)
-           - This is equivalent to waiting and should NOT be rejected
-        
-        3. NO WALL COLLISIONS
-           - Any position in the path marked as '#' is a wall and BLOCKED
-           - The path cannot contain walls
-           - Check ALL positions in the provided path
-        
-        4. WITHIN MAP BOUNDS
-           - All path positions must be within (0,0) to (max_x, max_y)
-        
-        5. TRUST CENTRAL COORDINATOR FOR TIMING
-           - Don't second-guess temporal coordination
+        CORE RULES:
+        0. Origin (0,0) is at TOP-LEFT corner
+
+        1. Only orthogonal adjacent moves (up, down, left, right)
+            - Each step from (x,y) can ONLY go to: (x±1,y), (x,y±1)
+            - Any diagonal move like (x±1,y±1) is INVALID
+            - Check ALL moves in the path, not just the first move
+
+        2. Zero-moves (staying in place) are VALID
+            - A step like (x,y) → (x,y) is valid (agent stays in place)
+            - This is equivalent to waiting and should NOT be rejected
+
+        3. No collisions with walls
+            - Any position in the path marked as '#' is a wall and BLOCKED
+            - The path cannot contain walls
+            - Check ALL positions in the provided path
+
+        4. Within map bounds
+            - All positions must be within the defined map size, e.g., (0,0) to (max_x, max_y)
+
+        5. Trust the central coordinator for timed-spacing
            - Focus on geometric/physical validity only
 
         MAP SYMBOLS:
@@ -198,7 +197,7 @@ class AgentValidator:
             "reason": "specific reason"
         }
 
-        VALIDATION PHILOSOPHY: Reject any path with diagonals or walls. Accept zero-moves (staying in place). Otherwise approve.
+        VALIDATION PHILOSOPHY: Reject any path that moves diagonals or walls. Accept zero-moves (staying in place). Otherwise approve.
         """
     
     # Validation query with entire path checking
@@ -239,82 +238,72 @@ class AgentValidator:
         - Full path: {path_tuples}
         - Map size: {width}x{height} (bounds: x:[0-{max_x}], y:[0-{max_y}])
 
-        CRITICAL VALIDATION - CHECK ENTIRE PATH:
-
-        1. DIAGONAL MOVE CHECK:
-           For each consecutive pair of positions in path, verify it's orthogonal:
-           - (x,y) to (x+1,y) or (x-1,y) or (x,y+1) or (x,y-1) = VALID (no diagonals)
-           - (x,y) to (x+1,y+1) or any diagonal = INVALID
-
-        2. WALL CHECK:
-           Verify no position in path contains a wall (#):
+        VALIDATION - check ENTIRE PATH using CORE RULES from system prompt
         """
         
-        # Add map grid for reference
-        if grid:
-            query += "           Map grid:\n"
-            for y, row in enumerate(grid):
-                query += "           "
-                for x, cell in enumerate(row):
-                    if (x, y) in path_tuples:
-                        query += "P"  # Path position
-                    elif (x, y) == tuple(current_pos):
-                        query += "@"  # Current agent
-                    else:
-                        query += cell
-                query += f"  (y={y})\n"
-            query += "           x coords: " + "".join(str(x % 10) for x in range(width)) + "\n"
+        # # Add map grid for reference
+        # if grid:
+        #     query += "           Map grid:\n"
+        #     for y, row in enumerate(grid):
+        #         query += "           "
+        #         for x, cell in enumerate(row):
+        #             if (x, y) in path_tuples:
+        #                 query += "P"  # Path position
+        #             elif (x, y) == tuple(current_pos):
+        #                 query += "@"  # Current agent
+        #             else:
+        #                 query += cell
+        #         query += f"  (y={y})\n"
+        #     query += "           x coords: " + "".join(str(x % 10) for x in range(width)) + "\n"
         
         query += f"""
-        3. BOUNDS CHECK:
-           All positions must be within x:[0-{max_x}] and y:[0-{max_y}]
-
-        PATH VALIDATION SUMMARY:
+        BOUNDS CHECK:
+            - All positions must be within x:[0-{max_x}] and y:[0-{max_y}]
         """
         
-        # Analyze path for issues
-        issues = []
-        for i in range(len(path_tuples) - 1):
-            curr = path_tuples[i]
-            next_pos = path_tuples[i + 1]
+        # # Analyze path for issues
+        # issues = []
+        # for i in range(len(path_tuples) - 1):
+        #     curr = path_tuples[i]
+        #     next_pos = path_tuples[i + 1]
             
-            # Check if it's a zero-move (staying in place) - this is valid (equivalent to waiting)
-            if curr == next_pos:
-                # Zero-move is acceptable, it's like waiting in place
-                continue
+        #     # Check if it's a zero-move (staying in place) - this is valid (equivalent to waiting)
+        #     if curr == next_pos:
+        #         # Zero-move is acceptable, it's like waiting in place
+        #         continue
             
-            # Check diagonal
-            dx = abs(next_pos[0] - curr[0])
-            dy = abs(next_pos[1] - curr[1])
-            if dx > 1 or dy > 1 or (dx == 1 and dy == 1):
-                issues.append(f"Step {i}-{i+1}: Diagonal move {curr} → {next_pos} (dx={dx}, dy={dy}) - INVALID")
+        #     # Check diagonal
+        #     dx = abs(next_pos[0] - curr[0])
+        #     dy = abs(next_pos[1] - curr[1])
+        #     if dx > 1 or dy > 1 or (dx == 1 and dy == 1):
+        #         issues.append(f"Step {i}-{i+1}: Diagonal move {curr} → {next_pos} (dx={dx}, dy={dy}) - INVALID")
             
-            # Check bounds
-            if not (0 <= next_pos[0] <= max_x and 0 <= next_pos[1] <= max_y):
-                issues.append(f"Step {i+1}: Out of bounds {next_pos}")
+        #     # Check bounds
+        #     if not (0 <= next_pos[0] <= max_x and 0 <= next_pos[1] <= max_y):
+        #         issues.append(f"Step {i+1}: Out of bounds {next_pos}")
             
-            # Check walls
-            if grid and 0 <= next_pos[1] < height and 0 <= next_pos[0] < width:
-                if grid[next_pos[1]][next_pos[0]] == '#':
-                    issues.append(f"Step {i+1}: Wall at {next_pos}")
+        #     # Check walls
+        #     if grid and 0 <= next_pos[1] < height and 0 <= next_pos[0] < width:
+        #         if grid[next_pos[1]][next_pos[0]] == '#':
+        #             issues.append(f"Step {i+1}: Wall at {next_pos}")
         
-        if issues:
-            query += "\n".join("       - " + issue for issue in issues)
-            query += "\n\n       ❌ PATH INVALID - Contains issues above"
-        else:
-            query += "       ✓ All moves are orthogonal (no diagonals) or zero-moves (staying in place)\n"
-            query += "       ✓ No walls in path\n"
-            query += "       ✓ All positions within bounds\n"
-            query += "\n       ✅ PATH VALID"
+        # if issues:
+        #     query += "\n".join("       - " + issue for issue in issues)
+        #     query += "\n\n       ❌ PATH INVALID - Contains issues above"
+        # else:
+        #     query += "       ✓ All moves are orthogonal (no diagonals) or zero-moves (staying in place)\n"
+        #     query += "       ✓ No walls in path\n"
+        #     query += "       ✓ All positions within bounds\n"
+        #     query += "\n       ✅ PATH VALID"
         
         query += f"""
 
-        FINAL VALIDATION:
+        VALIDATION DECISION LOGIC:
         - If path contains ANY diagonal moves → REJECT with reason like "diagonal_move_at_step_0: (3,4) → (2,5)"
         - If path contains ANY wall positions → REJECT with reason like "wall_violation_at: (1,4)"
         - If any position out of bounds → REJECT with reason like "out_of_bounds_at: (10,5)"
         - Zero-moves (same position twice like (2,4)→(2,4)) are VALID, do NOT reject them
-        - Otherwise → APPROVE with reason "path_valid_orthogonal_moves_no_walls" or "path_valid_includes_zero_moves"
+        - Otherwise, approve with reason "path_valid_orthogonal_moves_no_walls" or "path_valid_includes_zero_moves"
 
         IMPORTANT: In your reason field, be SPECIFIC with positions and step numbers. Examples:
         - "wall_collision_at_position: (1,4)"
@@ -330,13 +319,13 @@ class AgentValidator:
     def _add_validation_reasoning_instructions(self, base_prompt: str) -> str:
         reasoning_instructions = """
         EFFICIENT VALIDATION REASONING:
-        1. Focus on immediate safety: Can this agent make this specific move right now?
+        0. Strict adherence to core rules
+        1. Focus on safety of ENTIRE PATH: Can the agent make through the path without hitting safety issues?
         2. Check only physical constraints: walls, boundaries, current occupants
-        3. Trust central coordinator for temporal coordination and complex routing
-        4. Default to APPROVE unless clear immediate danger
+        3. Trust central coordinator for timing-based spacing and sequencing
+        4. Default to approve if no clear violations found, else reject with specifics
 
-        Keep reasoning brief and focused on safety essentials.
-
+        Please think through this step-by-step before providing your JSON response and focus on safety essentials.
         """
         return reasoning_instructions + base_prompt
     

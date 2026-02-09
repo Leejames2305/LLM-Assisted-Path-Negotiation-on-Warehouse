@@ -240,7 +240,7 @@ class CentralNegotiator:
         
         # Adjust parameters for reasoning models
         max_tokens = 30000 if self.is_reasoning_model else 20000
-        temperature = 0.1 if self.is_reasoning_model else 0.3
+        temperature = 0.2 if self.is_reasoning_model else 0.3
         
         response = self.client.send_request(
             model=self.model,
@@ -251,7 +251,7 @@ class CentralNegotiator:
         
         if response:
             try:
-                result = self._parse_negotiation_response(response)
+                result = self._parse_negotiation_response(response)  # type: ignore
                 
                 # Handle different response formats:
                 # 1. If result has 'agent_actions' key, use it
@@ -365,11 +365,11 @@ class CentralNegotiator:
                     self.client.create_user_message(refinement_prompt)
                 ],
                 max_tokens=20000,
-                temperature=0.7
+                temperature=0.3
             )
             
             if response:
-                refined_response = self._parse_negotiation_response(response)
+                refined_response = self._parse_negotiation_response(response)  # type: ignore
                 
                 # Handle different response formats (same as initial plan):
                 # 1. If response has 'agent_actions' key, use it
@@ -486,6 +486,7 @@ class CentralNegotiator:
         Your task is to refine a previously rejected multi-agent conflict resolution plan based on specific validator feedback.
 
         CORE RULES:
+        0. Origin (0,0) is at TOP-LEFT corner
         1. Only orthogonal adjacent moves (up, down, left, right)
         2. No two agents can occupy the same cell simultaneously
         3. Each agent must have a complete path from current position to target
@@ -495,12 +496,21 @@ class CentralNegotiator:
         REFINEMENT STRATEGY:
         - Analyze each rejection reason in depth
         - Identify the root cause of validation failures
-        - Propose alternative routing or timing strategies
-        - Ensure the refined plan is fundamentally different from rejected version
+        - Propose alternative routing or timed-waiting strategies
         - Maintain safety constraints: no collisions, valid moves only
 
         OUTPUT REQUIREMENT:
         Return ONLY valid JSON with no markdown formatting or text outside the JSON structure.
+        
+        RESPONSE FORMAT:
+        {
+            "resolution": "priority|reroute|wait",
+            "agent_actions": {
+                "0": {"action": "move|wait", "path": [[x,y]...], "priority": 1},
+                "1": {"action": "move|wait", "path": [[x,y], [x,y], ...], "priority": 2}
+            },
+            "reasoning": "Brief explanation of chosen strategy"
+        }
         """
     
     # Get refinement history from last negotiation
@@ -511,31 +521,41 @@ class CentralNegotiator:
     def _create_negotiation_system_prompt(self) -> str:
         return """You are an expert robot conflict resolver. Respond ONLY with valid JSON.
 
-        RULES: Robots deliver boxes, one per cell, avoid collisions.
+        CORE RULES:
+        1. Only orthogonal adjacent moves (up, down, left, right)
+        2. No two agents can occupy the same cell simultaneously
+        3. Each agent must have a complete path from current position to target
+        4. Provide full paths in all refined actions
+        5. Prioritize addressing the specific rejection reasons provided
 
         RESOLUTION STRATEGIES:
         1. "priority": Assign movement priorities
+           Use when: Agents have non-overlapping goals but conflicting immediate paths
+           How it works:
            - Higher priority agents move first
-           - Others wait in current position
+           - Lower priority agents wait in current position
+           - Example: Agent 0 moves through narrow passage first, while Agent 1 waits until passage clear
         
-        2. "reroute": Use empty spaces for temporary positioning
-           - Move agents to strategic waiting positions
-           - Create paths that use available space efficiently
-           - Consider "stepping aside" into empty cells
-           - Look for alternative routes around conflicts
-           - IMPORTANT: Avoid positions that previously caused failures
+        2. "reroute": Use empty spaces in Map for temporary positioning
+            Use when: The map has available space for strategic repositioning/waiting
+            How it works:
+           - Guide the agents to temporary safe spots, then resume original path after waiting specific number of rounds
+           - Example: Agent 0 moves to nearby empty cell to let Agent 1 pass, then continues
+           - Prefer this strategies when wiggle spaces are available. Analyze the map layout to find creative positioning opportunities!
         
         3. "wait": Conservative pause
-           - All agents pause movement
-           - Use for complex deadlocks
+            Use when: Pause the agent due to complex conflicts or lack of space
+            How it works:
+           - The selected agent waits at original position until next turn
+           - Example: Agent 0 wait, while Agent 1 reroute
 
         ANALYZING FAILURE HISTORY:
-        - When agents have recent move failures, analyze the failure reasons
+        Use when: When agents have recent move failures, analyze the failure reasons, use failure patterns to inform better path planning
+        Failure reasons include:
         - wall_collision: Agent tried to move into a wall - avoid that position
         - agent_collision: Agent collided with another agent - coordinate timing
         - out_of_bounds: Move exceeded map boundaries - stay within bounds
         - not_adjacent: Move was diagonal or too far - ensure orthogonal moves only
-        - Use failure patterns to inform better path planning
 
         RESPONSE FORMAT:
         {
@@ -545,8 +565,6 @@ class CentralNegotiator:
             },
             "reasoning": "Brief explanation of chosen strategy"
         }
-
-        PREFER rerouting solutions when empty spaces are available. Analyze the map layout to find creative positioning opportunities!
         """
     
     # Create conflict description for user prompt
@@ -604,7 +622,7 @@ class CentralNegotiator:
                     description += "\n💡 REROUTING STRATEGIES:\n"
                     description += "- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n"
                     description += "- 'priority': Assign movement priority + others wait in place\n"
-                    description += "- 'wait': All agents pause (conservative approach)\n"
+                    description += "- 'wait': Pause the agent due to complex conflicts or lack of space\n"
             
             # Add map visualization (always show, but wiggle rooms only if hints enabled)
             grid = conflict_data['map_state'].get('grid', [])
@@ -620,11 +638,11 @@ class CentralNegotiator:
     def _add_reasoning_instructions(self, base_prompt: str) -> str:
         reasoning_instructions = """
         REASONING APPROACH:
+        0. Strict adherence to core rules
         1. Analyze the spatial configuration and movement constraints
         2. Consider each agent's priority and current objective
         3. Evaluate potential collision points and timing
-        4. Reason through multiple resolution strategies
-        5. Select the most efficient solution
+        4. Reason through the most efficient solution
 
         Please think through this step-by-step before providing your JSON response.
 
@@ -775,7 +793,7 @@ class CentralNegotiator:
             "reasoning": "Fallback resolution: First agent moves, others wait"
         }
     
-    # Get path guidance from LLM for pathfinding
+    # Get path guidance from LLM for pathfinding, not used in main negotiation flow
     def get_path_guidance(self, agent_data: Dict, map_state: Dict) -> Optional[List[Tuple[int, int]]]:
         system_prompt = """You are a pathfinding assistant for warehouse robots. Provide efficient paths avoiding obstacles and other robots.
 
@@ -812,7 +830,7 @@ class CentralNegotiator:
         
         if response:
             try:
-                result = json.loads(response.strip())
+                result = json.loads(response.strip()) # type: ignore
                 return result.get('path', [])
             except:
                 return None
