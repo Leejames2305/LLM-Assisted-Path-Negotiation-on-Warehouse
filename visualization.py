@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider
+from matplotlib.gridspec import GridSpec
 import numpy as np
 from datetime import datetime
 import argparse
@@ -165,8 +166,27 @@ class SimulationVisualizer:
         # Detect walls and passable areas
         self.detect_walls()
         
-        # Create figure with subplots
-        self.fig, (self.ax_main, self.ax_stats) = plt.subplots(1, 2, figsize=(16, 8))
+        # Calculate dynamic figure size based on map dimensions
+        # Map panel: scale with map size, with reasonable min/max bounds
+        map_panel_width = min(20, max(10, self.width * 0.5))
+        map_panel_height = min(16, max(8, self.height * 0.5))
+        
+        # Stats panel: fixed width for readability
+        stats_panel_width = 5.5
+        
+        # Total figure dimensions
+        fig_width = map_panel_width + stats_panel_width
+        fig_height = map_panel_height
+        
+        # Calculate width ratios for GridSpec (map gets more space on larger maps)
+        width_ratio = max(2, int(map_panel_width / stats_panel_width))
+        
+        # Create figure with GridSpec for flexible subplot sizing
+        self.fig = plt.figure(figsize=(fig_width, fig_height))
+        gs = GridSpec(1, 2, figure=self.fig, width_ratios=[width_ratio, 1], wspace=0.15)
+        
+        self.ax_main = self.fig.add_subplot(gs[0, 0])
+        self.ax_stats = self.fig.add_subplot(gs[0, 1])
         
         # Main map subplot
         self.ax_main.set_xlim(-0.5, self.width - 0.5)
@@ -190,8 +210,8 @@ class SimulationVisualizer:
         
     def setup_controls(self):
         """Setup interactive controls for the visualization"""
-        # Make room for controls at the bottom
-        plt.subplots_adjust(bottom=0.2)
+        # Make room for controls at the bottom (using rect parameter for tight_layout compatibility)
+        plt.subplots_adjust(bottom=0.15, left=0.05, right=0.98, top=0.95)
         
         # Play/Pause button
         ax_play = plt.axes((0.1, 0.05, 0.1, 0.04))
@@ -476,11 +496,22 @@ class SimulationVisualizer:
                 color = self.agent_colors[i]
                 legend_elements.append(patches.Patch(color=color, alpha=0.8, label=f'Agent {agent_id}'))
         
-        self.ax_main.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
-                           fontsize=7, framealpha=0.9)
+        # Calculate number of columns based on legend items to prevent overflow
+        num_items = len(legend_elements)
+        ncol = 1 if num_items <= 8 else 2 if num_items <= 16 else 3
+        
+        # Position legend outside the plot area to avoid covering the map
+        # Use bbox_to_anchor to place it outside the axes boundary
+        self.ax_main.legend(handles=legend_elements, loc='upper left', 
+                           bbox_to_anchor=(0, -0.05), 
+                           ncol=min(ncol, 4),  # Max 4 columns for readability
+                           fontsize=7, framealpha=0.95, 
+                           borderaxespad=0, 
+                           columnspacing=1.0,
+                           handletextpad=0.5)
     
     def update_statistics(self, turn_data):
-        """Update the statistics panel"""
+        """Update the statistics panel with overflow protection"""
         self.ax_stats.clear()
         self.ax_stats.set_xlim(0, 1)
         self.ax_stats.set_ylim(0, 1)
@@ -497,21 +528,21 @@ class SimulationVisualizer:
         for agent_id, state in agent_states.items():
             status = f"Agent {agent_id}: "
             if state.get('carrying_box'):
-                status += f"Carrying Box {state.get('box_id')}"
+                status += f"Box {state.get('box_id')}"
             elif state.get('is_waiting'):
-                status += f"Waiting ({state.get('wait_turns_remaining')} turns)"
+                status += f"Wait({state.get('wait_turns_remaining')})"
             else:
                 status += "Moving"
             
             if state.get('has_negotiated_path'):
-                status += " (Negotiated)"
+                status += " (NEG)"
             
             stats_text.append(status)
             
             # Show executed path length
             exec_path = state.get('executed_path', [])
             if exec_path:
-                stats_text.append(f"  └─ Steps taken: {len(exec_path)}")
+                stats_text.append(f"  └─ Steps: {len(exec_path)}")
         
         stats_text.append("")
         
@@ -531,9 +562,9 @@ class SimulationVisualizer:
                     stats_text.append(f"Status: {refinement.get('final_status', 'N/A')}")
         else:
             stats_text.append("ROUTINE Turn")
-            stats_text.append("No conflicts detected")
+            stats_text.append("No conflicts")
         
-        # Simulation summary
+        # Simulation summary (with priority-based inclusion)
         if 'summary' in self.sim_data:
             summary = self.sim_data['summary']
             stats_text.append("")
@@ -546,33 +577,52 @@ class SimulationVisualizer:
             perf_metrics = summary.get('performance_metrics', {})
             if perf_metrics:
                 stats_text.append("")
-                stats_text.append("Performance Metrics:")
-                stats_text.append(f"Success Rate: {perf_metrics.get('cooperative_success_rate', 'N/A')}%")
+                stats_text.append("Performance:")
+                stats_text.append(f"Success: {perf_metrics.get('cooperative_success_rate', 'N/A')}%")
                 stats_text.append(f"Makespan: {perf_metrics.get('makespan_seconds', 'N/A')}s")
-                stats_text.append(f"Collision Rate: {perf_metrics.get('collision_rate', 'N/A')}/turn")
-                stats_text.append(f"Path Efficiency: {perf_metrics.get('path_efficiency', 'N/A')}%")
-                stats_text.append(f"Token Cost: {perf_metrics.get('total_tokens_used', 'N/A')}")
-                stats_text.append(f"Avg Resolution: {perf_metrics.get('avg_conflict_resolution_time_ms', 'N/A')}ms")
+                stats_text.append(f"Collisions: {perf_metrics.get('collision_rate', 'N/A')}/t")
+                stats_text.append(f"Efficiency: {perf_metrics.get('path_efficiency', 'N/A')}%")
+                stats_text.append(f"Tokens: {perf_metrics.get('total_tokens_used', 'N/A')}")
+                stats_text.append(f"Avg Res: {perf_metrics.get('avg_conflict_resolution_time_ms', 'N/A')}ms")
             
             # HMAS-2 metrics if available
             hmas2_metrics = summary.get('hmas2_metrics', {})
             if hmas2_metrics:
                 stats_text.append("")
-                stats_text.append("HMAS-2 Metrics:")
+                stats_text.append("HMAS-2:")
                 stats_text.append(f"Validations: {hmas2_metrics.get('total_validations', 0)}")
                 stats_text.append(f"Approvals: {hmas2_metrics.get('approvals', 0)}")
                 stats_text.append(f"Rejections: {hmas2_metrics.get('rejections', 0)}")
         
-        # Display statistics text
-        y_pos = 0.95
-        for line in stats_text:
+        # Display statistics text with overflow protection
+        y_pos = 0.97
+        line_spacing = 0.038  # Slightly more compact spacing
+        truncated = False
+        
+        for i, line in enumerate(stats_text):
+            # Check if we're approaching the bottom boundary
+            if y_pos < 0.03:
+                # Add truncation indicator and stop
+                self.ax_stats.text(0.05, y_pos, "... (truncated)", 
+                                 transform=self.ax_stats.transAxes, 
+                                 fontsize=8, verticalalignment='top',
+                                 fontstyle='italic', color='gray')
+                truncated = True
+                break
+            
             self.ax_stats.text(0.05, y_pos, line, transform=self.ax_stats.transAxes, 
-                             fontsize=9, verticalalignment='top')
-            y_pos -= 0.05
+                             fontsize=8, verticalalignment='top')
+            y_pos -= line_spacing
     
     def show(self):
         """Show the visualization"""
         self.update_visualization()
+        # Apply tight layout before showing (respecting control button space)
+        try:
+            self.fig.tight_layout(rect=[0, 0.15, 1, 1])
+        except:
+            # If tight_layout fails, continue without it
+            pass
         plt.show()
 
 def find_simulation_logs():
