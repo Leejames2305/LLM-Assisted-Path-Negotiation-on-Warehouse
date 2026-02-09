@@ -638,16 +638,6 @@ def create_layout_from_grid(grid: List[str], name: str = "random_map") -> Dict:
 
 # Prompt user for random map generation parameters and generate the map
 def prompt_for_random_map_generation(seed: int, num_agents: int) -> Optional[Dict]:
-    """
-    Prompt user for random map parameters and generate map.
-    
-    Args:
-        seed: Random seed for reproducibility
-        num_agents: Number of agents (used to validate sufficient space)
-        
-    Returns:
-        Generated layout or None if cancelled/failed
-    """
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"🎲 RANDOM MAP GENERATION")
     print(f"{'='*60}{Style.RESET_ALL}")
