@@ -167,19 +167,6 @@ def bfs_all_reachable(grid: List[str], start: Tuple[int, int]) -> set:
 
 # Generate a random grid with walls while ensuring connectivity
 def generate_random_grid(width: int, height: int, wall_count: int, seed: int, min_walkable: int = 4) -> Optional[Tuple[List[str], int]]:
-    """
-    Generate a random grid with walls ensuring connectivity.
-    
-    Args:
-        width: Width of the grid
-        height: Height of the grid
-        wall_count: Number of internal walls to place
-        seed: Random seed for reproducibility
-        min_walkable: Minimum number of walkable cells required
-        
-    Returns:
-        Tuple of (grid as list of strings, actual walls placed), or None if generation fails
-    """
     rng = random.Random(seed)
     
     # Initialize grid with borders as walls and interior as floor
