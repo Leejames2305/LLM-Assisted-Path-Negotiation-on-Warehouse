@@ -110,10 +110,14 @@ class WarehouseMap:
         agent_x, agent_y = self.agents[agent_id]
         box_x, box_y = self.boxes[box_id]
         
-        # Check if agent is adjacent to the box
-        if abs(agent_x - box_x) + abs(agent_y - box_y) == 1:
-            # Remove box from its position
-            self.grid[box_y, box_x] = CellType.EMPTY.value
+        # Check if agent is at the same position or adjacent to the box
+        distance = abs(agent_x - box_x) + abs(agent_y - box_y)
+        if distance <= 1:  # Allow pickup at same position (0) or adjacent (1)
+            # Remove box from its position (if at different position)
+            if distance == 1:
+                self.grid[box_y, box_x] = CellType.EMPTY.value
+            # If distance == 0, agent and box share the cell, no need to clear box position
+            
             del self.boxes[box_id]
             
             # Update agent to show it's carrying a box

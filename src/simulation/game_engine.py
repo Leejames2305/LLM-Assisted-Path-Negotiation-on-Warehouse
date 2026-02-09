@@ -92,6 +92,24 @@ class GameEngine:
         # Start tracking simulation time
         self.simulation_start_time = time.time()
         
+        # Check for agents already on their boxes and auto-pickup
+        for agent_id, agent in self.agents.items():
+            if not agent.carrying_box:
+                box_id = agent_id
+                if box_id in self.warehouse_map.boxes:
+                    box_pos = self.warehouse_map.boxes[box_id]
+                    if agent.position == box_pos:
+                        print(f"🎯 Agent {agent_id} spawned on box {box_id}, picking up immediately...")
+                        success = self.warehouse_map.pickup_box(agent_id, box_id)
+                        if success:
+                            agent.pickup_box(box_id)
+                            # Set target to delivery location
+                            target_id = self.warehouse_map.agent_goals.get(agent_id)
+                            if target_id is not None and target_id in self.warehouse_map.targets:
+                                target_pos = self.warehouse_map.targets[target_id]
+                                agent.set_target(target_pos)
+                                print(f"📦 Agent {agent_id}: Ready to deliver to {target_pos}")
+        
         # Initial pathfinding
         self._plan_initial_paths()
         

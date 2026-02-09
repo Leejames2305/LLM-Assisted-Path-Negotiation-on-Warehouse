@@ -146,6 +146,34 @@ def bfs_reachable(grid: List[str], start: Tuple[int, int], goal: Tuple[int, int]
     return False
 
 
+def get_adjacent_walkable_cells(grid: List[str], pos: Tuple[int, int]) -> List[Tuple[int, int]]:
+    """
+    Get all walkable cells adjacent to the given position (including the position itself).
+    
+    Args:
+        grid: List of strings representing the warehouse grid
+        pos: Position (x, y) to check adjacents for
+        
+    Returns:
+        List of adjacent walkable positions including the position itself
+    """
+    x, y = pos
+    height = len(grid)
+    width = len(grid[0]) if grid else 0
+    
+    adjacents = []
+    
+    # Include the position itself and all 4 cardinal directions
+    directions = [(0, 0), (0, 1), (0, -1), (1, 0), (-1, 0)]
+    
+    for dx, dy in directions:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < width and 0 <= ny < height and grid[ny][nx] != '#':
+            adjacents.append((nx, ny))
+    
+    return adjacents
+
+
 def generate_random_positions(
     layout: Dict,
     num_agents: int,
@@ -156,9 +184,10 @@ def generate_random_positions(
     Generate random valid positions for agents, boxes, and targets.
     
     Uses seeded RNG for reproducibility. Ensures:
+    - Agents spawn at the same position or adjacent to their boxes (easy pickup)
+    - Targets are randomly distributed but reachable
     - No position overlaps
     - All positions are on walkable cells
-    - Each agent can reach its box and target
     
     Args:
         layout: Base layout dictionary
@@ -172,8 +201,9 @@ def generate_random_positions(
     grid = layout['grid']
     walkable = get_walkable_cells(grid)
     
-    # Need 3 positions per agent (agent, box, target)
-    required_positions = num_agents * 3
+    # Need at least 2 positions per agent (agent+box can share, target separate)
+    # Being conservative: need space for num_agents * 2 to account for some overlap
+    required_positions = num_agents * 2
     
     if len(walkable) < required_positions:
         print(f"{Fore.RED}❌ Not enough walkable cells ({len(walkable)}) for {num_agents} agents{Style.RESET_ALL}")
@@ -198,31 +228,50 @@ def generate_random_positions(
         
         for attempt in range(max_attempts):
             # Re-shuffle if we've exhausted current order
-            if not available:
+            if len(available) < 2:
                 available = [p for p in walkable if p not in used_positions]
+                if not available:
+                    break
                 rng.shuffle(available)
             
-            if len(available) < 3:
+            if len(available) < 2:
                 break
             
-            # Pick candidate positions
-            candidates = []
-            temp_available = available.copy()
+            # Pick agent/box starting position
+            agent_box_start = available.pop(0)
             
-            for _ in range(3):
-                if temp_available:
-                    pos = temp_available.pop(0)
-                    candidates.append(pos)
+            # Find adjacent positions for box (including same position)
+            box_candidates = get_adjacent_walkable_cells(grid, agent_box_start)
+            box_candidates = [p for p in box_candidates if p not in used_positions]
             
-            if len(candidates) < 3:
+            if not box_candidates:
                 continue
             
-            agent_pos, box_pos, target_pos = candidates
+            # Randomly pick box position from adjacents
+            box_pos = rng.choice(box_candidates)
             
-            # Verify reachability: agent -> box -> target
-            if not bfs_reachable(grid, agent_pos, box_pos):
+            # Agent spawns at the starting position
+            agent_pos = agent_box_start
+            
+            # Now find a target position that's reachable from box
+            target_pos = None
+            temp_available = [p for p in available if p not in used_positions and p != box_pos and p != agent_pos]
+            
+            if not temp_available:
+                # Try from all walkable positions
+                temp_available = [p for p in walkable if p not in used_positions and p != box_pos and p != agent_pos]
+            
+            if not temp_available:
                 continue
-            if not bfs_reachable(grid, box_pos, target_pos):
+            
+            # Shuffle and try to find reachable target
+            rng.shuffle(temp_available)
+            for candidate_target in temp_available:
+                if bfs_reachable(grid, box_pos, candidate_target):
+                    target_pos = candidate_target
+                    break
+            
+            if target_pos is None:
                 continue
             
             # Valid configuration found
