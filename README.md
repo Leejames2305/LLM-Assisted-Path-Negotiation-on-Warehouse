@@ -11,6 +11,10 @@ This projects propose the use of A* + LLM (Hybrid-Feedback setup) to resolve pat
 - **Custom Layout System**: Create and edit custom warehouse layouts
   - Terminal-based layout editor
   - Self-validation (bounds, reachability, overlaps)
+- **Benchmark Tool**: Comprehensive performance testing
+  - Random map generation with customizable dimensions and wall density
+  - Automated performance metrics collection
+  - CSV and JSON output for analysis
 - **Logging**: Saves detailed simulation logs for analysis
 
 ## 🛠️ Installation
@@ -35,6 +39,10 @@ This projects propose the use of A* + LLM (Hybrid-Feedback setup) to resolve pat
 Run the simulation:
 ```cmd
 python main.py
+```
+Run the benchmark tool:
+```cmd
+python benchmark_tool.py
 ```
 Run the map editor:
 ```cmd
