@@ -239,7 +239,7 @@ class CentralNegotiator:
         ]
         
         # Adjust parameters for reasoning models
-        max_tokens = 30000 if self.is_reasoning_model else 20000
+        max_tokens = 50000 if self.is_reasoning_model else 50000
         temperature = 0.2 if self.is_reasoning_model else 0.3
         
         response = self.client.send_request(
@@ -364,7 +364,7 @@ class CentralNegotiator:
                     self.client.create_system_message(system_prompt),
                     self.client.create_user_message(refinement_prompt)
                 ],
-                max_tokens=20000,
+                max_tokens=50000,
                 temperature=0.3
             )
             
@@ -824,7 +824,7 @@ class CentralNegotiator:
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=20000,
+            max_tokens=50000,
             temperature=0.2
         )
         

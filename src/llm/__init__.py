@@ -57,7 +57,7 @@ class OpenRouterClient:
         self.request_count = 0
     
     # Send request to OpenRouter with advanced parameters
-    def send_request(self, model: str, messages: List[Dict], max_tokens: int = 1000, temperature: float = 0.7, return_full_response: bool = False, **kwargs) -> Union[Optional[str], Tuple[Optional[str], Dict]]:
+    def send_request(self, model: str, messages: List[Dict], max_tokens: int = 50000, temperature: float = 0.7, return_full_response: bool = False, **kwargs) -> Union[Optional[str], Tuple[Optional[str], Dict]]:
         if not self.api_key:
             raise ValueError("OpenRouter API key not found. Please set OPENROUTER_API_KEY in .env file")
         
