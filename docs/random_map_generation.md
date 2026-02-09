@@ -25,7 +25,7 @@ If you select option 2, you will be asked for:
 
 2. **Map Height** (8-50, default: 15)
    - The height of the generated map in cells
-   - Minimum: 8, Maximum: 15
+   - Minimum: 8, Maximum: 50
 
 3. **Wall Specification** (default: 15%)
    - Can be specified as:

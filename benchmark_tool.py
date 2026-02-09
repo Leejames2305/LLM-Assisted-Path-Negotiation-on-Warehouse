@@ -244,6 +244,7 @@ def generate_random_grid(width: int, height: int, wall_count: int, seed: int) ->
         wall_count = max_walls
     
     # Try to place walls while maintaining connectivity
+    # Maximum attempts = wall_count * 10 to allow retries when placement fails
     max_attempts = wall_count * 10
     walls_placed = 0
     
@@ -280,9 +281,10 @@ def generate_random_grid(width: int, height: int, wall_count: int, seed: int) ->
             internal_cells.remove(wall_pos)
             walls_placed += 1
     
-    # Ensure we have sufficient walkable cells
+    # Ensure we have sufficient walkable cells for entities
+    # Minimum 4: at least 1 agent, 1 box, 1 target, plus 1 extra for movement
     walkable = get_walkable_cells(grid)
-    if len(walkable) < 4:  # Minimum: need space for agents, boxes, targets
+    if len(walkable) < 4:
         return None
     
     return grid
