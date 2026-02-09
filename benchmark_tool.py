@@ -36,10 +36,9 @@ from src.logging import UnifiedLogger
 init(autoreset=True)
 load_dotenv()
 
-
+# Configuration for benchmark runs
 @dataclass
 class BenchmarkConfig:
-    """Configuration for benchmark runs"""
     num_agents: int
     num_rounds: int
     time_limit_seconds: int
@@ -48,7 +47,7 @@ class BenchmarkConfig:
     
     @classmethod
     def from_env(cls) -> 'BenchmarkConfig':
-        """Load configuration from environment variables"""
+        # Load configuration from environment variables
         return cls(
             num_agents=int(os.getenv('BENCHMARK_NUM_AGENTS', '2')),
             num_rounds=int(os.getenv('BENCHMARK_NUM_ROUNDS', '5')),
@@ -57,10 +56,9 @@ class BenchmarkConfig:
             spatial_hints_enabled=os.getenv('BENCHMARK_SPATIAL_HINTS_ENABLED', 'true').lower() == 'true'
         )
 
-
+# Results from a single benchmark round
 @dataclass
 class RoundResult:
-    """Results from a single benchmark round"""
     round_num: int
     status: str  # 'success', 'timeout', 'failed'
     cooperative_success_rate: float
@@ -75,7 +73,7 @@ class RoundResult:
 
 
 def load_benchmark_config() -> BenchmarkConfig:
-    """Load and display benchmark configuration from .env"""
+    # Load and display benchmark configuration from .env
     config = BenchmarkConfig.from_env()
     
     print(f"\n{Fore.CYAN}📊 Benchmark Configuration:{Style.RESET_ALL}")
@@ -87,17 +85,8 @@ def load_benchmark_config() -> BenchmarkConfig:
     
     return config
 
-
+# List all walkable cells in the grid that are not walls
 def get_walkable_cells(grid: List[str]) -> List[Tuple[int, int]]:
-    """
-    Extract all walkable cell positions from the grid.
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        
-    Returns:
-        List of (x, y) positions that are walkable (not walls)
-    """
     walkable = []
     for y, row in enumerate(grid):
         for x, cell in enumerate(row):
@@ -105,19 +94,8 @@ def get_walkable_cells(grid: List[str]) -> List[Tuple[int, int]]:
                 walkable.append((x, y))
     return walkable
 
-
+# Use BFS to check if goal is reachable from start
 def bfs_reachable(grid: List[str], start: Tuple[int, int], goal: Tuple[int, int]) -> bool:
-    """
-    Check if goal is reachable from start using BFS pathfinding.
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        start: Starting position (x, y)
-        goal: Target position (x, y)
-        
-    Returns:
-        True if goal is reachable from start
-    """
     if start == goal:
         return True
     
@@ -145,18 +123,8 @@ def bfs_reachable(grid: List[str], start: Tuple[int, int], goal: Tuple[int, int]
     
     return False
 
-
+# Get all walkable cells adjacent to the given position (including the position itself)
 def get_adjacent_walkable_cells(grid: List[str], pos: Tuple[int, int]) -> List[Tuple[int, int]]:
-    """
-    Get all walkable cells adjacent to the given position (including the position itself).
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        pos: Position (x, y) to check adjacents for
-        
-    Returns:
-        List of adjacent walkable positions including the position itself
-    """
     x, y = pos
     height = len(grid)
     width = len(grid[0]) if grid else 0
@@ -173,18 +141,8 @@ def get_adjacent_walkable_cells(grid: List[str], pos: Tuple[int, int]) -> List[T
     
     return adjacents
 
-
+# Get all cells reachable from start using BFS
 def bfs_all_reachable(grid: List[str], start: Tuple[int, int]) -> set:
-    """
-    Get all cells reachable from start using BFS.
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        start: Starting position (x, y)
-        
-    Returns:
-        Set of (x, y) positions reachable from start
-    """
     height = len(grid)
     width = len(grid[0]) if grid else 0
     
@@ -207,20 +165,8 @@ def bfs_all_reachable(grid: List[str], start: Tuple[int, int]) -> set:
     
     return visited
 
-
+# Generate a random grid with walls while ensuring connectivity
 def generate_random_grid(width: int, height: int, wall_count: int, seed: int) -> Optional[List[str]]:
-    """
-    Generate a random grid with walls ensuring connectivity.
-    
-    Args:
-        width: Width of the grid
-        height: Height of the grid
-        wall_count: Number of internal walls to place
-        seed: Random seed for reproducibility
-        
-    Returns:
-        Grid as list of strings, or None if generation fails
-    """
     rng = random.Random(seed)
     
     # Initialize grid with borders as walls and interior as floor
@@ -289,31 +235,14 @@ def generate_random_grid(width: int, height: int, wall_count: int, seed: int) ->
     
     return grid
 
-
+# Generate random valid positions for agents, boxes, and targets, agents spawn near boxes, targets reachable, no overlaps, all on walkable cells
 def generate_random_positions(
     layout: Dict,
     num_agents: int,
     seed: int,
     round_num: int
 ) -> Optional[Dict[str, List[Dict]]]:
-    """
-    Generate random valid positions for agents, boxes, and targets.
     
-    Uses seeded RNG for reproducibility. Ensures:
-    - Agents spawn at the same position or adjacent to their boxes (easy pickup)
-    - Targets are randomly distributed but reachable
-    - No position overlaps
-    - All positions are on walkable cells
-    
-    Args:
-        layout: Base layout dictionary
-        num_agents: Number of agents/boxes/targets to generate
-        seed: Base random seed
-        round_num: Round number (used to vary positions each round)
-        
-    Returns:
-        Dict with 'agents', 'boxes', 'targets' lists, or None if generation fails
-    """
     grid = layout['grid']
     walkable = get_walkable_cells(grid)
     
@@ -415,19 +344,9 @@ def generate_random_positions(
         'targets': targets
     }
 
-
+# Create a new layout with randomized entity positions
 def create_benchmark_layout(base_layout: Dict, positions: Dict, num_agents: int) -> Dict:
-    """
-    Create a new layout with randomized entity positions.
-    
-    Args:
-        base_layout: Original layout to clone
-        positions: Dict with 'agents', 'boxes', 'targets' from generate_random_positions
-        num_agents: Number of agents
-        
-    Returns:
-        New layout dict with updated positions
-    """
+
     # Deep copy the base layout
     new_layout = copy.deepcopy(base_layout)
     
@@ -460,25 +379,14 @@ def create_benchmark_layout(base_layout: Dict, positions: Dict, num_agents: int)
     
     return new_layout
 
-
+# Run a single benchmark round
 def run_single_round(
     layout: Dict,
     round_num: int,
     config: BenchmarkConfig,
     output_dir: str
 ) -> RoundResult:
-    """
-    Execute a single benchmark round.
     
-    Args:
-        layout: Layout configuration for this round
-        round_num: Current round number (1-indexed)
-        config: Benchmark configuration
-        output_dir: Directory for saving logs
-        
-    Returns:
-        RoundResult with metrics and status
-    """
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"📍 ROUND {round_num}/{config.num_rounds}")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -591,15 +499,9 @@ def run_single_round(
             total_collisions=0
         )
 
-
+# Save benchmark results to CSV file
 def save_benchmark_csv(results: List[RoundResult], output_dir: str):
-    """
-    Save benchmark results to CSV file.
-    
-    Args:
-        results: List of RoundResult objects
-        output_dir: Directory to save CSV
-    """
+
     csv_path = os.path.join(output_dir, 'benchmark_results.csv')
     
     fieldnames = [
@@ -629,22 +531,14 @@ def save_benchmark_csv(results: List[RoundResult], output_dir: str):
     
     print(f"📄 Results CSV saved: {csv_path}")
 
-
+# Save benchmark summary JSON with aggregate statistics
 def save_benchmark_summary(
     results: List[RoundResult],
     config: BenchmarkConfig,
     layout_name: str,
     output_dir: str
 ):
-    """
-    Save benchmark summary JSON with aggregate statistics.
-    
-    Args:
-        results: List of RoundResult objects
-        config: Benchmark configuration
-        layout_name: Name of the layout used
-        output_dir: Directory to save summary
-    """
+
     # Calculate aggregate statistics
     success_count = sum(1 for r in results if r.status == 'success')
     timeout_count = sum(1 for r in results if r.status == 'timeout')
@@ -691,18 +585,9 @@ def save_benchmark_summary(
     
     return summary
 
-
+# Create a layout dictionary from a generated grid
 def create_layout_from_grid(grid: List[str], name: str = "random_map") -> Dict:
-    """
-    Create a layout dictionary from a generated grid.
-    
-    Args:
-        grid: List of strings representing the warehouse grid
-        name: Name for the layout
-        
-    Returns:
-        Layout dictionary (without agents, boxes, targets - those are added later)
-    """
+
     height = len(grid)
     width = len(grid[0]) if grid else 0
     
@@ -721,17 +606,9 @@ def create_layout_from_grid(grid: List[str], name: str = "random_map") -> Dict:
         'agent_goals': {}
     }
 
-
+# Prompt user for random map generation parameters and generate the map
 def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
-    """
-    Prompt user for random map generation parameters and generate the map.
-    
-    Args:
-        seed: Random seed for reproducibility
-        
-    Returns:
-        Generated layout or None if cancelled
-    """
+
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"🎲 RANDOM MAP GENERATION")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -815,9 +692,9 @@ def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
         print(f"{Fore.RED}❌ Invalid input: {e}{Style.RESET_ALL}")
         return None
 
-
+# Display final benchmark summary to console
 def display_final_summary(summary: Dict):
-    """Display final benchmark summary to console."""
+
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"📊 BENCHMARK SUMMARY")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -848,18 +725,9 @@ def display_final_summary(summary: Dict):
     
     print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
 
-
+# Run the complete benchmark with ALL rounds
 def run_benchmark(base_layout: Dict, config: BenchmarkConfig) -> List[RoundResult]:
-    """
-    Run the complete benchmark with all rounds.
-    
-    Args:
-        base_layout: Base layout to use for benchmark
-        config: Benchmark configuration
-        
-    Returns:
-        List of RoundResult objects
-    """
+
     layout_name = base_layout.get('name', 'unknown').replace(' ', '_')
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -909,9 +777,9 @@ def run_benchmark(base_layout: Dict, config: BenchmarkConfig) -> List[RoundResul
     
     return results
 
-
+# Main entry point
 def main():
-    """Main entry point for benchmark tool."""
+
     print(f"{Fore.CYAN}{'='*60}")
     print(f"🔬 LLM Multi-Robot Navigation Benchmark Tool")
     print(f"{'='*60}{Style.RESET_ALL}")
