@@ -166,16 +166,30 @@ def bfs_all_reachable(grid: List[str], start: Tuple[int, int]) -> set:
     return visited
 
 # Generate a random grid with walls while ensuring connectivity
-def generate_random_grid(width: int, height: int, wall_count: int, seed: int) -> Optional[List[str]]:
+def generate_random_grid(width: int, height: int, wall_count: int, seed: int, min_walkable: int = 4) -> Optional[Tuple[List[str], int]]:
+    """
+    Generate a random grid with walls ensuring connectivity.
+    
+    Args:
+        width: Width of the grid
+        height: Height of the grid
+        wall_count: Number of internal walls to place
+        seed: Random seed for reproducibility
+        min_walkable: Minimum number of walkable cells required
+        
+    Returns:
+        Tuple of (grid as list of strings, actual walls placed), or None if generation fails
+    """
     rng = random.Random(seed)
     
     # Initialize grid with borders as walls and interior as floor
-    grid = []
+    # Work on mutable grid throughout to avoid repeated conversions
+    grid_list = []
     for y in range(height):
         if y == 0 or y == height - 1:
-            grid.append('#' * width)
+            grid_list.append(list('#' * width))
         else:
-            grid.append('#' + '.' * (width - 2) + '#')
+            grid_list.append(list('#' + '.' * (width - 2) + '#'))
     
     # Calculate available internal cells
     internal_cells = []
@@ -193,28 +207,44 @@ def generate_random_grid(width: int, height: int, wall_count: int, seed: int) ->
     # Maximum attempts = wall_count * 10 to allow retries when placement fails
     max_attempts = wall_count * 10
     walls_placed = 0
+    failed_attempts = 0
+    # Cap consecutive failures to keep generation time predictable
+    max_consecutive_failures = max(10, wall_count)
+    
+    # Shuffle internal cells for random selection
+    rng.shuffle(internal_cells)
+    cell_index = 0
     
     for attempt in range(max_attempts):
         if walls_placed >= wall_count:
             break
         
         # Pick random internal cell
-        if not internal_cells:
+        if cell_index >= len(internal_cells):
             break
         
-        wall_pos = rng.choice(internal_cells)
+        wall_pos = internal_cells[cell_index]
         x, y = wall_pos
+        cell_index += 1
         
-        # Convert grid to mutable
-        grid_list = [list(row) for row in grid]
+        # Skip if already a wall
+        if grid_list[y][x] == '#':
+            continue
+        
+        # Tentatively place wall
+        original_cell = grid_list[y][x]
         grid_list[y][x] = '#'
         test_grid = [''.join(row) for row in grid_list]
         
         # Check if all walkable cells are still connected
         walkable = get_walkable_cells(test_grid)
         
-        if len(walkable) < 2:
-            # Not enough walkable cells
+        if len(walkable) < min_walkable:
+            # Not enough walkable cells, revert
+            grid_list[y][x] = original_cell
+            failed_attempts += 1
+            if failed_attempts >= max_consecutive_failures:
+                break
             continue
         
         # Pick any walkable cell as start and check if all others are reachable
@@ -223,17 +253,30 @@ def generate_random_grid(width: int, height: int, wall_count: int, seed: int) ->
         
         if len(reachable) == len(walkable):
             # All walkable cells are connected, accept this wall
-            grid = test_grid
-            internal_cells.remove(wall_pos)
             walls_placed += 1
+            failed_attempts = 0
+        else:
+            # Revert wall placement
+            grid_list[y][x] = original_cell
+            failed_attempts += 1
+            if failed_attempts >= max_consecutive_failures:
+                break
+    
+    # Convert to immutable grid
+    grid = [''.join(row) for row in grid_list]
     
     # Ensure we have sufficient walkable cells for entities
-    # Minimum 4: at least 1 agent, 1 box, 1 target, plus 1 extra for movement
     walkable = get_walkable_cells(grid)
-    if len(walkable) < 4:
+    if len(walkable) < min_walkable:
         return None
     
-    return grid
+    # Return None if we couldn't place at least 80% of requested walls
+    # This indicates the parameters are incompatible
+    if walls_placed < wall_count * 0.8:
+        return None
+    
+    return (grid, walls_placed)
+
 
 # Generate random valid positions for agents, boxes, and targets, agents spawn near boxes, targets reachable, no overlaps, all on walkable cells
 def generate_random_positions(
@@ -607,8 +650,17 @@ def create_layout_from_grid(grid: List[str], name: str = "random_map") -> Dict:
     }
 
 # Prompt user for random map generation parameters and generate the map
-def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
-
+def prompt_for_random_map_generation(seed: int, num_agents: int) -> Optional[Dict]:
+    """
+    Prompt user for random map parameters and generate map.
+    
+    Args:
+        seed: Random seed for reproducibility
+        num_agents: Number of agents (used to validate sufficient space)
+        
+    Returns:
+        Generated layout or None if cancelled/failed
+    """
     print(f"\n{Fore.CYAN}{'='*60}")
     print(f"🎲 RANDOM MAP GENERATION")
     print(f"{'='*60}{Style.RESET_ALL}")
@@ -633,8 +685,18 @@ def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
         # Calculate max internal walls
         max_internal_cells = (width - 2) * (height - 2)
         
+        # Calculate minimum walkable cells needed for the configured agents
+        # Need at least 2 cells per agent (conservative estimate)
+        min_walkable = max(4, num_agents * 2)
+        
+        # Warn if grid is too small for agent count
+        if max_internal_cells < min_walkable:
+            print(f"{Fore.RED}❌ Grid too small for {num_agents} agents. Need at least {min_walkable} walkable cells.{Style.RESET_ALL}")
+            return None
+        
         # Get wall specification (percentage or count)
         print(f"\n{Fore.YELLOW}Specify walls as percentage (%) or absolute count:{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}(Grid will have {max_internal_cells} internal cells, needs {min_walkable} walkable for {num_agents} agents){Style.RESET_ALL}")
         wall_input = input(f"{Fore.CYAN}Walls (e.g., '20%' or '50', default 15%): {Style.RESET_ALL}").strip()
         
         if not wall_input:
@@ -663,13 +725,22 @@ def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
                 print(f"{Fore.RED}❌ Invalid wall count format{Style.RESET_ALL}")
                 return None
         
+        # Check if enough space will remain for agents
+        if max_internal_cells - wall_count < min_walkable:
+            print(f"{Fore.RED}❌ Too many walls! With {wall_count} walls, not enough space for {num_agents} agents.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Try reducing walls or increasing map size.{Style.RESET_ALL}")
+            return None
+        
         # Generate the grid
         print(f"\n{Fore.YELLOW}🔨 Generating random map ({width}x{height} with ~{wall_count} walls)...{Style.RESET_ALL}")
-        grid = generate_random_grid(width, height, wall_count, seed)
+        result = generate_random_grid(width, height, wall_count, seed, min_walkable)
         
-        if grid is None:
-            print(f"{Fore.RED}❌ Failed to generate valid map{Style.RESET_ALL}")
+        if result is None:
+            print(f"{Fore.RED}❌ Failed to generate valid map with requested parameters{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Try reducing wall density or adjusting map size.{Style.RESET_ALL}")
             return None
+        
+        grid, actual_walls = result
         
         # Create layout
         layout = create_layout_from_grid(grid, f"random_{width}x{height}")
@@ -681,7 +752,17 @@ def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
             print(f"  {row}")
         
         walkable = get_walkable_cells(grid)
-        print(f"\n{Fore.CYAN}Walkable cells: {len(walkable)}{Style.RESET_ALL}")
+        total_cells = width * height
+        wall_cells = sum(row.count('#') for row in grid)
+        
+        print(f"\n{Fore.CYAN}Map Statistics:{Style.RESET_ALL}")
+        print(f"  Total cells: {total_cells}")
+        print(f"  Wall cells: {wall_cells} ({wall_cells/total_cells*100:.1f}%)")
+        print(f"  Internal walls placed: {actual_walls} (requested: {wall_count})")
+        print(f"  Walkable cells: {len(walkable)} (minimum needed: {min_walkable})")
+        
+        if actual_walls < wall_count:
+            print(f"\n{Fore.YELLOW}ℹ️  Note: Placed {actual_walls}/{wall_count} walls to maintain connectivity{Style.RESET_ALL}")
         
         return layout
         
@@ -812,7 +893,7 @@ def main():
     
     if mode_choice == '2':
         # Generate random map
-        base_layout = prompt_for_random_map_generation(config.seed)
+        base_layout = prompt_for_random_map_generation(config.seed, config.num_agents)
         if base_layout is None:
             print(f"{Fore.RED}Random map generation cancelled. Exiting.{Style.RESET_ALL}")
             return
