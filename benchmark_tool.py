@@ -174,6 +174,120 @@ def get_adjacent_walkable_cells(grid: List[str], pos: Tuple[int, int]) -> List[T
     return adjacents
 
 
+def bfs_all_reachable(grid: List[str], start: Tuple[int, int]) -> set:
+    """
+    Get all cells reachable from start using BFS.
+    
+    Args:
+        grid: List of strings representing the warehouse grid
+        start: Starting position (x, y)
+        
+    Returns:
+        Set of (x, y) positions reachable from start
+    """
+    height = len(grid)
+    width = len(grid[0]) if grid else 0
+    
+    visited = set()
+    queue = deque([start])
+    visited.add(start)
+    
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+    
+    while queue:
+        x, y = queue.popleft()
+        
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            
+            if 0 <= nx < width and 0 <= ny < height:
+                if (nx, ny) not in visited and grid[ny][nx] != '#':
+                    visited.add((nx, ny))
+                    queue.append((nx, ny))
+    
+    return visited
+
+
+def generate_random_grid(width: int, height: int, wall_count: int, seed: int) -> Optional[List[str]]:
+    """
+    Generate a random grid with walls ensuring connectivity.
+    
+    Args:
+        width: Width of the grid
+        height: Height of the grid
+        wall_count: Number of internal walls to place
+        seed: Random seed for reproducibility
+        
+    Returns:
+        Grid as list of strings, or None if generation fails
+    """
+    rng = random.Random(seed)
+    
+    # Initialize grid with borders as walls and interior as floor
+    grid = []
+    for y in range(height):
+        if y == 0 or y == height - 1:
+            grid.append('#' * width)
+        else:
+            grid.append('#' + '.' * (width - 2) + '#')
+    
+    # Calculate available internal cells
+    internal_cells = []
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            internal_cells.append((x, y))
+    
+    max_walls = len(internal_cells)
+    
+    # Clamp wall_count to available space
+    if wall_count > max_walls:
+        wall_count = max_walls
+    
+    # Try to place walls while maintaining connectivity
+    max_attempts = wall_count * 10
+    walls_placed = 0
+    
+    for attempt in range(max_attempts):
+        if walls_placed >= wall_count:
+            break
+        
+        # Pick random internal cell
+        if not internal_cells:
+            break
+        
+        wall_pos = rng.choice(internal_cells)
+        x, y = wall_pos
+        
+        # Convert grid to mutable
+        grid_list = [list(row) for row in grid]
+        grid_list[y][x] = '#'
+        test_grid = [''.join(row) for row in grid_list]
+        
+        # Check if all walkable cells are still connected
+        walkable = get_walkable_cells(test_grid)
+        
+        if len(walkable) < 2:
+            # Not enough walkable cells
+            continue
+        
+        # Pick any walkable cell as start and check if all others are reachable
+        start = walkable[0]
+        reachable = bfs_all_reachable(test_grid, start)
+        
+        if len(reachable) == len(walkable):
+            # All walkable cells are connected, accept this wall
+            grid = test_grid
+            internal_cells.remove(wall_pos)
+            walls_placed += 1
+    
+    # Ensure we have sufficient walkable cells
+    walkable = get_walkable_cells(grid)
+    if len(walkable) < 4:  # Minimum: need space for agents, boxes, targets
+        return None
+    
+    return grid
+
+
 def generate_random_positions(
     layout: Dict,
     num_agents: int,
@@ -576,6 +690,130 @@ def save_benchmark_summary(
     return summary
 
 
+def create_layout_from_grid(grid: List[str], name: str = "random_map") -> Dict:
+    """
+    Create a layout dictionary from a generated grid.
+    
+    Args:
+        grid: List of strings representing the warehouse grid
+        name: Name for the layout
+        
+    Returns:
+        Layout dictionary (without agents, boxes, targets - those are added later)
+    """
+    height = len(grid)
+    width = len(grid[0]) if grid else 0
+    
+    return {
+        'version': 1,
+        'name': name,
+        'description': 'Randomly generated map',
+        'dimensions': {
+            'width': width,
+            'height': height
+        },
+        'grid': grid,
+        'agents': [],
+        'boxes': [],
+        'targets': [],
+        'agent_goals': {}
+    }
+
+
+def prompt_for_random_map_generation(seed: int) -> Optional[Dict]:
+    """
+    Prompt user for random map generation parameters and generate the map.
+    
+    Args:
+        seed: Random seed for reproducibility
+        
+    Returns:
+        Generated layout or None if cancelled
+    """
+    print(f"\n{Fore.CYAN}{'='*60}")
+    print(f"🎲 RANDOM MAP GENERATION")
+    print(f"{'='*60}{Style.RESET_ALL}")
+    
+    try:
+        # Get map width
+        width_input = input(f"\n{Fore.CYAN}Map width (8-50, default 20): {Style.RESET_ALL}").strip()
+        width = int(width_input) if width_input else 20
+        
+        if width < 8 or width > 50:
+            print(f"{Fore.RED}❌ Width must be between 8 and 50{Style.RESET_ALL}")
+            return None
+        
+        # Get map height
+        height_input = input(f"{Fore.CYAN}Map height (8-50, default 15): {Style.RESET_ALL}").strip()
+        height = int(height_input) if height_input else 15
+        
+        if height < 8 or height > 50:
+            print(f"{Fore.RED}❌ Height must be between 8 and 50{Style.RESET_ALL}")
+            return None
+        
+        # Calculate max internal walls
+        max_internal_cells = (width - 2) * (height - 2)
+        
+        # Get wall specification (percentage or count)
+        print(f"\n{Fore.YELLOW}Specify walls as percentage (%) or absolute count:{Style.RESET_ALL}")
+        wall_input = input(f"{Fore.CYAN}Walls (e.g., '20%' or '50', default 15%): {Style.RESET_ALL}").strip()
+        
+        if not wall_input:
+            wall_input = "15%"
+        
+        # Parse wall input
+        if wall_input.endswith('%'):
+            # Percentage
+            try:
+                percentage = float(wall_input[:-1])
+                if percentage < 0 or percentage > 70:
+                    print(f"{Fore.RED}❌ Percentage must be between 0 and 70{Style.RESET_ALL}")
+                    return None
+                wall_count = int(max_internal_cells * percentage / 100)
+            except ValueError:
+                print(f"{Fore.RED}❌ Invalid percentage format{Style.RESET_ALL}")
+                return None
+        else:
+            # Absolute count
+            try:
+                wall_count = int(wall_input)
+                if wall_count < 0 or wall_count > max_internal_cells:
+                    print(f"{Fore.RED}❌ Wall count must be between 0 and {max_internal_cells}{Style.RESET_ALL}")
+                    return None
+            except ValueError:
+                print(f"{Fore.RED}❌ Invalid wall count format{Style.RESET_ALL}")
+                return None
+        
+        # Generate the grid
+        print(f"\n{Fore.YELLOW}🔨 Generating random map ({width}x{height} with ~{wall_count} walls)...{Style.RESET_ALL}")
+        grid = generate_random_grid(width, height, wall_count, seed)
+        
+        if grid is None:
+            print(f"{Fore.RED}❌ Failed to generate valid map{Style.RESET_ALL}")
+            return None
+        
+        # Create layout
+        layout = create_layout_from_grid(grid, f"random_{width}x{height}")
+        
+        # Display generated map
+        print(f"\n{Fore.GREEN}✅ Map generated successfully!{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}Preview:{Style.RESET_ALL}")
+        for row in grid:
+            print(f"  {row}")
+        
+        walkable = get_walkable_cells(grid)
+        print(f"\n{Fore.CYAN}Walkable cells: {len(walkable)}{Style.RESET_ALL}")
+        
+        return layout
+        
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
+        return None
+    except ValueError as e:
+        print(f"{Fore.RED}❌ Invalid input: {e}{Style.RESET_ALL}")
+        return None
+
+
 def display_final_summary(summary: Dict):
     """Display final benchmark summary to console."""
     print(f"\n{Fore.CYAN}{'='*60}")
@@ -695,13 +933,27 @@ def main():
         print(f"{Fore.RED}❌ Invalid number of rounds ({config.num_rounds}). Must be >= 1.{Style.RESET_ALL}")
         return
     
-    # Select layout
-    print(f"\n{Fore.CYAN}Select a layout for benchmarking:{Style.RESET_ALL}")
-    base_layout = select_layout_interactive()
+    # Select layout or generate random map
+    print(f"\n{Fore.CYAN}Choose layout mode:{Style.RESET_ALL}")
+    print(f"  1. Select existing layout")
+    print(f"  2. Generate random map")
     
-    if base_layout is None:
-        print(f"{Fore.RED}No layout selected. Exiting.{Style.RESET_ALL}")
-        return
+    mode_choice = input(f"\n{Fore.CYAN}Select mode (1/2, default 1): {Style.RESET_ALL}").strip()
+    
+    if mode_choice == '2':
+        # Generate random map
+        base_layout = prompt_for_random_map_generation(config.seed)
+        if base_layout is None:
+            print(f"{Fore.RED}Random map generation cancelled. Exiting.{Style.RESET_ALL}")
+            return
+    else:
+        # Select existing layout
+        print(f"\n{Fore.CYAN}Select a layout for benchmarking:{Style.RESET_ALL}")
+        base_layout = select_layout_interactive()
+        
+        if base_layout is None:
+            print(f"{Fore.RED}No layout selected. Exiting.{Style.RESET_ALL}")
+            return
     
     # Confirm benchmark start
     print(f"\n{Fore.YELLOW}Ready to start benchmark:{Style.RESET_ALL}")
