@@ -9,7 +9,7 @@ due to a transitive dependency on `pathtools` which uses the removed `imp` modul
 from typing import List, Optional
 from pogema import GridConfig
 
-from .agent_controller import LLMNegotiationController
+from agent_controller import LLMNegotiationController
 
 
 class LLMNegotiationAlgorithm:

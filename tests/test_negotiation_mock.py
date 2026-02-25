@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 
 def test_central_negotiator_mock():
     """Test CentralNegotiator returns resolution dict with mocked API."""
-    from pogema_port.negotiation.central_negotiator import CentralNegotiator
+    from negotiation.central_negotiator import CentralNegotiator
 
     canned_response = json.dumps({
         "resolution": "priority",
@@ -39,7 +39,7 @@ def test_central_negotiator_mock():
         'send_request',
         return_value=canned_response
     ) if False else patch(
-        'pogema_port.negotiation.openrouter_client.OpenRouterClient.send_request',
+        'negotiation.openrouter_client.OpenRouterClient.send_request',
         return_value=canned_response
     ):
         negotiator = CentralNegotiator(model='mock-model')
@@ -52,7 +52,7 @@ def test_central_negotiator_mock():
 
 def test_conflict_detection():
     """Test ConflictDetector identifies head-on conflict."""
-    from pogema_port.negotiation.conflict_detector import ConflictDetector
+    from negotiation.conflict_detector import ConflictDetector
 
     cd = ConflictDetector(num_rows=3, num_cols=8)
 
@@ -70,7 +70,7 @@ def test_conflict_detection():
 
 def test_pathfinder_actions():
     """Test that A* produces valid POGEMA action sequences."""
-    from pogema_port.pathfinding.astar import SimplePathfinder, path_to_pogema_actions
+    from pathfinding.astar import SimplePathfinder, path_to_pogema_actions
 
     pf = SimplePathfinder(num_rows=8, num_cols=8)
     walls = {(2, 2), (2, 3), (3, 2), (3, 3)}
@@ -87,7 +87,7 @@ def test_pathfinder_actions():
 def test_config_load():
     """Test that all example map configs load and create valid POGEMA envs."""
     import os
-    from pogema_port.config import load_grid_config
+    from config import load_grid_config
     from pogema import pogema_v0
 
     maps_dir = os.path.join(os.path.dirname(__file__), '..', 'maps')

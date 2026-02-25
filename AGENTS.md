@@ -1,65 +1,46 @@
 # AGENTS Guidelines for This Repository
 
-This repository is a Python-based simulation engine that relies on external LLM provider API (e.g. OpenRouter) to works. 
-When working on the project interactively with an agent (e.g. the Codex CLI), please follow the guidelines below.
+This repository is a Python-based multi-agent path negotiation simulation using the POGEMA environment and OpenRouter LLM API.
 
 ## Initial Setup
-To set up the development environment for the first time, follow these steps:
-1. (Optional) Create and activate a virtual environment to manage dependencies.
-2. Install all necessary dependencies from `requirements.txt`
-3. Set up the environment variables in `.env` file, including the OpenRouter API key. Refer to `.env.example` for the required variables.
+1. (Optional) Create and activate a virtual environment.
+2. Install dependencies: `pip install -r requirements.txt`
+3. Copy `.env.example` to `.env` and add your OpenRouter API key.
 
-## Running of the simulation engine
-To run the simulation engine locally during agent-assisted development, use the following command in project directory:
+## Running the Simulation
 
-| Command                                        | Purpose                                            |
-| -----------------------------------------------| -------------------------------------------------- |
-| `python main.py`                               | Run the simulation                                 |
-| `python -m src.tools.layout_editor`            | Run the map editor tools                           |
-| `python visualization.py logs/sim_log....`     | Run the visualization tools on logged files        |
+| Command | Purpose |
+|---------|---------|
+| `python main.py` | Run the simulation (LLM negotiation, requires API key) |
+| `python main.py --no-negotiate --no-render` | Run A* only (no API key needed) |
+| `python main.py --map maps/open_warehouse.json` | Run with a specific map |
 
-## Testing instructions
-Since the project uses OpenRouter API calls when the simulation is running, it will takes time to get response from the API. Wait for the response before proceeding to the next step in the simulation.
+## Testing
 
-This project doesn't have automated tests yet. When making changes, please manually test the following scenarios:
-* Always use `main.py` to run the main simulation engine.
-* Load up `s_shaped` map to forcefully trigger LLM API calls.
-* Checks for basic functionalities, including:
-  - Agent navigation and pathfinding.
-  - Game engine able to end without errors.
-  - Data logging capabilities, saved in the `logs/` directory.
-  - Visualization tools, using `visualization.py` on the generated log files.
+```bash
+python -m tests.test_negotiation_mock
+```
 
-## Writing comments
-When writing comments in the codebase, please follow these guidelines:
-- Use simple sentences to explain the purpose of the functions.
-- DO NOT over-comment any function, such as listing down all input and output variables, those are NOT NEEDED.
-- For complex logic, provide a brief explanation of the approach taken.
-- For single line comments, use `#` followed by a space before the comment text.
-- For multi-line comments, use triple quotes `"""` to enclose the comment block.
+No API key is required for the mock tests.
 
-## Writing documentation
-When writing documentation for the project, please adhere to the following guidelines:
-- Keep most documentation in the `docs/` directory, unless specified otherwise.
+## Writing Comments
+- Use simple sentences to explain the purpose of functions.
+- DO NOT over-comment (no need to list all input/output variables).
+- Single-line comments: `# comment text`
+- Multi-line comments: `"""comment block"""`
+
+## Writing Documentation
+- Keep documentation in the `docs/` directory.
 - Keep it concise and to the point.
-- Use bullet points or numbered lists for clarity.
-- AVOID large paragraphs of text.
-- Include code snippets or examples where applicable.
+- Use bullet points or numbered lists.
+- Include code snippets where applicable.
 
-## Writing commit messages
-When writing commit messages, please follow these conventions:
-- Use the present tense (e.g., "Add feature" instead of "Added feature").
-- Follow the Conventional Commits format: `<type>(<scope>): <subject>`
-  - `<type>`: feat, fix, docs, style, refactor, test, chore
-  - `<scope>`: optional, indicates the area of the code affected
-  - `<subject>`: brief description of the change
-- Add yourself as co-author for commits generated with its assistance:
-  - `Co-authored-by: whoyouare <agent@example.com>`
+## Writing Commit Messages
+- Use present tense ("Add feature" not "Added feature").
+- Format: `<type>(<scope>): <subject>`
+  - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+- Add yourself as co-author: `Co-authored-by: whoyouare <agent@example.com>`
 
-## PR instructions
-- Title format: `[feat/bugfix/etc.] <Title...>`
-- Description should include:
-  - Summary of changes made.
-  - Any dependencies added or removed.
-  - Instructions for testing the changes.
-  - Linked issues or tickets.
+## PR Instructions
+- Title: `[feat/bugfix/etc.] <Title>`
+- Description: summary, dependencies changed, test instructions, linked issues.

@@ -8,11 +8,11 @@ from collections import deque
 from typing import List, Tuple, Optional, Dict, Set
 from pogema import GridConfig
 
-from .pathfinding.astar import SimplePathfinder, path_to_pogema_actions, pogema_action_to_delta
-from .negotiation.conflict_detector import ConflictDetector
-from .negotiation.central_negotiator import CentralNegotiator
-from .negotiation.agent_validator import AgentValidator
-from .config import extract_walls
+from pathfinding.astar import SimplePathfinder, path_to_pogema_actions, pogema_action_to_delta
+from negotiation.conflict_detector import ConflictDetector
+from negotiation.central_negotiator import CentralNegotiator
+from negotiation.agent_validator import AgentValidator
+from config import extract_walls
 
 
 class LLMNegotiationController:
