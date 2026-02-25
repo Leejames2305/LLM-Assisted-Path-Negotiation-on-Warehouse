@@ -52,3 +52,20 @@ python visualization.py logs/sim_log....
 
 ## 📄 Docs
 Additional documentations are located at [here](docs/Basics.md)
+
+---
+
+## 🧪 POGEMA Port
+
+A POGEMA-based port of this project is available in the [`pogema_port/`](pogema_port/) directory.
+It replaces the custom game engine with the [POGEMA](https://github.com/AIRI-Institute/pogema) multi-agent pathfinding environment.
+
+See [`pogema_port/README.md`](pogema_port/README.md) for setup and usage instructions.
+
+**Quick start (no API key needed):**
+```bash
+pip install pogema python-dotenv requests
+python -m pogema_port.main --map pogema_port/maps/open_warehouse.json --no-negotiate --no-render
+```
+
+**POGEMA port status:** [`docs/pogema_port_status.md`](docs/pogema_port_status.md)

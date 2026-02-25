@@ -1,0 +1,19 @@
+{
+  "name": "open_warehouse",
+  "description": "8x8 open warehouse grid with scattered obstacles, 3 agents",
+  "map": [
+    "........",
+    "..#..#..",
+    "........",
+    ".#....#.",
+    "........",
+    "..#..#..",
+    "........",
+    "........"
+  ],
+  "agents_xy": [[0, 0], [0, 7], [7, 3]],
+  "targets_xy": [[7, 7], [7, 0], [0, 4]],
+  "obs_radius": 5,
+  "max_episode_steps": 256,
+  "seed": 42
+}

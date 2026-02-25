@@ -1,0 +1,14 @@
+{
+  "name": "corridor",
+  "description": "Narrow corridor forcing head-on conflict between two agents",
+  "map": [
+    "........",
+    ".######.",
+    "........"
+  ],
+  "agents_xy": [[1, 0], [1, 7]],
+  "targets_xy": [[1, 7], [1, 0]],
+  "obs_radius": 5,
+  "max_episode_steps": 128,
+  "seed": 42
+}
