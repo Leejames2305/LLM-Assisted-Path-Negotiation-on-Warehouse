@@ -604,6 +604,8 @@ class GameEngine:
 
     def _setup_async_display(self) -> None:
         """Open a non-blocking matplotlib window for live async simulation display."""
+        if self.silent_mode:
+            return
         try:
             import matplotlib
             import matplotlib.pyplot as plt
@@ -625,7 +627,7 @@ class GameEngine:
 
     def _update_async_display(self) -> None:
         """Redraw the live matplotlib window with the current simulation state."""
-        if self._async_fig is None:
+        if self.silent_mode or self._async_fig is None:
             return
         try:
             import matplotlib.pyplot as plt

@@ -76,6 +76,22 @@ def main():
         print(f"   Dimensions: {layout_dims['width']}x{layout_dims['height']}")
         print(f"   Agents: {len(layout['agents'])}, Boxes: {len(layout['boxes'])}, Targets: {len(layout['targets'])}")
         
+        # Select simulation mode
+        print(f"\n{Fore.CYAN}Select simulation mode:{Style.RESET_ALL}")
+        print(f"  1. Turn-based (default) — step-by-step, terminal output")
+        print(f"  2. Async                — parallel moves, live matplotlib window")
+        print(f"  3. Lifelong             — continuous tasks, turn-based")
+        mode_input = input(f"\n{Fore.CYAN}Mode (1/2/3, default 1): {Style.RESET_ALL}").strip()
+        if mode_input == '2':
+            game_engine.simulation_mode = 'async'
+            print(f"{Fore.GREEN}✅ Mode: Async (parallel execution){Style.RESET_ALL}")
+        elif mode_input == '3':
+            game_engine.simulation_mode = 'lifelong'
+            print(f"{Fore.GREEN}✅ Mode: Lifelong (continuous tasks){Style.RESET_ALL}")
+        else:
+            game_engine.simulation_mode = 'turn_based'
+            print(f"{Fore.GREEN}✅ Mode: Turn-based{Style.RESET_ALL}")
+
         game_engine.run_interactive_simulation()
         
     except KeyboardInterrupt:

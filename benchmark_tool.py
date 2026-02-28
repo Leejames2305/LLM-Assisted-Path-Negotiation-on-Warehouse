@@ -107,6 +107,39 @@ class LifelongRoundResult:
     duration_seconds: float
 
 
+# Configuration for async benchmark runs
+@dataclass
+class AsyncBenchmarkConfig:
+    num_agents: int
+    num_rounds: int
+    time_limit_seconds: int
+    seed: int
+    spatial_hints_enabled: bool
+
+    @classmethod
+    def from_env(cls) -> 'AsyncBenchmarkConfig':
+        return cls(
+            num_agents=int(os.getenv('BENCHMARK_NUM_AGENTS', '2')),
+            num_rounds=int(os.getenv('BENCHMARK_NUM_ROUNDS', '5')),
+            time_limit_seconds=int(os.getenv('BENCHMARK_TIME_LIMIT_SECONDS', '300')),
+            seed=int(os.getenv('BENCHMARK_SEED', '42')),
+            spatial_hints_enabled=os.getenv('BENCHMARK_SPATIAL_HINTS_ENABLED', 'true').lower() == 'true'
+        )
+
+# Results from a single async benchmark round
+@dataclass
+class AsyncRoundResult:
+    round_num: int
+    status: str  # 'success', 'timeout', 'failed'
+    total_ticks: int
+    total_negotiation_events: int
+    total_tasks_completed: int
+    total_tokens_used: int
+    avg_conflict_resolution_time_ms: float
+    collision_rate: float
+    duration_seconds: float
+
+
 def load_benchmark_config() -> BenchmarkConfig:
     # Load and display benchmark configuration from .env
     config = BenchmarkConfig.from_env()
@@ -1081,6 +1114,216 @@ def run_lifelong_benchmark(base_layout: Dict, config: 'LifelongBenchmarkConfig')
 
     return results
 
+# Run a single async benchmark round
+def run_async_round(
+    layout: Dict,
+    round_num: int,
+    config: 'AsyncBenchmarkConfig',
+    output_dir: str
+) -> 'AsyncRoundResult':
+
+    print(f"\n{Fore.CYAN}{'='*60}")
+    print(f"⚡ ASYNC ROUND {round_num}/{config.num_rounds}")
+    print(f"{'='*60}{Style.RESET_ALL}")
+
+    try:
+        layout_dims = layout['dimensions']
+        num_agents = len(layout['agents'])
+
+        game_engine = GameEngine(
+            width=layout_dims['width'],
+            height=layout_dims['height'],
+            num_agents=num_agents
+        )
+
+        # Configure for async mode (headless — no live window during benchmark)
+        game_engine.simulation_mode = 'async'
+        game_engine.timeout_seconds = config.time_limit_seconds
+        game_engine.silent_mode = True  # Suppress live display and terminal output
+        game_engine.central_negotiator.set_spatial_hints(config.spatial_hints_enabled)
+        game_engine.reset_token_usage()
+
+        game_engine.warehouse_map = WarehouseMap.from_layout(layout)
+        game_engine.agents = {}
+        for agent in layout['agents']:
+            agent_id = agent['id']
+            position = (agent['x'], agent['y'])
+            robot = RobotAgent(agent_id, position)
+            game_engine.agents[agent_id] = robot
+
+        print(f"   Layout: {layout.get('name', 'Benchmark Layout')}")
+        print(f"   Dimensions: {layout_dims['width']}x{layout_dims['height']}")
+        print(f"   Agents: {num_agents}")
+
+        game_engine.initialize_simulation()
+        start_time = time.time()
+
+        while game_engine.run_simulation_step():
+            if game_engine.stop_requested:
+                break
+
+        elapsed = time.time() - start_time
+
+        # Determine status
+        if game_engine.stop_requested or (config.time_limit_seconds > 0 and elapsed >= config.time_limit_seconds):
+            status = 'timeout'
+            print(f"\n{Fore.YELLOW}⏱️  Async round {round_num} TIMEOUT after {elapsed:.1f}s{Style.RESET_ALL}")
+        elif game_engine.simulation_complete:
+            status = 'success'
+            print(f"\n{Fore.GREEN}✅ Async round {round_num} COMPLETED in {elapsed:.1f}s{Style.RESET_ALL}")
+        else:
+            status = 'failed'
+            print(f"\n{Fore.RED}❌ Async round {round_num} FAILED after {elapsed:.1f}s{Style.RESET_ALL}")
+
+        metrics = game_engine.calculate_performance_metrics()
+
+        # Count negotiation events from the in-memory logger (path-based log)
+        neg_events = 0
+        if game_engine.log_enabled and game_engine.logger:
+            neg_events = len(game_engine.logger.log_data.get('negotiation_events', []))
+
+        # Save async log
+        log_filename = f"async_log_round_{round_num}.json"
+        game_engine.save_simulation_log_to_path(output_dir, log_filename)
+
+        return AsyncRoundResult(
+            round_num=round_num,
+            status=status,
+            total_ticks=game_engine._async_tick,
+            total_negotiation_events=neg_events,
+            total_tasks_completed=game_engine.successful_deliveries,
+            total_tokens_used=metrics.get('total_tokens_used', 0),
+            avg_conflict_resolution_time_ms=metrics.get('avg_conflict_resolution_time_ms', 0),
+            collision_rate=metrics.get('collision_rate', 0),
+            duration_seconds=round(elapsed, 2)
+        )
+
+    except Exception as e:
+        print(f"\n{Fore.RED}❌ Async round {round_num} ERROR: {e}{Style.RESET_ALL}")
+        import traceback
+        traceback.print_exc()
+        return AsyncRoundResult(
+            round_num=round_num,
+            status='failed',
+            total_ticks=0,
+            total_negotiation_events=0,
+            total_tasks_completed=0,
+            total_tokens_used=0,
+            avg_conflict_resolution_time_ms=0.0,
+            collision_rate=0.0,
+            duration_seconds=0.0
+        )
+
+# Run the complete async benchmark
+def run_async_benchmark(base_layout: Dict, config: 'AsyncBenchmarkConfig') -> List['AsyncRoundResult']:
+
+    layout_name = base_layout.get('name', 'unknown').replace(' ', '_')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    output_dir = os.path.join(
+        'logs', 'Benchmarks',
+        f"async_{layout_name}_{config.num_agents}agents_{timestamp}"
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"\n{Fore.GREEN}📁 Async benchmark output directory: {output_dir}{Style.RESET_ALL}")
+
+    results: List[AsyncRoundResult] = []
+
+    for round_num in range(1, config.num_rounds + 1):
+        print(f"\n🎲 Generating random positions for async round {round_num}...")
+        positions = generate_random_positions(base_layout, config.num_agents, config.seed, round_num)
+
+        if positions is None:
+            print(f"{Fore.RED}❌ Position generation failed. Stopping benchmark.{Style.RESET_ALL}")
+            break
+
+        round_layout = create_benchmark_layout(base_layout, positions, config.num_agents)
+        round_layout['name'] = f"{layout_name}_async_round_{round_num}"
+
+        result = run_async_round(round_layout, round_num, config, output_dir)
+        results.append(result)
+
+        if round_num < config.num_rounds:
+            print(f"\n⏳ Starting next async round in 2 seconds...")
+            time.sleep(2)
+
+    if results:
+        def safe_avg(vals):
+            return sum(vals) / len(vals) if vals else 0.0
+
+        completed = [r for r in results if r.status != 'failed']
+
+        # Save CSV
+        csv_path = os.path.join(output_dir, 'async_results.csv')
+        fieldnames = [
+            'Round', 'Status', 'TotalTicks', 'NegotiationEvents', 'TasksCompleted',
+            'TotalTokens', 'AvgResolutionTime_ms', 'CollisionRate', 'Duration_s'
+        ]
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in results:
+                writer.writerow({
+                    'Round': r.round_num,
+                    'Status': r.status,
+                    'TotalTicks': r.total_ticks,
+                    'NegotiationEvents': r.total_negotiation_events,
+                    'TasksCompleted': r.total_tasks_completed,
+                    'TotalTokens': r.total_tokens_used,
+                    'AvgResolutionTime_ms': r.avg_conflict_resolution_time_ms,
+                    'CollisionRate': r.collision_rate,
+                    'Duration_s': r.duration_seconds,
+                })
+        print(f"📄 Async CSV saved: {csv_path}")
+
+        # Save summary JSON
+        summary = {
+            'benchmark_info': {
+                'timestamp': datetime.now().isoformat(),
+                'layout_name': layout_name,
+                'config': asdict(config),
+                'mode': 'async'
+            },
+            'overall_results': {
+                'total_rounds': len(results),
+                'completed_rounds': len(completed),
+                'failed_rounds': len(results) - len(completed),
+            },
+            'average_metrics': {
+                'avg_ticks_per_round': safe_avg([r.total_ticks for r in completed]),
+                'avg_negotiation_events_per_round': safe_avg([r.total_negotiation_events for r in completed]),
+                'avg_tasks_per_round': safe_avg([r.total_tasks_completed for r in completed]),
+                'total_tokens_used': sum(r.total_tokens_used for r in results),
+                'avg_tokens_per_round': safe_avg([r.total_tokens_used for r in results]),
+                'avg_collision_rate': safe_avg([r.collision_rate for r in completed]),
+                'avg_resolution_time_ms': safe_avg([r.avg_conflict_resolution_time_ms for r in completed]),
+            },
+            'per_round_results': [asdict(r) for r in results]
+        }
+        summary_path = os.path.join(output_dir, 'async_summary.json')
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, indent=2)
+        print(f"📊 Async summary saved: {summary_path}")
+
+        # Display summary
+        print(f"\n{Fore.CYAN}{'='*60}")
+        print(f"⚡ ASYNC BENCHMARK SUMMARY")
+        print(f"{'='*60}{Style.RESET_ALL}")
+        info = summary['benchmark_info']
+        avg = summary['average_metrics']
+        print(f"\n{Fore.WHITE}Layout: {info['layout_name']} | Agents: {info['config']['num_agents']} | Time limit: {info['config']['time_limit_seconds']}s/round{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}Average Performance:{Style.RESET_ALL}")
+        print(f"   Ticks/Round:          {avg['avg_ticks_per_round']:.1f}")
+        print(f"   Negotiation Events:   {avg['avg_negotiation_events_per_round']:.1f}")
+        print(f"   Tasks/Round:          {avg['avg_tasks_per_round']:.1f}")
+        print(f"   Total Tokens:         {avg['total_tokens_used']}")
+        print(f"   Avg Tokens/Round:     {avg['avg_tokens_per_round']:.0f}")
+        print(f"   Avg Collision Rate:   {avg['avg_collision_rate']:.3f}")
+        print(f"   Avg Resolution Time:  {avg['avg_resolution_time_ms']:.2f}ms")
+        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+
+    return results
+
 # Main entry point
 def main():
 
@@ -1099,9 +1342,11 @@ def main():
     print(f"\n{Fore.CYAN}Select benchmark mode:{Style.RESET_ALL}")
     print(f"  1. Turn-based benchmark  (CSR / makespan focus)")
     print(f"  2. Lifelong benchmark    (throughput / tasks-per-second focus)")
-    bench_mode = input(f"\n{Fore.CYAN}Select mode (1/2, default 1): {Style.RESET_ALL}").strip()
+    print(f"  3. Async benchmark       (parallel ticks / negotiation events focus)")
+    bench_mode = input(f"\n{Fore.CYAN}Select mode (1/2/3, default 1): {Style.RESET_ALL}").strip()
 
     is_lifelong = bench_mode == '2'
+    is_async = bench_mode == '3'
 
     if is_lifelong:
         config = LifelongBenchmarkConfig.from_env()
@@ -1109,6 +1354,16 @@ def main():
         print(f"   Number of Agents: {config.num_agents}")
         print(f"   Number of Rounds: {config.num_rounds}")
         print(f"   Duration/Round:   {config.duration_seconds}s")
+        print(f"   Random Seed:      {config.seed}")
+        print(f"   Spatial Hints:    {'Enabled' if config.spatial_hints_enabled else 'Disabled'}")
+        num_agents = config.num_agents
+        num_rounds = config.num_rounds
+    elif is_async:
+        config = AsyncBenchmarkConfig.from_env()
+        print(f"\n{Fore.CYAN}📊 Async Benchmark Configuration:{Style.RESET_ALL}")
+        print(f"   Number of Agents: {config.num_agents}")
+        print(f"   Number of Rounds: {config.num_rounds}")
+        print(f"   Time Limit/Round: {config.time_limit_seconds}s")
         print(f"   Random Seed:      {config.seed}")
         print(f"   Spatial Hints:    {'Enabled' if config.spatial_hints_enabled else 'Disabled'}")
         num_agents = config.num_agents
@@ -1146,7 +1401,8 @@ def main():
             return
 
     # Confirm benchmark start
-    print(f"\n{Fore.YELLOW}Ready to start {'lifelong ' if is_lifelong else ''}benchmark:{Style.RESET_ALL}")
+    mode_label = 'lifelong ' if is_lifelong else ('async ' if is_async else '')
+    print(f"\n{Fore.YELLOW}Ready to start {mode_label}benchmark:{Style.RESET_ALL}")
     print(f"   Layout: {base_layout.get('name', 'Unknown')}")
     print(f"   Agents: {num_agents}")
     print(f"   Rounds: {num_rounds}")
@@ -1165,6 +1421,9 @@ def main():
         if is_lifelong:
             print(f"\n{Fore.GREEN}🚀 Starting Lifelong Benchmark...{Style.RESET_ALL}")
             results = run_lifelong_benchmark(base_layout, config)
+        elif is_async:
+            print(f"\n{Fore.GREEN}🚀 Starting Async Benchmark...{Style.RESET_ALL}")
+            results = run_async_benchmark(base_layout, config)
         else:
             print(f"\n{Fore.GREEN}🚀 Starting Benchmark...{Style.RESET_ALL}")
             results = run_benchmark(base_layout, config)
