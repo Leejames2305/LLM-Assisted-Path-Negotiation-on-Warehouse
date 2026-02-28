@@ -99,6 +99,12 @@ class UnifiedLogger:
             self.log_data.pop('task_completions', None)
             self.log_data['agent_paths'] = {}
             self.log_data['negotiation_events'] = []
+        elif mode == 'lifelong':
+            # Lifelong mode: path-based logging + live display; keep task_completions for throughput analytics
+            self.log_data.pop('turns', None)
+            self.log_data['agent_paths'] = {}
+            self.log_data['negotiation_events'] = []
+            self.log_data['task_completions'] = []
         else:
             self.log_data['turns'] = []
             self.log_data['task_completions'] = []
@@ -170,8 +176,8 @@ class UnifiedLogger:
                 return None
             self.log_data['summary'] = self._compute_async_summary(performance_metrics)
         elif simulation_mode == 'lifelong':
-            if not self.log_data.get('turns'):
-                print("⚠️  No turn data to save")
+            if not self.log_data.get('agent_paths'):
+                print("⚠️  No path data to save")
                 return None
             self.log_data['summary'] = self._compute_lifelong_summary(performance_metrics)
         else:
@@ -195,11 +201,15 @@ class UnifiedLogger:
         self._unsaved_data = False
         self._log_file_path = log_path
         
-        if simulation_mode == 'async':
+        if simulation_mode in ('async', 'lifelong'):
             total_steps = sum(len(p) for p in self.log_data.get('agent_paths', {}).values())
             n_events = len(self.log_data.get('negotiation_events', []))
-            print(f"📝 Async simulation log saved to: {log_path}")
-            print(f"📊 Summary: {total_steps} path steps, {n_events} negotiation events")
+            label = 'Lifelong' if simulation_mode == 'lifelong' else 'Async'
+            print(f"📝 {label} simulation log saved to: {log_path}")
+            parts = [f"{total_steps} path steps", f"{n_events} negotiation events"]
+            if simulation_mode == 'lifelong':
+                parts.append(f"{len(self.log_data.get('task_completions', []))} task completions")
+            print(f"📊 Summary: {', '.join(parts)}")
         else:
             turns = self.log_data.get('turns', [])
             negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']

@@ -149,8 +149,8 @@ class GameEngine:
         print(f"{Fore.GREEN}Simulation initialized successfully!{Style.RESET_ALL}")
         self._update_map_state()
 
-        if self.simulation_mode == 'async':
-            # Async mode: open live display window and skip turn-based terminal output
+        if self.simulation_mode in ('async', 'lifelong'):
+            # Async / lifelong: open live display window and use path-based logging
             self._setup_async_display()
             # Log initial positions to agent paths
             if self.log_enabled and self.logger:
@@ -158,7 +158,7 @@ class GameEngine:
                     self.logger.append_agent_path(agent_id, agent.position)
             self._update_async_display()
         else:
-            # Turn-based / lifelong: normal terminal display
+            # Turn-based: normal terminal display
             self._log_turn_state("SIMULATION_START")
             self.display_map()
     
@@ -575,12 +575,12 @@ class GameEngine:
         self._async_tick += 1
         self.current_turn += 1
 
-        if self.simulation_mode == 'async':
-            # Path-based logging: record positions, no turn records
+        if self.simulation_mode in ('async', 'lifelong'):
+            # Path-based logging + live display (shared by async and lifelong)
             self._log_async_state(negotiation_occurred)
             self._update_async_display()
         else:
-            # Lifelong (also uses this method): turn-based logging
+            # Turn-based logging
             self._log_turn_state("negotiation" if negotiation_occurred else "TURN_COMPLETE")
             if not self.silent_mode:
                 self.display_map()
@@ -1614,9 +1614,9 @@ class GameEngine:
         
         print(f"\n{Fore.CYAN}🚀 Starting Interactive Simulation{Style.RESET_ALL}")
         
-        if self.simulation_mode == 'async':
-            # Async mode: auto-run without step-by-step prompts
-            print(f"{Fore.CYAN}Async mode: running automatically with live display...{Style.RESET_ALL}")
+        if self.simulation_mode in ('async', 'lifelong'):
+            # Async / lifelong: auto-run with live display
+            print(f"{Fore.CYAN}{'Async' if self.simulation_mode == 'async' else 'Lifelong'} mode: running automatically with live display...{Style.RESET_ALL}")
             while self.run_simulation_step():
                 pass
             self._close_async_display()
@@ -1642,5 +1642,5 @@ class GameEngine:
             log_path, metrics = result
             self._display_performance_metrics(metrics)
         
-        mode_label = f"{self._async_tick} ticks" if self.simulation_mode == 'async' else f"{self.current_turn} turns"
+        mode_label = f"{self._async_tick} ticks" if self.simulation_mode in ('async', 'lifelong') else f"{self.current_turn} turns"
         print(f"\n{Fore.GREEN}Simulation completed in {mode_label}!{Style.RESET_ALL}")

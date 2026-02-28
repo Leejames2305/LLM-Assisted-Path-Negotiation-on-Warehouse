@@ -1136,10 +1136,10 @@ def run_async_round(
             num_agents=num_agents
         )
 
-        # Configure for async mode (headless — no live window during benchmark)
+        # Configure for async mode with live display
         game_engine.simulation_mode = 'async'
         game_engine.timeout_seconds = config.time_limit_seconds
-        game_engine.silent_mode = True  # Suppress live display and terminal output
+        game_engine.silent_mode = False  # Show live matplotlib window
         game_engine.central_negotiator.set_spatial_hints(config.spatial_hints_enabled)
         game_engine.reset_token_usage()
 
