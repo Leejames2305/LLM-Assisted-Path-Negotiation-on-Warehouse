@@ -1179,10 +1179,9 @@ class GameEngine:
                 # Update agent's planned path with negotiated path
                 negotiated_path = action_data.get('path', [])
                 if negotiated_path and len(negotiated_path) > 0:
-                    # Convert path elements to tuples for consistency
-                    # Store the path as-is from the LLM response
-                    # If it includes current position, agent will "wait" on first execution
-                    # If it doesn't include current position, agent will move immediately
+                    # Convert path elements to tuples and store the full LLM path.
+                    # _execute_action will skip path[0] if it equals the current
+                    # position, so the agent always advances on the first call.
                     updated_path = [tuple(pos) if isinstance(pos, (list, tuple)) else pos for pos in negotiated_path]
                     agent.set_path(updated_path)
                     
@@ -1192,13 +1191,22 @@ class GameEngine:
                 success = agent.execute_negotiated_action(action_data, map_state)
                 
                 if success:
-                    # After successful move, update the negotiated path by removing the first step
+                    # After a successful move the agent is now at agent.position
+                    # (the new cell).  Strip all leading planned_path entries up
+                    # to and including that cell so the remainder is still ahead.
                     if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
-                        if len(agent.planned_path) > 1:
-                            # Remove the first step and keep the rest
-                            agent.planned_path = agent.planned_path[1:]
+                        # Find the first occurrence of the new position in the
+                        # stored path and keep everything after it.
+                        new_pos = agent.position
+                        try:
+                            idx = agent.planned_path.index(new_pos)
+                            remaining = agent.planned_path[idx + 1:]
+                        except ValueError:
+                            # New position not found in path; consume one step.
+                            remaining = agent.planned_path[1:]
+                        if remaining:
+                            agent.planned_path = remaining
                         else:
-                            # Path completed, clear the negotiated path flag
                             agent._has_negotiated_path = False
                             agent.planned_path = []
                     

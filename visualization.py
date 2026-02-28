@@ -1056,7 +1056,7 @@ def main():
 
     # Dispatch to the appropriate visualizer
     try:
-        if _mode == 'async':
+        if _mode in ('async', 'lifelong'):
             print("🚀 Using AsyncVisualizer (path-based animation)")
             visualizer = AsyncVisualizer(log_file)
         else:
