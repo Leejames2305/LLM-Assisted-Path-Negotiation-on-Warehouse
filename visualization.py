@@ -33,6 +33,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider
 from matplotlib.gridspec import GridSpec
 import numpy as np
+from bisect import bisect_right
 from datetime import datetime
 import argparse
 
@@ -668,6 +669,13 @@ class AsyncVisualizer:
         self.negotiation_events: list = self.sim_data.get('negotiation_events', [])
         self.summary: dict = self.sim_data.get('summary', {})
         self.agent_task_boundaries: dict = self.sim_data.get('agent_task_boundaries', {})
+        self.agent_task_assignments: dict = self.sim_data.get('agent_task_assignments', {})
+
+        # Pre-compute sorted path_index keys per agent for O(log N) active-task lookups
+        self._task_assignment_keys: dict = {
+            aid: [a['path_index'] for a in assignments]
+            for aid, assignments in self.agent_task_assignments.items()
+        }
 
         map_size = self.scenario['map_size']
         self.width, self.height = map_size[0], map_size[1]
@@ -821,8 +829,24 @@ class AsyncVisualizer:
                     (wx - 0.5, wy - 0.5), 1, 1,
                     facecolor='#444', alpha=0.85, zorder=1))
 
-            # Draw initial targets
-            for tid, pos in self.scenario.get('initial_targets', {}).items():
+            # For lifelong mode use per-agent active task assignments; fall back to initial layout
+            active_boxes: dict = {}
+            active_targets: dict = {}
+            if self.agent_task_assignments:
+                for aid, assignments in self.agent_task_assignments.items():
+                    keys = self._task_assignment_keys.get(aid, [])
+                    idx = bisect_right(keys, frame) - 1
+                    if idx >= 0:
+                        active = assignments[idx]
+                        if active.get('box_pos'):
+                            active_boxes[aid] = active['box_pos']
+                        if active.get('target_pos'):
+                            active_targets[aid] = active['target_pos']
+            else:
+                active_targets = dict(self.scenario.get('initial_targets', {}))
+                active_boxes = dict(self.scenario.get('initial_boxes', {}))
+
+            for tid, pos in active_targets.items():
                 if pos and len(pos) >= 2:
                     x, y = pos[0], pos[1]
                     ax.add_patch(patches.Rectangle(
@@ -832,8 +856,7 @@ class AsyncVisualizer:
                     ax.text(x, y, f'T{tid}', ha='center', va='center',
                             fontsize=7, color='red', fontweight='bold', zorder=3)
 
-            # Draw initial boxes
-            for bid, pos in self.scenario.get('initial_boxes', {}).items():
+            for bid, pos in active_boxes.items():
                 if pos and len(pos) >= 2:
                     x, y = pos[0], pos[1]
                     ax.add_patch(patches.Rectangle(

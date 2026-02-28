@@ -164,10 +164,14 @@ class GameEngine:
         if self.simulation_mode in ('async', 'lifelong'):
             # Async / lifelong: open live display window and use path-based logging
             self._setup_async_display()
-            # Log initial positions to agent paths
+            # Log initial positions to agent paths and record initial task assignments
             if self.log_enabled and self.logger:
                 for agent_id, agent in self.agents.items():
                     self.logger.append_agent_path(agent_id, agent.position)
+                    if self.simulation_mode == 'lifelong' and hasattr(self.logger, 'log_task_assignment'):
+                        box_pos = self.warehouse_map.boxes.get(agent_id)
+                        target_pos = self.warehouse_map.targets.get(agent_id)
+                        self.logger.log_task_assignment(agent_id, 0, box_pos, target_pos)
             self._update_async_display()
         else:
             # Turn-based: normal terminal display
@@ -1445,6 +1449,8 @@ class GameEngine:
             self._agent_trail_start[agent_id] = current_path_len
             if hasattr(self.logger, 'log_task_boundary'):
                 self.logger.log_task_boundary(agent_id, current_path_len)
+            if hasattr(self.logger, 'log_task_assignment'):
+                self.logger.log_task_assignment(agent_id, current_path_len, box_pos, target_pos)
         else:
             self._agent_trail_start[agent_id] = 0
 

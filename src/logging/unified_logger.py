@@ -106,6 +106,7 @@ class UnifiedLogger:
             self.log_data['negotiation_events'] = []
             self.log_data['task_completions'] = []
             self.log_data['agent_task_boundaries'] = {}
+            self.log_data['agent_task_assignments'] = {}
         else:
             self.log_data['turns'] = []
             self.log_data['task_completions'] = []
@@ -167,6 +168,32 @@ class UnifiedLogger:
         if key not in self.log_data['agent_task_boundaries']:
             self.log_data['agent_task_boundaries'][key] = []
         self.log_data['agent_task_boundaries'][key].append(path_index)
+        self._unsaved_data = True
+
+    # Record a task assignment (box and target positions) for replay in lifelong mode
+    def log_task_assignment(self, agent_id: int, path_index: int, box_pos: Any, target_pos: Any) -> None:
+        """Record the box and target positions for a new task assignment in lifelong mode."""
+        if 'agent_task_assignments' not in self.log_data:
+            self.log_data['agent_task_assignments'] = {}
+        key = str(agent_id)
+        if key not in self.log_data['agent_task_assignments']:
+            self.log_data['agent_task_assignments'][key] = []
+
+        def _to_list(pos):
+            if pos is None:
+                return None
+            if isinstance(pos, list):
+                return pos
+            try:
+                return list(pos)
+            except TypeError:
+                return None
+
+        self.log_data['agent_task_assignments'][key].append({
+            'path_index': path_index,
+            'box_pos': _to_list(box_pos),
+            'target_pos': _to_list(target_pos),
+        })
         self._unsaved_data = True
 
     # Record a negotiation event in async mode
