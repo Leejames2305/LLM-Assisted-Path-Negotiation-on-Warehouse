@@ -82,6 +82,7 @@ class UnifiedLogger:
     def initialize(self, scenario_data: Dict) -> None:
         self.log_data['scenario'] = {
             'type': scenario_data.get('type', 'simulation'),
+            'simulation_mode': scenario_data.get('simulation_mode', 'turn_based'),
             'map_size': scenario_data.get('map_size', [0, 0]),
             'grid': scenario_data.get('grid', []),
             'initial_agents': self._to_json_safe(scenario_data.get('initial_agents', {})),
@@ -92,6 +93,7 @@ class UnifiedLogger:
         }
         
         self.log_data['turns'] = []
+        self.log_data['task_completions'] = []
         self.log_data['summary'] = {}
         self._initialized = True
         self._unsaved_data = True
@@ -116,6 +118,18 @@ class UnifiedLogger:
         
         self.log_data['turns'].append(turn_entry)
         self._unsaved_data = True
+
+    # Record a single task completion for lifelong throughput tracking
+    def log_task_completion(self, agent_id: int, task_turn: int, task_duration_turns: int) -> None:
+        if 'task_completions' not in self.log_data:
+            self.log_data['task_completions'] = []
+        self.log_data['task_completions'].append({
+            'agent_id': agent_id,
+            'turn': task_turn,
+            'task_duration_turns': task_duration_turns,
+            'timestamp': datetime.now().isoformat()
+        })
+        self._unsaved_data = True
     
     # Finalize and save the log to a file
     def finalize(self, emergency: bool = False, performance_metrics: Optional[Dict] = None) -> Optional[str]:
@@ -124,23 +138,12 @@ class UnifiedLogger:
             print("⚠️  No turn data to save")
             return None
         
-        # Calculate summary statistics
-        turns = self.log_data['turns']
-        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
-        routine_turns = [t for t in turns if t.get('type') == 'routine']
+        simulation_mode = self.log_data.get('scenario', {}).get('simulation_mode', 'turn_based')
         
-        # Calculate HMAS-2 metrics if negotiations occurred
-        hmas2_metrics = self._calculate_hmas2_metrics(negotiation_turns)
-        
-        self.log_data['summary'] = {
-            'total_turns': len(turns),
-            'routine_turns': len(routine_turns),
-            'negotiation_turns': len(negotiation_turns),
-            'total_conflicts': len(negotiation_turns),
-            'hmas2_metrics': hmas2_metrics,
-            'performance_metrics': performance_metrics or {},
-            'completion_timestamp': datetime.now().isoformat()
-        }
+        if simulation_mode == 'lifelong':
+            self.log_data['summary'] = self._compute_lifelong_summary(performance_metrics)
+        else:
+            self.log_data['summary'] = self._compute_turnbased_summary(performance_metrics)
         
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -157,10 +160,113 @@ class UnifiedLogger:
         self._unsaved_data = False
         self._log_file_path = log_path
         
+        turns = self.log_data['turns']
+        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
         print(f"📝 Simulation log saved to: {log_path}")
         print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
         
         return log_path
+
+    # Build turn-based summary dictionary
+    def _compute_turnbased_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
+        turns = self.log_data['turns']
+        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+        routine_turns = [t for t in turns if t.get('type') == 'routine']
+        hmas2_metrics = self._calculate_hmas2_metrics(negotiation_turns)
+        return {
+            'total_turns': len(turns),
+            'routine_turns': len(routine_turns),
+            'negotiation_turns': len(negotiation_turns),
+            'total_conflicts': len(negotiation_turns),
+            'hmas2_metrics': hmas2_metrics,
+            'performance_metrics': performance_metrics or {},
+            'completion_timestamp': datetime.now().isoformat()
+        }
+
+    # Build lifelong summary dictionary with throughput analytics
+    def _compute_lifelong_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
+        task_completions = self.log_data.get('task_completions', [])
+        turns = self.log_data['turns']
+        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+
+        throughput_timeline = self._compute_throughput_timeline(task_completions)
+
+        per_agent: Dict[int, Dict] = {}
+        for tc in task_completions:
+            aid = tc['agent_id']
+            per_agent.setdefault(aid, {'tasks': 0, 'task_durations': []})
+            per_agent[aid]['tasks'] += 1
+            per_agent[aid]['task_durations'].append(tc['task_duration_turns'])
+
+        pm = performance_metrics or {}
+        return {
+            'simulation_mode': 'lifelong',
+            'total_turns': len(turns),
+            'total_tasks_completed': len(task_completions),
+            'throughput_tasks_per_second': pm.get('throughput_tasks_per_second', 0),
+            'throughput_tasks_per_turn': pm.get('throughput_tasks_per_turn', 0),
+            'throughput_timeline': throughput_timeline,
+            'per_agent_stats': {
+                str(aid): {
+                    'tasks': data['tasks'],
+                    'avg_task_turns': (
+                        sum(data['task_durations']) / len(data['task_durations'])
+                        if data['task_durations'] else 0
+                    )
+                }
+                for aid, data in per_agent.items()
+            },
+            'negotiation_metrics': {
+                'total_negotiations': len(negotiation_turns),
+                'hmas2_metrics': self._calculate_hmas2_metrics(negotiation_turns)
+            },
+            'llm_cost': {
+                'total_tokens': pm.get('total_tokens_used', 0),
+                'tokens_per_task': (
+                    pm.get('total_tokens_used', 0) / max(len(task_completions), 1)
+                )
+            },
+            'performance_metrics': pm,
+            'completion_timestamp': datetime.now().isoformat()
+        }
+
+    # Compute throughput in 30-second windows from task completion records
+    def _compute_throughput_timeline(self, task_completions: List[Dict]) -> List[Dict]:
+        if not task_completions:
+            return []
+
+        try:
+            first_ts = datetime.fromisoformat(task_completions[0]['timestamp'])
+            last_ts = datetime.fromisoformat(task_completions[-1]['timestamp'])
+            total_seconds = max((last_ts - first_ts).total_seconds(), 1)
+        except (KeyError, ValueError):
+            return []
+
+        window_size = 30  # seconds
+        num_windows = int(total_seconds / window_size) + 1
+        timeline = []
+
+        for w in range(num_windows):
+            w_start = w * window_size
+            w_end = (w + 1) * window_size
+            count = 0
+            for tc in task_completions:
+                try:
+                    ts = datetime.fromisoformat(tc['timestamp'])
+                    offset = (ts - first_ts).total_seconds()
+                    if w_start <= offset < w_end:
+                        count += 1
+                except (KeyError, ValueError):
+                    continue
+            if count > 0:
+                timeline.append({
+                    'window_start_seconds': w_start,
+                    'window_end_seconds': w_end,
+                    'tasks_completed': count,
+                    'throughput_per_second': round(count / window_size, 4)
+                })
+
+        return timeline
     
     # Calculate negotiation metrics
     def _calculate_hmas2_metrics(self, negotiation_turns: List[Dict]) -> Dict:
