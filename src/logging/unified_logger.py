@@ -80,8 +80,10 @@ class UnifiedLogger:
     
     # Initialize logging with scenario metadata
     def initialize(self, scenario_data: Dict) -> None:
+        mode = scenario_data.get('simulation_mode', 'turn_based')
         self.log_data['scenario'] = {
             'type': scenario_data.get('type', 'simulation'),
+            'simulation_mode': mode,
             'map_size': scenario_data.get('map_size', [0, 0]),
             'grid': scenario_data.get('grid', []),
             'initial_agents': self._to_json_safe(scenario_data.get('initial_agents', {})),
@@ -90,8 +92,25 @@ class UnifiedLogger:
             'agent_goals': self._to_json_safe(scenario_data.get('agent_goals', {})),
             'timestamp': datetime.now().isoformat()
         }
-        
-        self.log_data['turns'] = []
+
+        if mode == 'async':
+            # Async mode: record paths and negotiation events — no per-turn log
+            self.log_data.pop('turns', None)
+            self.log_data.pop('task_completions', None)
+            self.log_data['agent_paths'] = {}
+            self.log_data['negotiation_events'] = []
+        elif mode == 'lifelong':
+            # Lifelong mode: path-based logging + live display; keep task_completions for throughput analytics
+            self.log_data.pop('turns', None)
+            self.log_data['agent_paths'] = {}
+            self.log_data['negotiation_events'] = []
+            self.log_data['task_completions'] = []
+            self.log_data['agent_task_boundaries'] = {}
+            self.log_data['agent_task_assignments'] = {}
+        else:
+            self.log_data['turns'] = []
+            self.log_data['task_completions'] = []
+
         self.log_data['summary'] = {}
         self._initialized = True
         self._unsaved_data = True
@@ -116,31 +135,95 @@ class UnifiedLogger:
         
         self.log_data['turns'].append(turn_entry)
         self._unsaved_data = True
+
+    # Record a single task completion for lifelong throughput tracking
+    def log_task_completion(self, agent_id: int, task_turn: int, task_duration_turns: int) -> None:
+        if 'task_completions' not in self.log_data:
+            self.log_data['task_completions'] = []
+        self.log_data['task_completions'].append({
+            'agent_id': agent_id,
+            'turn': task_turn,
+            'task_duration_turns': task_duration_turns,
+            'timestamp': datetime.now().isoformat()
+        })
+        self._unsaved_data = True
+
+    # Append one position to an agent's path (async mode)
+    def append_agent_path(self, agent_id: int, position: Any) -> None:
+        if 'agent_paths' not in self.log_data:
+            self.log_data['agent_paths'] = {}
+        key = str(agent_id)
+        if key not in self.log_data['agent_paths']:
+            self.log_data['agent_paths'][key] = []
+        pos = list(position) if not isinstance(position, list) else position
+        self.log_data['agent_paths'][key].append(pos)
+        self._unsaved_data = True
+
+    # Record the path index at which a new task started (lifelong mode)
+    def log_task_boundary(self, agent_id: int, path_index: int) -> None:
+        """Record the path index where a new task begins for agent_id in lifelong mode."""
+        if 'agent_task_boundaries' not in self.log_data:
+            self.log_data['agent_task_boundaries'] = {}
+        key = str(agent_id)
+        if key not in self.log_data['agent_task_boundaries']:
+            self.log_data['agent_task_boundaries'][key] = []
+        self.log_data['agent_task_boundaries'][key].append(path_index)
+        self._unsaved_data = True
+
+    # Record a task assignment (box and target positions) for replay in lifelong mode
+    def log_task_assignment(self, agent_id: int, path_index: int, box_pos: Any, target_pos: Any) -> None:
+        """Record the box and target positions for a new task assignment in lifelong mode."""
+        if 'agent_task_assignments' not in self.log_data:
+            self.log_data['agent_task_assignments'] = {}
+        key = str(agent_id)
+        if key not in self.log_data['agent_task_assignments']:
+            self.log_data['agent_task_assignments'][key] = []
+
+        def _to_list(pos):
+            if pos is None:
+                return None
+            if isinstance(pos, list):
+                return pos
+            try:
+                return list(pos)
+            except TypeError:
+                return None
+
+        self.log_data['agent_task_assignments'][key].append({
+            'path_index': path_index,
+            'box_pos': _to_list(box_pos),
+            'target_pos': _to_list(target_pos),
+        })
+        self._unsaved_data = True
+
+    # Record a negotiation event in async mode
+    def log_async_negotiation(self, event: Dict) -> None:
+        if 'negotiation_events' not in self.log_data:
+            self.log_data['negotiation_events'] = []
+        self.log_data['negotiation_events'].append(self._to_json_safe(event))
+        self._unsaved_data = True
     
     # Finalize and save the log to a file
     def finalize(self, emergency: bool = False, performance_metrics: Optional[Dict] = None) -> Optional[str]:
 
-        if not self.log_data['turns']:
-            print("⚠️  No turn data to save")
-            return None
-        
-        # Calculate summary statistics
-        turns = self.log_data['turns']
-        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
-        routine_turns = [t for t in turns if t.get('type') == 'routine']
-        
-        # Calculate HMAS-2 metrics if negotiations occurred
-        hmas2_metrics = self._calculate_hmas2_metrics(negotiation_turns)
-        
-        self.log_data['summary'] = {
-            'total_turns': len(turns),
-            'routine_turns': len(routine_turns),
-            'negotiation_turns': len(negotiation_turns),
-            'total_conflicts': len(negotiation_turns),
-            'hmas2_metrics': hmas2_metrics,
-            'performance_metrics': performance_metrics or {},
-            'completion_timestamp': datetime.now().isoformat()
-        }
+        simulation_mode = self.log_data.get('scenario', {}).get('simulation_mode', 'turn_based')
+
+        # Check that there is data to save
+        if simulation_mode == 'async':
+            if not self.log_data.get('agent_paths'):
+                print("⚠️  No async path data to save")
+                return None
+            self.log_data['summary'] = self._compute_async_summary(performance_metrics)
+        elif simulation_mode == 'lifelong':
+            if not self.log_data.get('agent_paths'):
+                print("⚠️  No path data to save")
+                return None
+            self.log_data['summary'] = self._compute_lifelong_summary(performance_metrics)
+        else:
+            if not self.log_data.get('turns'):
+                print("⚠️  No turn data to save")
+                return None
+            self.log_data['summary'] = self._compute_turnbased_summary(performance_metrics)
         
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -157,11 +240,159 @@ class UnifiedLogger:
         self._unsaved_data = False
         self._log_file_path = log_path
         
-        print(f"📝 Simulation log saved to: {log_path}")
-        print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
+        if simulation_mode in ('async', 'lifelong'):
+            total_steps = sum(len(p) for p in self.log_data.get('agent_paths', {}).values())
+            n_events = len(self.log_data.get('negotiation_events', []))
+            label = 'Lifelong' if simulation_mode == 'lifelong' else 'Async'
+            print(f"📝 {label} simulation log saved to: {log_path}")
+            parts = [f"{total_steps} path steps", f"{n_events} negotiation events"]
+            if simulation_mode == 'lifelong':
+                parts.append(f"{len(self.log_data.get('task_completions', []))} task completions")
+            print(f"📊 Summary: {', '.join(parts)}")
+        else:
+            turns = self.log_data.get('turns', [])
+            negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+            print(f"📝 Simulation log saved to: {log_path}")
+            print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
         
         return log_path
-    
+
+    # Build turn-based summary dictionary
+    def _compute_turnbased_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
+        turns = self.log_data['turns']
+        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+        routine_turns = [t for t in turns if t.get('type') == 'routine']
+        hmas2_metrics = self._calculate_hmas2_metrics(negotiation_turns)
+        return {
+            'total_turns': len(turns),
+            'routine_turns': len(routine_turns),
+            'negotiation_turns': len(negotiation_turns),
+            'total_conflicts': len(negotiation_turns),
+            'hmas2_metrics': hmas2_metrics,
+            'performance_metrics': performance_metrics or {},
+            'completion_timestamp': datetime.now().isoformat()
+        }
+
+    # Build lifelong summary dictionary with throughput analytics
+    def _compute_lifelong_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
+        task_completions = self.log_data.get('task_completions', [])
+        # Lifelong/async modes remove 'turns' from log_data; use negotiation_events instead
+        turns = self.log_data.get('turns', [])
+        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+
+        throughput_timeline = self._compute_throughput_timeline(task_completions)
+
+        per_agent: Dict[int, Dict] = {}
+        for tc in task_completions:
+            aid = tc['agent_id']
+            per_agent.setdefault(aid, {'tasks': 0, 'task_durations': []})
+            per_agent[aid]['tasks'] += 1
+            per_agent[aid]['task_durations'].append(tc['task_duration_turns'])
+
+        pm = performance_metrics or {}
+        # Use pm.total_turns when turns list is empty (lifelong path-based logging)
+        total_turns = len(turns) or pm.get('total_turns', 0)
+        return {
+            'simulation_mode': 'lifelong',
+            'total_turns': total_turns,
+            'total_tasks_completed': len(task_completions),
+            'throughput_tasks_per_second': pm.get('throughput_tasks_per_second', 0),
+            'throughput_tasks_per_turn': pm.get('throughput_tasks_per_turn', 0),
+            'throughput_timeline': throughput_timeline,
+            'per_agent_stats': {
+                str(aid): {
+                    'tasks': data['tasks'],
+                    'avg_task_turns': (
+                        sum(data['task_durations']) / len(data['task_durations'])
+                        if data['task_durations'] else 0
+                    )
+                }
+                for aid, data in per_agent.items()
+            },
+            'negotiation_metrics': {
+                # Lifelong/async modes log to 'negotiation_events'; turn-based uses 'turns'
+                'total_negotiations': len(
+                    self.log_data['negotiation_events']
+                    if 'negotiation_events' in self.log_data
+                    else negotiation_turns
+                ),
+                'hmas2_metrics': self._calculate_hmas2_metrics(negotiation_turns)
+            },
+            'llm_cost': {
+                'total_tokens': pm.get('total_tokens_used', 0),
+                'tokens_per_task': (
+                    pm.get('total_tokens_used', 0) / max(len(task_completions), 1)
+                )
+            },
+            'performance_metrics': pm,
+            'completion_timestamp': datetime.now().isoformat()
+        }
+
+    # Compute throughput in 30-second windows from task completion records
+    def _compute_throughput_timeline(self, task_completions: List[Dict]) -> List[Dict]:
+        if not task_completions:
+            return []
+
+        try:
+            first_ts = datetime.fromisoformat(task_completions[0]['timestamp'])
+            last_ts = datetime.fromisoformat(task_completions[-1]['timestamp'])
+            total_seconds = max((last_ts - first_ts).total_seconds(), 1)
+        except (KeyError, ValueError):
+            return []
+
+        window_size = 30  # seconds
+        num_windows = int(total_seconds / window_size) + 1
+        timeline = []
+
+        for w in range(num_windows):
+            w_start = w * window_size
+            w_end = (w + 1) * window_size
+            count = 0
+            for tc in task_completions:
+                try:
+                    ts = datetime.fromisoformat(tc['timestamp'])
+                    offset = (ts - first_ts).total_seconds()
+                    if w_start <= offset < w_end:
+                        count += 1
+                except (KeyError, ValueError):
+                    continue
+            if count > 0:
+                timeline.append({
+                    'window_start_seconds': w_start,
+                    'window_end_seconds': w_end,
+                    'tasks_completed': count,
+                    'throughput_per_second': round(count / window_size, 4)
+                })
+
+        return timeline
+
+    # Build async summary dictionary (path-based, no per-turn records)
+    def _compute_async_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
+        agent_paths = self.log_data.get('agent_paths', {})
+        negotiation_events = self.log_data.get('negotiation_events', [])
+        pm = performance_metrics or {}
+
+        total_ticks = max((len(p) for p in agent_paths.values()), default=0)
+
+        per_agent_stats = {
+            aid: {
+                'total_steps': len(path),
+                'start_position': path[0] if path else None,
+                'end_position': path[-1] if path else None,
+            }
+            for aid, path in agent_paths.items()
+        }
+
+        return {
+            'simulation_mode': 'async',
+            'total_ticks': total_ticks,
+            'total_negotiation_events': len(negotiation_events),
+            'total_tasks_completed': pm.get('successful_deliveries', 0),
+            'per_agent_stats': per_agent_stats,
+            'performance_metrics': pm,
+            'completion_timestamp': datetime.now().isoformat(),
+        }
+
     # Calculate negotiation metrics
     def _calculate_hmas2_metrics(self, negotiation_turns: List[Dict]) -> Dict:
         total_validations = 0
