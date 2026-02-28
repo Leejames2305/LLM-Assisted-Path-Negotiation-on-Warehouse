@@ -280,7 +280,7 @@ class GameEngine:
         if conflict_data['has_conflicts']:
             # Force negotiation
             print(f"🤖 Forcing negotiation for deadlock resolution...")
-            resolution = self._negotiate_conflicts(conflict_data, planned_moves)
+            resolution, _ = self._negotiate_conflicts(conflict_data, planned_moves)
             self._execute_negotiated_actions(resolution)
             
             # Reset failure counts after forced negotiation
@@ -335,7 +335,7 @@ class GameEngine:
         if stagnation_conflict['has_conflicts']:
             print(f"🚫 STAGNATION DETECTED! Forcing negotiation for stuck agents...")
             # Force negotiation for stagnant agents
-            resolution = self._negotiate_conflicts(stagnation_conflict, {})
+            resolution, _ = self._negotiate_conflicts(stagnation_conflict, {})
             self._execute_negotiated_actions(resolution)
             
             # Reset position history after forced resolution
@@ -377,7 +377,7 @@ class GameEngine:
             self.collision_count += len(conflict_info['conflict_points'])
             
             # Use Central Negotiator to resolve conflicts
-            resolution = self._negotiate_conflicts(conflict_info, forced_moves)
+            resolution, _ = self._negotiate_conflicts(conflict_info, forced_moves)
             self._execute_negotiated_actions(resolution)
             negotiation_occurred = True
         else:
@@ -393,7 +393,7 @@ class GameEngine:
                     print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
                     # Track collision for metrics
                     self.collision_count += len(normal_conflict_info['conflict_points'])
-                    resolution = self._negotiate_conflicts(normal_conflict_info, normal_moves)
+                    resolution, _ = self._negotiate_conflicts(normal_conflict_info, normal_moves)
                     self._execute_negotiated_actions(resolution)
                     negotiation_occurred = True
                 else:
@@ -637,15 +637,14 @@ class GameEngine:
 
         def _negotiation_worker() -> None:
             try:
-                resolution = self._negotiate_conflicts(
+                resolution, neg_data = self._negotiate_conflicts(
                     conflict_info_copy, forced_moves_copy)
             except Exception as exc:
                 if not self.silent_mode:
                     print(f"{Fore.RED}❌ Background negotiation error for agents "
                           f"{set(conflict_key)}: {exc}{Style.RESET_ALL}")
                 resolution = {'agent_actions': {}, 'resolution': 'error'}
-            neg_data = self._current_negotiation_data
-            self._current_negotiation_data = None
+                neg_data = {}
             self._negotiation_result_queue.put({
                 'conflict_key': conflict_key,
                 'agent_ids': list(conflict_key),
@@ -673,6 +672,19 @@ class GameEngine:
                       f"{set(agent_ids)}{Style.RESET_ALL}")
 
             self._execute_negotiated_actions(resolution)
+
+            # If the LLM returned a deadlock (no actions), clear the stale conflicting
+            # paths so agents can replan from scratch instead of cycling forever.
+            if resolution.get('resolution') == 'deadlock_skipped':
+                for aid in agent_ids:
+                    if aid in self.agents:
+                        a = self.agents[aid]
+                        if hasattr(a, '_has_negotiated_path'):
+                            a._has_negotiated_path = False
+                        a.planned_path = []
+                if not self.silent_mode:
+                    print(f"{Fore.YELLOW}⚠️  Deadlock: cleared paths for {set(agent_ids)}, "
+                          f"agents will replan{Style.RESET_ALL}")
 
             # Unfreeze agents
             self._pending_resolution_agents -= set(agent_ids)
@@ -971,7 +983,7 @@ class GameEngine:
         return normal_path
     
     # Use Central Negotiator to resolve conflicts
-    def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Dict:
+    def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Tuple[Dict, Optional[Dict]]:
         print("🤖 Initiating LLM-based conflict negotiation...")
         
         # Track negotiation timing
@@ -1040,30 +1052,32 @@ class GameEngine:
         # Check for deadlock (empty dict means turn should be skipped)
         if not resolution:  # Empty dict
             print(f"🛑 Negotiation deadlock - turn skipped (no movement)")
-            self._current_negotiation_data = self._build_negotiation_log_data(
+            neg_data = self._build_negotiation_log_data(
                 conflict_data, prompts_data, {}, refinement_history, {}, {}
             )
+            self._current_negotiation_data = neg_data  # keep for turn-based compat
             return {
                 'agent_actions': {},
                 'resolution': 'deadlock_skipped',
                 'reasoning': 'Negotiation failed to resolve after max refinement iterations',
                 'refinement_history': refinement_history
-            }
+            }, neg_data
         
         # Build negotiation log data for unified logger
         # Extract agent validations from refinement history or resolution
         agent_validations = self._extract_agent_validations(resolution, refinement_history)
         final_actions = self._extract_final_actions(resolution)
         
-        self._current_negotiation_data = self._build_negotiation_log_data(
+        neg_data = self._build_negotiation_log_data(
             conflict_data, prompts_data, resolution, refinement_history, agent_validations, final_actions
         )
+        self._current_negotiation_data = neg_data  # keep for turn-based compat
         
         # Add refinement history if available
         if refinement_history:
             resolution['refinement_history'] = refinement_history
         
-        return resolution
+        return resolution, neg_data
     
     # Build structured negotiation log data
     def _build_negotiation_log_data(
