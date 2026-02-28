@@ -81,6 +81,7 @@ class GameEngine:
         # Lifelong mode: per-task completion records and task start tracking
         self._lifelong_task_completions: List[Dict] = []
         self._agent_task_start_turns: Dict[int, int] = {}
+        self._agent_trail_start: Dict[int, int] = {}  # Path index where current task trail begins
 
         # Async mode: live display window and tick counter
         self._async_tick: int = 0
@@ -118,6 +119,7 @@ class GameEngine:
             self.initial_agent_positions[agent_id] = agent.position
             self.agent_paths[agent_id] = [agent.position]
             self._agent_task_start_turns[agent_id] = 0
+            self._agent_trail_start[agent_id] = 0
         
         # Start tracking simulation time
         self.simulation_start_time = time.time()
@@ -814,9 +816,11 @@ class GameEngine:
                 colour = _COLOURS[i % len(_COLOURS)]
                 frozen = agent_id in self._pending_resolution_agents
 
-                # Draw recorded path
+                # Draw recorded path trimmed to the current task
                 if self.log_enabled and self.logger:
-                    path = self.logger.log_data.get('agent_paths', {}).get(str(agent_id), [])
+                    full_path = self.logger.log_data.get('agent_paths', {}).get(str(agent_id), [])
+                    trail_start = self._agent_trail_start.get(agent_id, 0)
+                    path = full_path[trail_start:]
                     if len(path) > 1:
                         xs = [p[0] for p in path]
                         ys = [p[1] for p in path]
@@ -1434,6 +1438,15 @@ class GameEngine:
 
         # Record task start turn for duration tracking
         self._agent_task_start_turns[agent_id] = self.current_turn
+
+        # Record new trail start so live display and offline visualizer only show the current task
+        if self.log_enabled and self.logger:
+            current_path_len = len(self.logger.log_data.get('agent_paths', {}).get(str(agent_id), []))
+            self._agent_trail_start[agent_id] = current_path_len
+            if hasattr(self.logger, 'log_task_boundary'):
+                self.logger.log_task_boundary(agent_id, current_path_len)
+        else:
+            self._agent_trail_start[agent_id] = 0
 
         print(f"🔄 Agent {agent_id}: New lifelong task — box at {box_pos}, target at {target_pos}")
 

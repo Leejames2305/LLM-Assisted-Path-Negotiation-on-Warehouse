@@ -105,6 +105,7 @@ class UnifiedLogger:
             self.log_data['agent_paths'] = {}
             self.log_data['negotiation_events'] = []
             self.log_data['task_completions'] = []
+            self.log_data['agent_task_boundaries'] = {}
         else:
             self.log_data['turns'] = []
             self.log_data['task_completions'] = []
@@ -155,6 +156,17 @@ class UnifiedLogger:
             self.log_data['agent_paths'][key] = []
         pos = list(position) if not isinstance(position, list) else position
         self.log_data['agent_paths'][key].append(pos)
+        self._unsaved_data = True
+
+    # Record the path index at which a new task started (lifelong mode)
+    def log_task_boundary(self, agent_id: int, path_index: int) -> None:
+        """Record the path index where a new task begins for agent_id in lifelong mode."""
+        if 'agent_task_boundaries' not in self.log_data:
+            self.log_data['agent_task_boundaries'] = {}
+        key = str(agent_id)
+        if key not in self.log_data['agent_task_boundaries']:
+            self.log_data['agent_task_boundaries'][key] = []
+        self.log_data['agent_task_boundaries'][key].append(path_index)
         self._unsaved_data = True
 
     # Record a negotiation event in async mode

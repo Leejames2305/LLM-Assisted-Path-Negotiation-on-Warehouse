@@ -265,23 +265,25 @@ class SimulationVisualizer:
             self.update_visualization()
     
     def start_animation(self):
-        """Start automatic turn progression"""
-        def animate(frame):
-            if self.is_playing and self.current_turn < len(self.sim_data['turns']) - 1:
-                self.current_turn += 1
-                self.update_visualization()
-                return []
-            else:
-                self.is_playing = False
-                self.btn_play.label.set_text('Play')
-                return []
-        
-        self.animation = FuncAnimation(self.fig, animate, interval=2000, blit=False)
-        
+        """Start automatic turn progression at 300 ms per turn."""
+        def _advance():
+            if self.is_playing:
+                if self.current_turn < len(self.sim_data['turns']) - 1:
+                    self.current_turn += 1
+                    self.update_visualization()
+                else:
+                    self.is_playing = False
+                    self.btn_play.label.set_text('Play')
+                    self._timer.stop()
+
+        self._timer = self.fig.canvas.new_timer(interval=300)
+        self._timer.add_callback(_advance)
+        self._timer.start()
+
     def stop_animation(self):
-        """Stop automatic turn progression"""
-        if hasattr(self, 'animation') and self.animation:
-            self.animation.pause()
+        """Stop automatic turn progression."""
+        if hasattr(self, '_timer') and self._timer:
+            self._timer.stop()
     
     def update_visualization(self):
         """Update the visualization for the current turn"""
@@ -665,6 +667,7 @@ class AsyncVisualizer:
         self.agent_paths: dict = self.sim_data.get('agent_paths', {})
         self.negotiation_events: list = self.sim_data.get('negotiation_events', [])
         self.summary: dict = self.sim_data.get('summary', {})
+        self.agent_task_boundaries: dict = self.sim_data.get('agent_task_boundaries', {})
 
         map_size = self.scenario['map_size']
         self.width, self.height = map_size[0], map_size[1]
@@ -763,19 +766,23 @@ class AsyncVisualizer:
             self._draw()
 
     def _start_animation(self) -> None:
-        def _animate(_frame):
-            if self.is_playing and self.current_frame < self.total_frames - 1:
-                self.current_frame += 1
-                self._draw()
-            else:
-                self.is_playing = False
-                self.btn_play.label.set_text('Play')
-            return []
-        self._anim = FuncAnimation(self.fig, _animate, interval=250, blit=False)
+        def _advance():
+            if self.is_playing:
+                if self.current_frame < self.total_frames - 1:
+                    self.current_frame += 1
+                    self._draw()
+                else:
+                    self.is_playing = False
+                    self.btn_play.label.set_text('Play')
+                    self._timer.stop()
+
+        self._timer = self.fig.canvas.new_timer(interval=300)
+        self._timer.add_callback(_advance)
+        self._timer.start()
 
     def _stop_animation(self) -> None:
-        if hasattr(self, '_anim') and self._anim:
-            self._anim.pause()
+        if hasattr(self, '_timer') and self._timer:
+            self._timer.stop()
 
     # ------------------------------------------------------------------
     def _agent_at(self, agent_id: str, frame: int):
@@ -841,15 +848,17 @@ class AsyncVisualizer:
                 colour = self._AGENT_COLOURS[i % len(self._AGENT_COLOURS)]
                 frozen = agent_id in frozen_ids
 
-                # Path so far (up to current frame)
+                # Path so far (up to current frame), trimmed to current task
                 end_idx = min(frame + 1, len(path))
-                if end_idx > 1:
-                    xs = [p[0] for p in path[:end_idx]]
-                    ys = [p[1] for p in path[:end_idx]]
+                boundaries = self.agent_task_boundaries.get(agent_id, [0])
+                trail_start = max((b for b in boundaries if b <= frame), default=0)
+                if end_idx > trail_start + 1:
+                    xs = [p[0] for p in path[trail_start:end_idx]]
+                    ys = [p[1] for p in path[trail_start:end_idx]]
                     ax.plot(xs, ys, color=colour, linewidth=2,
                             alpha=0.45, zorder=4)
                     # Arrowheads on last few steps
-                    for j in range(max(0, end_idx - 4), end_idx - 1):
+                    for j in range(max(trail_start, end_idx - 4), end_idx - 1):
                         dx = path[j + 1][0] - path[j][0]
                         dy = path[j + 1][1] - path[j][1]
                         if dx != 0 or dy != 0:
