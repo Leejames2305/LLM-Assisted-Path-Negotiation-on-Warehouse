@@ -37,3 +37,4 @@ ENV/
 # Logs
 logs/*.log
 *.log
+logs/*.json
