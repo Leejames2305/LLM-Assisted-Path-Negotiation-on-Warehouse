@@ -952,6 +952,8 @@ def run_lifelong_round(
             if game_engine.stop_requested:
                 break
 
+        # Wait for any background negotiations that started near timeout
+        game_engine._drain_pending_negotiations()
         elapsed = time.time() - start_time
         print(f"\n{Fore.GREEN}✅ Lifelong round {round_num} completed after {elapsed:.1f}s{Style.RESET_ALL}")
 
@@ -1162,6 +1164,8 @@ def run_async_round(
             if game_engine.stop_requested:
                 break
 
+        # Wait for any background negotiations that started near timeout
+        game_engine._drain_pending_negotiations()
         elapsed = time.time() - start_time
 
         # Determine status
