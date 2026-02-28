@@ -445,7 +445,8 @@ class GameEngine:
                     print(f"\n{Fore.YELLOW}⏱️  Time limit ({self.timeout_seconds}s) reached!{Style.RESET_ALL}")
                 return False
 
-        if self.simulation_complete or self.current_turn >= self.max_turns:
+        # For async/lifelong the simulation is bounded by timeout_seconds, not max_turns.
+        if self.simulation_complete or (self.simulation_mode not in ('async', 'lifelong') and self.current_turn >= self.max_turns):
             return False
 
         if not self.silent_mode:
