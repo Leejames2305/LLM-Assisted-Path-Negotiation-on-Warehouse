@@ -54,8 +54,9 @@ class SimulationVisualizer:
             
             print(f"✅ Loaded simulation data: {self.log_file_path}")
             print(f"📊 Scenario: {self.sim_data['scenario']['type']}")
-            print(f"🔢 Total turns: {len(self.sim_data['turns'])}")
-            print(f"⚔️  Negotiation turns: {self.sim_data['summary']['negotiation_turns']}")
+            print(f"🔢 Total turns: {len(self.sim_data.get('turns', []))}")
+            summary = self.sim_data.get('summary', {})
+            print(f"⚔️  Negotiation turns: {summary.get('negotiation_turns', 'N/A')}")
             
         except Exception as e:
             print(f"❌ Error loading simulation data: {e}")
@@ -625,6 +626,343 @@ class SimulationVisualizer:
             pass
         plt.show()
 
+
+# ===========================================================================
+#  AsyncVisualizer — animates agent paths recorded by async simulation mode
+# ===========================================================================
+
+class AsyncVisualizer:
+    """Visualizer for async simulation logs.
+
+    Instead of turn-by-turn snapshots, async logs store complete agent paths
+    (``agent_paths``) and a list of negotiation events.  This class replays
+    those paths as a smooth animation with:
+      - A frame slider for manual scrubbing
+      - Play / Pause controls
+      - Negotiation event highlights
+    """
+
+    # Distinct colours for up to 8 agents
+    _AGENT_COLOURS = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+        '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+    ]
+
+    def __init__(self, log_file_path: str):
+        self.log_file_path = log_file_path
+        self._load_data()
+        self.current_frame = 0
+        self.is_playing = False
+        self._updating_slider = False
+        self._setup_visualization()
+
+    # ------------------------------------------------------------------
+    def _load_data(self) -> None:
+        with open(self.log_file_path, 'r') as f:
+            self.sim_data = json.load(f)
+
+        self.scenario = self.sim_data['scenario']
+        self.agent_paths: dict = self.sim_data.get('agent_paths', {})
+        self.negotiation_events: list = self.sim_data.get('negotiation_events', [])
+        self.summary: dict = self.sim_data.get('summary', {})
+
+        map_size = self.scenario['map_size']
+        self.width, self.height = map_size[0], map_size[1]
+
+        # Total animation frames = length of the longest path
+        self.total_frames = max((len(p) for p in self.agent_paths.values()), default=1)
+
+        # Parse walls from grid
+        self.walls: set = set()
+        for y, row in enumerate(self.scenario.get('grid', [])):
+            for x, cell in enumerate(row):
+                if cell == '#':
+                    self.walls.add((x, y))
+
+        # Index negotiation events by the path-index at which they occurred
+        self.neg_by_frame: dict = {}
+        for ev in self.negotiation_events:
+            tick = ev.get('tick', 0)
+            self.neg_by_frame.setdefault(tick, []).append(ev)
+
+        print(f"✅ Loaded async simulation: {self.total_frames} frames, "
+              f"{len(self.agent_paths)} agents, "
+              f"{len(self.negotiation_events)} negotiation events")
+
+    # ------------------------------------------------------------------
+    def _setup_visualization(self) -> None:
+        map_w = min(20, max(8, self.width * 0.6))
+        map_h = min(16, max(6, self.height * 0.6))
+        stats_w = 5.5
+        fig_w = map_w + stats_w
+        width_ratio = max(2, int(map_w / stats_w))
+
+        self.fig = plt.figure(figsize=(fig_w, map_h))
+        gs = plt.GridSpec(1, 2, figure=self.fig,
+                          width_ratios=[width_ratio, 1], wspace=0.15)
+        self.ax_main = self.fig.add_subplot(gs[0, 0])
+        self.ax_stats = self.fig.add_subplot(gs[0, 1])
+
+        self.ax_main.set_xlim(-0.5, self.width - 0.5)
+        self.ax_main.set_ylim(-0.5, self.height - 0.5)
+        self.ax_main.set_aspect('equal')
+        self.ax_main.invert_yaxis()
+        self.ax_main.set_title("Async Simulation Path Replay")
+        self.ax_main.grid(True, alpha=0.3)
+
+        self.ax_stats.set_xlim(0, 1)
+        self.ax_stats.set_ylim(0, 1)
+        self.ax_stats.axis('off')
+        self.ax_stats.set_title("Info")
+
+        self._setup_controls()
+
+    def _setup_controls(self) -> None:
+        plt.subplots_adjust(bottom=0.15, left=0.05, right=0.98, top=0.95)
+
+        ax_play = plt.axes((0.08, 0.05, 0.10, 0.04))
+        self.btn_play = Button(ax_play, 'Play')
+        self.btn_play.on_clicked(self._toggle_play)
+
+        ax_prev = plt.axes((0.22, 0.05, 0.10, 0.04))
+        self.btn_prev = Button(ax_prev, '◀ Prev')
+        self.btn_prev.on_clicked(self._prev_frame)
+
+        ax_next = plt.axes((0.36, 0.05, 0.10, 0.04))
+        self.btn_next = Button(ax_next, 'Next ▶')
+        self.btn_next.on_clicked(self._next_frame)
+
+        ax_slider = plt.axes((0.50, 0.05, 0.36, 0.04))
+        max_val = max(0, self.total_frames - 1)
+        self.slider = Slider(ax_slider, 'Frame', 0, max_val,
+                             valinit=0, valfmt='%d')
+        self.slider.on_changed(self._slider_changed)
+
+    # ------------------------------------------------------------------
+    def _toggle_play(self, _event) -> None:
+        self.is_playing = not self.is_playing
+        self.btn_play.label.set_text('Pause' if self.is_playing else 'Play')
+        if self.is_playing:
+            self._start_animation()
+        else:
+            self._stop_animation()
+
+    def _prev_frame(self, _event) -> None:
+        if self.current_frame > 0:
+            self.current_frame -= 1
+            self._draw()
+
+    def _next_frame(self, _event) -> None:
+        if self.current_frame < self.total_frames - 1:
+            self.current_frame += 1
+            self._draw()
+
+    def _slider_changed(self, _val) -> None:
+        if not self._updating_slider:
+            self.current_frame = int(self.slider.val)
+            self._draw()
+
+    def _start_animation(self) -> None:
+        def _animate(_frame):
+            if self.is_playing and self.current_frame < self.total_frames - 1:
+                self.current_frame += 1
+                self._draw()
+            else:
+                self.is_playing = False
+                self.btn_play.label.set_text('Play')
+            return []
+        self._anim = FuncAnimation(self.fig, _animate, interval=250, blit=False)
+
+    def _stop_animation(self) -> None:
+        if hasattr(self, '_anim') and self._anim:
+            self._anim.pause()
+
+    # ------------------------------------------------------------------
+    def _agent_at(self, agent_id: str, frame: int):
+        """Return (x, y) for *agent_id* at *frame*, clamped to path length."""
+        path = self.agent_paths.get(agent_id, [])
+        if not path:
+            return None
+        idx = min(frame, len(path) - 1)
+        return tuple(path[idx])
+
+    def _draw(self) -> None:
+        try:
+            frame = self.current_frame
+            ax = self.ax_main
+            ax.clear()
+            ax.set_xlim(-0.5, self.width - 0.5)
+            ax.set_ylim(-0.5, self.height - 0.5)
+            ax.set_aspect('equal')
+            ax.invert_yaxis()
+            ax.grid(True, alpha=0.3)
+
+            # Negotiation events at this frame
+            active_neg = self.neg_by_frame.get(frame, [])
+            frozen_ids = set()
+            for ev in active_neg:
+                frozen_ids.update(str(a) for a in ev.get('conflicting_agents', []))
+
+            title = f"Async Path Replay — Frame {frame}/{self.total_frames - 1}"
+            if active_neg:
+                title += f"  ⚔️  Negotiation ({len(active_neg)})"
+            ax.set_title(title, fontsize=10)
+
+            # Draw walls
+            for (wx, wy) in self.walls:
+                ax.add_patch(patches.Rectangle(
+                    (wx - 0.5, wy - 0.5), 1, 1,
+                    facecolor='#444', alpha=0.85, zorder=1))
+
+            # Draw initial targets
+            for tid, pos in self.scenario.get('initial_targets', {}).items():
+                if pos and len(pos) >= 2:
+                    x, y = pos[0], pos[1]
+                    ax.add_patch(patches.Rectangle(
+                        (x - 0.4, y - 0.4), 0.8, 0.8,
+                        linewidth=2, edgecolor='red',
+                        facecolor='#ffcccc', alpha=0.5, zorder=2))
+                    ax.text(x, y, f'T{tid}', ha='center', va='center',
+                            fontsize=7, color='red', fontweight='bold', zorder=3)
+
+            # Draw initial boxes
+            for bid, pos in self.scenario.get('initial_boxes', {}).items():
+                if pos and len(pos) >= 2:
+                    x, y = pos[0], pos[1]
+                    ax.add_patch(patches.Rectangle(
+                        (x - 0.3, y - 0.3), 0.6, 0.6,
+                        linewidth=2, edgecolor='#8B4513',
+                        facecolor='#DEB887', alpha=0.5, zorder=2))
+                    ax.text(x, y, f'B{bid}', ha='center', va='center',
+                            fontsize=7, color='#5C3317', fontweight='bold', zorder=3)
+
+            # Agent paths and positions
+            for i, (agent_id, path) in enumerate(self.agent_paths.items()):
+                colour = self._AGENT_COLOURS[i % len(self._AGENT_COLOURS)]
+                frozen = agent_id in frozen_ids
+
+                # Path so far (up to current frame)
+                end_idx = min(frame + 1, len(path))
+                if end_idx > 1:
+                    xs = [p[0] for p in path[:end_idx]]
+                    ys = [p[1] for p in path[:end_idx]]
+                    ax.plot(xs, ys, color=colour, linewidth=2,
+                            alpha=0.45, zorder=4)
+                    # Arrowheads on last few steps
+                    for j in range(max(0, end_idx - 4), end_idx - 1):
+                        dx = path[j + 1][0] - path[j][0]
+                        dy = path[j + 1][1] - path[j][1]
+                        if dx != 0 or dy != 0:
+                            ax.annotate('',
+                                        xy=(path[j + 1][0], path[j + 1][1]),
+                                        xytext=(path[j][0], path[j][1]),
+                                        arrowprops=dict(
+                                            arrowstyle='->', color=colour,
+                                            lw=1.5, alpha=0.7),
+                                        zorder=5)
+
+                # Current position
+                pos = self._agent_at(agent_id, frame)
+                if pos:
+                    x, y = pos
+                    edge = 'red' if frozen else 'black'
+                    lw = 2.5 if frozen else 1.5
+                    ax.add_patch(patches.Circle(
+                        (x, y), 0.28, facecolor=colour,
+                        edgecolor=edge, linewidth=lw, alpha=0.9, zorder=6))
+                    ax.text(x, y, agent_id,
+                            ha='center', va='center',
+                            fontsize=8, color='white', fontweight='bold', zorder=7)
+                    if frozen:
+                        ax.text(x, y - 0.48, '❄', ha='center', va='top',
+                                fontsize=10, zorder=7)
+
+            # Legend
+            from matplotlib.lines import Line2D
+            legend_els = [
+                patches.Patch(color='#444', alpha=0.85, label='Wall'),
+                patches.Patch(color='#ffcccc', alpha=0.7, label='Target'),
+                patches.Patch(color='#DEB887', alpha=0.8, label='Box'),
+            ]
+            for i, aid in enumerate(self.agent_paths):
+                c = self._AGENT_COLOURS[i % len(self._AGENT_COLOURS)]
+                legend_els.append(Line2D([0], [0], color=c, linewidth=2,
+                                         label=f'Agent {aid}'))
+            ax.legend(handles=legend_els, loc='upper left',
+                      bbox_to_anchor=(0, -0.05),
+                      ncol=min(3, len(legend_els)),
+                      fontsize=7, framealpha=0.9,
+                      borderaxespad=0)
+
+            self._update_stats(frame, active_neg)
+
+            self._updating_slider = True
+            if hasattr(self, 'slider'):
+                self.slider.set_val(frame)
+            self._updating_slider = False
+
+            self.fig.canvas.draw_idle()
+
+        except Exception as e:
+            print(f"❌ Error updating async visualization: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _update_stats(self, frame: int, active_neg: list) -> None:
+        ax = self.ax_stats
+        ax.clear()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+
+        lines = [
+            f"Frame: {frame}/{self.total_frames - 1}",
+            f"Mode: async",
+            "",
+            "Agent positions:",
+        ]
+        for i, (agent_id, path) in enumerate(self.agent_paths.items()):
+            pos = self._agent_at(agent_id, frame)
+            lines.append(f"  Agent {agent_id}: {pos}")
+            lines.append(f"    Steps so far: {min(frame + 1, len(path))}/{len(path)}")
+
+        lines.append("")
+        if active_neg:
+            lines.append(f"⚔️  Negotiation event!")
+            for ev in active_neg:
+                agents = ev.get('conflicting_agents', [])
+                lines.append(f"  Frozen: {agents}")
+        else:
+            lines.append("No negotiation at this frame")
+
+        lines.append("")
+        if self.summary:
+            lines.append("Summary:")
+            lines.append(f"  Total ticks: {self.summary.get('total_ticks', 'N/A')}")
+            lines.append(f"  Tasks done: {self.summary.get('total_tasks_completed', 'N/A')}")
+            lines.append(f"  Negotiations: {self.summary.get('total_negotiation_events', 'N/A')}")
+
+        y = 0.97
+        for line in lines:
+            if y < 0.02:
+                ax.text(0.05, y, "… (truncated)",
+                        transform=ax.transAxes, fontsize=7,
+                        verticalalignment='top', color='gray')
+                break
+            ax.text(0.05, y, line, transform=ax.transAxes,
+                    fontsize=8, verticalalignment='top')
+            y -= 0.038
+
+    # ------------------------------------------------------------------
+    def show(self) -> None:
+        self._draw()
+        try:
+            self.fig.tight_layout(rect=[0, 0.15, 1, 1])
+        except Exception:
+            pass
+        plt.show()
+
+
 def find_simulation_logs():
     """Find all simulation log files in the logs directory"""
     logs_dir = "logs"
@@ -705,10 +1043,25 @@ def main():
         log_file = select_log_file()
     
     print(f"🎬 Starting visualization for: {log_file}")
-    
-    # Create and show visualization
+
+    # Detect simulation mode from the log file
     try:
-        visualizer = SimulationVisualizer(log_file)
+        with open(log_file, 'r') as _f:
+            _meta = json.load(_f)
+        _mode = _meta.get('scenario', {}).get('simulation_mode', 'turn_based')
+    except Exception:
+        _mode = 'turn_based'
+
+    print(f"🔍 Detected simulation mode: {_mode}")
+
+    # Dispatch to the appropriate visualizer
+    try:
+        if _mode == 'async':
+            print("🚀 Using AsyncVisualizer (path-based animation)")
+            visualizer = AsyncVisualizer(log_file)
+        else:
+            print("🚀 Using SimulationVisualizer (turn-by-turn replay)")
+            visualizer = SimulationVisualizer(log_file)
         visualizer.show()
     except Exception as e:
         print(f"❌ Error creating visualization: {e}")

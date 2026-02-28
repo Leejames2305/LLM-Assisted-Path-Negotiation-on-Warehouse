@@ -79,6 +79,11 @@ class GameEngine:
         # Lifelong mode: per-task completion records and task start tracking
         self._lifelong_task_completions: List[Dict] = []
         self._agent_task_start_turns: Dict[int, int] = {}
+
+        # Async mode: live display window and tick counter
+        self._async_tick: int = 0
+        self._async_fig = None
+        self._async_ax = None
     
     # Initialize a new simulation
     def initialize_simulation(self):
@@ -140,13 +145,22 @@ class GameEngine:
                 'initial_boxes': {str(k): list(v) for k, v in self.warehouse_map.boxes.items()},
                 'agent_goals': {str(k): v for k, v in self.warehouse_map.agent_goals.items()}
             })
-        
-        # Log initial state
-        self._log_turn_state("SIMULATION_START")
-        
+
         print(f"{Fore.GREEN}Simulation initialized successfully!{Style.RESET_ALL}")
         self._update_map_state()
-        self.display_map()
+
+        if self.simulation_mode == 'async':
+            # Async mode: open live display window and skip turn-based terminal output
+            self._setup_async_display()
+            # Log initial positions to agent paths
+            if self.log_enabled and self.logger:
+                for agent_id, agent in self.agents.items():
+                    self.logger.append_agent_path(agent_id, agent.position)
+            self._update_async_display()
+        else:
+            # Turn-based / lifelong: normal terminal display
+            self._log_turn_state("SIMULATION_START")
+            self.display_map()
     
     # Plan initial paths for all agents
     def _plan_initial_paths(self):
@@ -557,12 +571,20 @@ class GameEngine:
 
         # Update map state, log, and display
         self._update_map_state()
-        self._log_turn_state("negotiation" if negotiation_occurred else "TURN_COMPLETE")
-        if not self.silent_mode:
-            self.display_map()
-            self._display_agent_status()
 
+        self._async_tick += 1
         self.current_turn += 1
+
+        if self.simulation_mode == 'async':
+            # Path-based logging: record positions, no turn records
+            self._log_async_state(negotiation_occurred)
+            self._update_async_display()
+        else:
+            # Lifelong (also uses this method): turn-based logging
+            self._log_turn_state("negotiation" if negotiation_occurred else "TURN_COMPLETE")
+            if not self.silent_mode:
+                self.display_map()
+                self._display_agent_status()
 
         # Lifelong mode terminates only via timeout — never via task completion
         if self.simulation_mode == 'lifelong':
@@ -575,7 +597,154 @@ class GameEngine:
             return False
 
         return True
-    
+
+    # ------------------------------------------------------------------ #
+    #  Async mode helpers: live display + path-based logging               #
+    # ------------------------------------------------------------------ #
+
+    def _setup_async_display(self) -> None:
+        """Open a non-blocking matplotlib window for live async simulation display."""
+        try:
+            import matplotlib
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as patches
+            plt.ion()
+            self._async_fig, self._async_ax = plt.subplots(
+                figsize=(max(8, self.width * 0.6), max(6, self.height * 0.6)),
+                num='Async Simulation — Live View'
+            )
+            try:
+                self._async_fig.canvas.manager.set_window_title('Async Simulation — Live View')
+            except Exception:
+                pass
+            print("🖥️  Live async display window opened")
+        except Exception as e:
+            print(f"⚠️  Could not open async live display: {e}")
+            self._async_fig = None
+            self._async_ax = None
+
+    def _update_async_display(self) -> None:
+        """Redraw the live matplotlib window with the current simulation state."""
+        if self._async_fig is None:
+            return
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as patches
+
+            # Fixed colour list — no numpy needed
+            _COLOURS = [
+                '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+                '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+            ]
+
+            ax = self._async_ax
+            ax.clear()
+            ax.set_xlim(-0.5, self.width - 0.5)
+            ax.set_ylim(-0.5, self.height - 0.5)
+            ax.set_aspect('equal')
+            ax.invert_yaxis()
+            ax.grid(True, alpha=0.3)
+            ax.set_title(
+                f"Async Simulation — Tick {self._async_tick}  "
+                f"| Deliveries: {self.successful_deliveries}",
+                fontsize=10
+            )
+
+            grid = self.warehouse_map.grid
+            for y in range(self.height):
+                for x in range(self.width):
+                    cell = grid[y, x]
+                    if cell == '#':
+                        ax.add_patch(patches.Rectangle(
+                            (x - 0.5, y - 0.5), 1, 1,
+                            facecolor='#444', alpha=0.85, zorder=1))
+                    elif cell == 'T':
+                        ax.add_patch(patches.Rectangle(
+                            (x - 0.4, y - 0.4), 0.8, 0.8,
+                            linewidth=2, edgecolor='red',
+                            facecolor='#ffcccc', alpha=0.7, zorder=2))
+                        ax.text(x, y, 'T', ha='center', va='center',
+                                fontsize=7, color='red', fontweight='bold', zorder=3)
+                    elif cell == 'B':
+                        ax.add_patch(patches.Rectangle(
+                            (x - 0.3, y - 0.3), 0.6, 0.6,
+                            linewidth=2, edgecolor='#8B4513',
+                            facecolor='#DEB887', alpha=0.85, zorder=2))
+                        ax.text(x, y, 'B', ha='center', va='center',
+                                fontsize=7, color='#5C3317', fontweight='bold', zorder=3)
+
+            # Agent paths so far + current positions
+            for i, (agent_id, agent) in enumerate(self.agents.items()):
+                colour = _COLOURS[i % len(_COLOURS)]
+                frozen = agent_id in self._pending_resolution_agents
+
+                # Draw recorded path
+                if self.log_enabled and self.logger:
+                    path = self.logger.log_data.get('agent_paths', {}).get(str(agent_id), [])
+                    if len(path) > 1:
+                        xs = [p[0] for p in path]
+                        ys = [p[1] for p in path]
+                        ax.plot(xs, ys, color=colour, linewidth=1.5, alpha=0.4, zorder=4)
+
+                # Current position marker
+                x, y = agent.position
+                edge = 'red' if frozen else 'black'
+                lw = 2.5 if frozen else 1.5
+                ax.add_patch(patches.Circle(
+                    (x, y), 0.28, facecolor=colour,
+                    edgecolor=edge, linewidth=lw, alpha=0.9, zorder=5))
+                ax.text(x, y, str(agent_id),
+                        ha='center', va='center',
+                        fontsize=8, color='white', fontweight='bold', zorder=6)
+                if frozen:
+                    ax.text(x, y - 0.45, '❄', ha='center', va='top',
+                            fontsize=9, zorder=6)
+
+            plt.pause(0.05)
+
+        except Exception:
+            # Display is non-critical — silently ignore errors
+            pass
+
+    def _close_async_display(self) -> None:
+        """Keep the live window open when the simulation finishes (user can close manually)."""
+        if self._async_fig is not None:
+            try:
+                import matplotlib.pyplot as plt
+                self._async_fig.canvas.manager.set_window_title(
+                    'Async Simulation — Complete (close to exit)')
+                plt.ioff()
+                plt.show(block=False)
+            except Exception:
+                pass
+
+    def _log_async_state(self, negotiation_occurred: bool) -> None:
+        """Append current agent positions to path logs; record negotiation events."""
+        if not self.log_enabled or not self.logger:
+            return
+
+        for agent_id, agent in self.agents.items():
+            self.logger.append_agent_path(agent_id, agent.position)
+
+        if negotiation_occurred and self._current_negotiation_data:
+            event = {
+                'tick': self._async_tick,
+                'timestamp': datetime.now().isoformat(),
+                'conflicting_agents': [
+                    aid for aid in self.agents
+                    if aid in self._pending_resolution_agents
+                ],
+                'negotiation_data': self._current_negotiation_data,
+                'agent_path_indices': {
+                    str(aid): len(
+                        self.logger.log_data.get('agent_paths', {}).get(str(aid), [])
+                    ) - 1
+                    for aid in self.agents
+                },
+            }
+            self.logger.log_async_negotiation(event)
+            self._current_negotiation_data = None
+
     # Get planned moves for all active agents
     def _get_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
         return self._get_normal_planned_moves()
@@ -1418,7 +1587,9 @@ class GameEngine:
         log_path = os.path.join(output_dir, filename)
         
         # Build mode-aware summary
-        if self.simulation_mode == 'lifelong':
+        if self.simulation_mode == 'async':
+            self.logger.log_data['summary'] = self.logger._compute_async_summary(metrics)
+        elif self.simulation_mode == 'lifelong':
             self.logger.log_data['summary'] = self.logger._compute_lifelong_summary(metrics)
         else:
             self.logger.log_data['summary'] = self.logger._compute_turnbased_summary(metrics)
@@ -1441,20 +1612,25 @@ class GameEngine:
         
         print(f"\n{Fore.CYAN}🚀 Starting Interactive Simulation{Style.RESET_ALL}")
         
-        auto_mode = False
-        
-        while self.run_simulation_step():
-            if not auto_mode:
-                user_input = input("\nPress Enter for next step (or command): ").strip().lower()
-                
-                if user_input == 'q':
-                    print("Simulation terminated by user.")
-                    break
-                elif user_input == 'auto':
-                    auto_mode = True
-                    print("Switching to auto mode...")
-            else:
-                time.sleep(1)  # Auto delay
+        if self.simulation_mode == 'async':
+            # Async mode: auto-run without step-by-step prompts
+            print(f"{Fore.CYAN}Async mode: running automatically with live display...{Style.RESET_ALL}")
+            while self.run_simulation_step():
+                pass
+            self._close_async_display()
+        else:
+            auto_mode = False
+            while self.run_simulation_step():
+                if not auto_mode:
+                    user_input = input("\nPress Enter for next step (or command): ").strip().lower()
+                    if user_input == 'q':
+                        print("Simulation terminated by user.")
+                        break
+                    elif user_input == 'auto':
+                        auto_mode = True
+                        print("Switching to auto mode...")
+                else:
+                    time.sleep(1)  # Auto delay
         
         # Save log when simulation ends
         result = self.save_simulation_log()
@@ -1464,4 +1640,5 @@ class GameEngine:
             log_path, metrics = result
             self._display_performance_metrics(metrics)
         
-        print(f"\n{Fore.GREEN}Simulation completed in {self.current_turn} turns!{Style.RESET_ALL}")
+        mode_label = f"{self._async_tick} ticks" if self.simulation_mode == 'async' else f"{self.current_turn} turns"
+        print(f"\n{Fore.GREEN}Simulation completed in {mode_label}!{Style.RESET_ALL}")

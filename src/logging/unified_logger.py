@@ -80,9 +80,10 @@ class UnifiedLogger:
     
     # Initialize logging with scenario metadata
     def initialize(self, scenario_data: Dict) -> None:
+        mode = scenario_data.get('simulation_mode', 'turn_based')
         self.log_data['scenario'] = {
             'type': scenario_data.get('type', 'simulation'),
-            'simulation_mode': scenario_data.get('simulation_mode', 'turn_based'),
+            'simulation_mode': mode,
             'map_size': scenario_data.get('map_size', [0, 0]),
             'grid': scenario_data.get('grid', []),
             'initial_agents': self._to_json_safe(scenario_data.get('initial_agents', {})),
@@ -91,9 +92,17 @@ class UnifiedLogger:
             'agent_goals': self._to_json_safe(scenario_data.get('agent_goals', {})),
             'timestamp': datetime.now().isoformat()
         }
-        
-        self.log_data['turns'] = []
-        self.log_data['task_completions'] = []
+
+        if mode == 'async':
+            # Async mode: record paths and negotiation events — no per-turn log
+            self.log_data.pop('turns', None)
+            self.log_data.pop('task_completions', None)
+            self.log_data['agent_paths'] = {}
+            self.log_data['negotiation_events'] = []
+        else:
+            self.log_data['turns'] = []
+            self.log_data['task_completions'] = []
+
         self.log_data['summary'] = {}
         self._initialized = True
         self._unsaved_data = True
@@ -130,19 +139,45 @@ class UnifiedLogger:
             'timestamp': datetime.now().isoformat()
         })
         self._unsaved_data = True
+
+    # Append one position to an agent's path (async mode)
+    def append_agent_path(self, agent_id: int, position: Any) -> None:
+        if 'agent_paths' not in self.log_data:
+            self.log_data['agent_paths'] = {}
+        key = str(agent_id)
+        if key not in self.log_data['agent_paths']:
+            self.log_data['agent_paths'][key] = []
+        pos = list(position) if not isinstance(position, list) else position
+        self.log_data['agent_paths'][key].append(pos)
+        self._unsaved_data = True
+
+    # Record a negotiation event in async mode
+    def log_async_negotiation(self, event: Dict) -> None:
+        if 'negotiation_events' not in self.log_data:
+            self.log_data['negotiation_events'] = []
+        self.log_data['negotiation_events'].append(self._to_json_safe(event))
+        self._unsaved_data = True
     
     # Finalize and save the log to a file
     def finalize(self, emergency: bool = False, performance_metrics: Optional[Dict] = None) -> Optional[str]:
 
-        if not self.log_data['turns']:
-            print("⚠️  No turn data to save")
-            return None
-        
         simulation_mode = self.log_data.get('scenario', {}).get('simulation_mode', 'turn_based')
-        
-        if simulation_mode == 'lifelong':
+
+        # Check that there is data to save
+        if simulation_mode == 'async':
+            if not self.log_data.get('agent_paths'):
+                print("⚠️  No async path data to save")
+                return None
+            self.log_data['summary'] = self._compute_async_summary(performance_metrics)
+        elif simulation_mode == 'lifelong':
+            if not self.log_data.get('turns'):
+                print("⚠️  No turn data to save")
+                return None
             self.log_data['summary'] = self._compute_lifelong_summary(performance_metrics)
         else:
+            if not self.log_data.get('turns'):
+                print("⚠️  No turn data to save")
+                return None
             self.log_data['summary'] = self._compute_turnbased_summary(performance_metrics)
         
         # Generate filename
@@ -160,10 +195,16 @@ class UnifiedLogger:
         self._unsaved_data = False
         self._log_file_path = log_path
         
-        turns = self.log_data['turns']
-        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
-        print(f"📝 Simulation log saved to: {log_path}")
-        print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
+        if simulation_mode == 'async':
+            total_steps = sum(len(p) for p in self.log_data.get('agent_paths', {}).values())
+            n_events = len(self.log_data.get('negotiation_events', []))
+            print(f"📝 Async simulation log saved to: {log_path}")
+            print(f"📊 Summary: {total_steps} path steps, {n_events} negotiation events")
+        else:
+            turns = self.log_data.get('turns', [])
+            negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+            print(f"📝 Simulation log saved to: {log_path}")
+            print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
         
         return log_path
 
@@ -267,7 +308,34 @@ class UnifiedLogger:
                 })
 
         return timeline
-    
+
+    # Build async summary dictionary (path-based, no per-turn records)
+    def _compute_async_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
+        agent_paths = self.log_data.get('agent_paths', {})
+        negotiation_events = self.log_data.get('negotiation_events', [])
+        pm = performance_metrics or {}
+
+        total_ticks = max((len(p) for p in agent_paths.values()), default=0)
+
+        per_agent_stats = {
+            aid: {
+                'total_steps': len(path),
+                'start_position': path[0] if path else None,
+                'end_position': path[-1] if path else None,
+            }
+            for aid, path in agent_paths.items()
+        }
+
+        return {
+            'simulation_mode': 'async',
+            'total_ticks': total_ticks,
+            'total_negotiation_events': len(negotiation_events),
+            'total_tasks_completed': pm.get('successful_deliveries', 0),
+            'per_agent_stats': per_agent_stats,
+            'performance_metrics': pm,
+            'completion_timestamp': datetime.now().isoformat(),
+        }
+
     # Calculate negotiation metrics
     def _calculate_hmas2_metrics(self, negotiation_turns: List[Dict]) -> Dict:
         total_validations = 0

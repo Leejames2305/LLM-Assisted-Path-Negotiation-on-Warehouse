@@ -1,0 +1,75 @@
+{
+  "scenario": {
+    "type": "test",
+    "simulation_mode": "async",
+    "map_size": [
+      8,
+      6
+    ],
+    "grid": [],
+    "initial_agents": {},
+    "initial_targets": {},
+    "initial_boxes": {},
+    "agent_goals": {},
+    "timestamp": "2026-02-28T15:00:43.835427"
+  },
+  "summary": {
+    "simulation_mode": "async",
+    "total_ticks": 2,
+    "total_negotiation_events": 1,
+    "total_tasks_completed": 0,
+    "per_agent_stats": {
+      "0": {
+        "total_steps": 2,
+        "start_position": [
+          2,
+          3
+        ],
+        "end_position": [
+          2,
+          4
+        ]
+      },
+      "1": {
+        "total_steps": 1,
+        "start_position": [
+          5,
+          1
+        ],
+        "end_position": [
+          5,
+          1
+        ]
+      }
+    },
+    "performance_metrics": {},
+    "completion_timestamp": "2026-02-28T15:00:43.835549"
+  },
+  "agent_paths": {
+    "0": [
+      [
+        2,
+        3
+      ],
+      [
+        2,
+        4
+      ]
+    ],
+    "1": [
+      [
+        5,
+        1
+      ]
+    ]
+  },
+  "negotiation_events": [
+    {
+      "tick": 1,
+      "conflicting_agents": [
+        0,
+        1
+      ]
+    }
+  ]
+}
