@@ -80,7 +80,7 @@ def main():
         print(f"\n{Fore.CYAN}Select simulation mode:{Style.RESET_ALL}")
         print(f"  1. Turn-based (default) — step-by-step, terminal output")
         print(f"  2. Async                — parallel moves, live matplotlib window")
-        print(f"  3. Lifelong             — continuous tasks, turn-based")
+        print(f"  3. Lifelong             — continuous tasks, async loop (logging + live viz)")
         mode_input = input(f"\n{Fore.CYAN}Mode (1/2/3, default 1): {Style.RESET_ALL}").strip()
         if mode_input == '2':
             game_engine.simulation_mode = 'async'

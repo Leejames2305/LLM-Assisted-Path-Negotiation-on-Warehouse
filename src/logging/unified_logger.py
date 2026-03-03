@@ -276,9 +276,7 @@ class UnifiedLogger:
     # Build lifelong summary dictionary with throughput analytics
     def _compute_lifelong_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
         task_completions = self.log_data.get('task_completions', [])
-        # Lifelong/async modes remove 'turns' from log_data; use negotiation_events instead
         turns = self.log_data.get('turns', [])
-        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
 
         throughput_timeline = self._compute_throughput_timeline(task_completions)
 
@@ -292,6 +290,15 @@ class UnifiedLogger:
         pm = performance_metrics or {}
         # Use pm.total_turns when turns list is empty (lifelong path-based logging)
         total_turns = len(turns) or pm.get('total_turns', 0)
+
+        negotiation_events = self.log_data.get('negotiation_events', [])
+        # Wrap negotiation_events into the turn-dict shape expected by _calculate_hmas2_metrics
+        lifelong_neg_turns = [
+            {'negotiation': ev.get('negotiation_data')}
+            for ev in negotiation_events
+            if ev.get('negotiation_data')
+        ]
+
         return {
             'simulation_mode': 'lifelong',
             'total_turns': total_turns,
@@ -311,12 +318,8 @@ class UnifiedLogger:
             },
             'negotiation_metrics': {
                 # Lifelong/async modes log to 'negotiation_events'; turn-based uses 'turns'
-                'total_negotiations': len(
-                    self.log_data['negotiation_events']
-                    if 'negotiation_events' in self.log_data
-                    else negotiation_turns
-                ),
-                'hmas2_metrics': self._calculate_hmas2_metrics(negotiation_turns)
+                'total_negotiations': len(negotiation_events),
+                'hmas2_metrics': self._calculate_hmas2_metrics(lifelong_neg_turns)
             },
             'llm_cost': {
                 'total_tokens': pm.get('total_tokens_used', 0),

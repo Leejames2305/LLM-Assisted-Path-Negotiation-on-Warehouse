@@ -29,7 +29,6 @@ import os
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider
 from matplotlib.gridspec import GridSpec
 import numpy as np
@@ -874,7 +873,16 @@ class AsyncVisualizer:
                 # Path so far (up to current frame), trimmed to current task
                 end_idx = min(frame + 1, len(path))
                 boundaries = self.agent_task_boundaries.get(agent_id, [0])
-                trail_start = max((b for b in boundaries if b <= frame), default=0)
+                if boundaries:
+                    if len(boundaries) > 1:
+                        sorted_boundaries = sorted(boundaries)
+                        if sorted_boundaries != boundaries:
+                            boundaries = sorted_boundaries
+                            self.agent_task_boundaries[agent_id] = boundaries
+                    idx = bisect_right(boundaries, frame)
+                    trail_start = boundaries[idx - 1] if idx > 0 else 0
+                else:
+                    trail_start = 0
                 if end_idx > trail_start + 1:
                     xs = [p[0] for p in path[trail_start:end_idx]]
                     ys = [p[1] for p in path[trail_start:end_idx]]

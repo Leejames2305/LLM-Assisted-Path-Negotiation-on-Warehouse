@@ -94,7 +94,7 @@ class LifelongBenchmarkConfig:
 @dataclass
 class LifelongRoundResult:
     round_num: int
-    status: str  # Always 'completed' in lifelong mode
+    status: str  # 'completed' for normal runs or 'failed' if the round ends with an error
     total_tasks_completed: int
     throughput_tasks_per_second: float
     throughput_tasks_per_turn: float
