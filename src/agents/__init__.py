@@ -127,12 +127,15 @@ class RobotAgent:
         
         elif action == 'move':
             path = action_data.get('path', [])
-            # Execute the path in order from the beginning
-            # If path[0] is current position, agent stays in place (effectively a wait)
-            # If path[0] is different, agent moves there
-            # This handles both cases where LLM includes/excludes current position
+            # Execute the path in order from the beginning.
+            # LLM prompts ask for "a complete path from current position to target",
+            # so path[0] is typically the agent's current position.  Skip it so
+            # the agent actually advances to the next cell rather than "waiting".
             if path and len(path) > 0:
-                next_pos = tuple(path[0])  # Start from the first element
+                next_pos = tuple(path[0])
+                # If the first step is the current position, advance to the second step.
+                if next_pos == self.position and len(path) > 1:
+                    next_pos = tuple(path[1])
                 success, failure_reason = self.move_to(next_pos, map_state)
                 if not success and failure_reason:
                     print(f"   ⚠️ Action execution failed: {failure_reason}")

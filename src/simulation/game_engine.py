@@ -4,6 +4,9 @@ Main Game Engine for Multi-Robot Warehouse Simulation
 
 import json
 import os
+import queue
+import random
+import threading
 import time
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
@@ -65,6 +68,33 @@ class GameEngine:
         self.stop_requested = False  # External signal to stop simulation
         self.timeout_seconds = 0  # Time limit for simulation (0 = no limit)
         self.silent_mode = False  # Suppress print output for benchmark runs
+
+        # Simulation mode: 'turn_based' (default), 'async', or 'lifelong'
+        self.simulation_mode = 'turn_based'
+
+        # Async mode: agents blocked waiting for LLM resolution
+        self._pending_resolution_agents: set = set()
+
+        # Async mode: per-agent last-known safe position (before conflict)
+        self._conflict_hold_positions: Dict[int, Tuple[int, int]] = {}
+
+        # Lifelong mode: per-task completion records and task start tracking
+        self._lifelong_task_completions: List[Dict] = []
+        self._agent_task_start_turns: Dict[int, int] = {}
+        self._agent_trail_start: Dict[int, int] = {}  # Path index where current task trail begins
+
+        # Async mode: live display window and tick counter
+        self._async_tick: int = 0
+        self._async_fig = None
+        self._async_ax = None
+
+        # Truly-async execution: background LLM negotiation infrastructure
+        # tick_interval controls display refresh rate (seconds)
+        self._async_tick_interval: float = 0.3
+        # Queue for results returned by background negotiation threads
+        self._negotiation_result_queue: queue.Queue = queue.Queue()
+        # frozensets of agent-id groups whose negotiation is currently in flight
+        self._active_negotiations: set = set()
     
     # Initialize a new simulation
     def initialize_simulation(self):
@@ -88,6 +118,8 @@ class GameEngine:
             # Initialize metrics tracking for this agent
             self.initial_agent_positions[agent_id] = agent.position
             self.agent_paths[agent_id] = [agent.position]
+            self._agent_task_start_turns[agent_id] = 0
+            self._agent_trail_start[agent_id] = 0
         
         # Start tracking simulation time
         self.simulation_start_time = time.time()
@@ -117,6 +149,7 @@ class GameEngine:
         if self.log_enabled and self.logger:
             self.logger.initialize({
                 'type': 'interactive_simulation',
+                'simulation_mode': self.simulation_mode,
                 'map_size': [self.warehouse_map.width, self.warehouse_map.height],
                 'grid': self.warehouse_map.grid.tolist(),
                 'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
@@ -124,13 +157,26 @@ class GameEngine:
                 'initial_boxes': {str(k): list(v) for k, v in self.warehouse_map.boxes.items()},
                 'agent_goals': {str(k): v for k, v in self.warehouse_map.agent_goals.items()}
             })
-        
-        # Log initial state
-        self._log_turn_state("SIMULATION_START")
-        
+
         print(f"{Fore.GREEN}Simulation initialized successfully!{Style.RESET_ALL}")
         self._update_map_state()
-        self.display_map()
+
+        if self.simulation_mode in ('async', 'lifelong'):
+            # Async / lifelong: open live display window and use path-based logging
+            self._setup_async_display()
+            # Log initial positions to agent paths and record initial task assignments
+            if self.log_enabled and self.logger:
+                for agent_id, agent in self.agents.items():
+                    self.logger.append_agent_path(agent_id, agent.position)
+                    if self.simulation_mode == 'lifelong' and hasattr(self.logger, 'log_task_assignment'):
+                        box_pos = self.warehouse_map.boxes.get(agent_id)
+                        target_pos = self.warehouse_map.targets.get(agent_id)
+                        self.logger.log_task_assignment(agent_id, 0, box_pos, target_pos)
+            self._update_async_display()
+        else:
+            # Turn-based: normal terminal display
+            self._log_turn_state("SIMULATION_START")
+            self.display_map()
     
     # Plan initial paths for all agents
     def _plan_initial_paths(self):
@@ -240,7 +286,7 @@ class GameEngine:
         if conflict_data['has_conflicts']:
             # Force negotiation
             print(f"🤖 Forcing negotiation for deadlock resolution...")
-            resolution = self._negotiate_conflicts(conflict_data, planned_moves)
+            resolution, _ = self._negotiate_conflicts(conflict_data, planned_moves)
             self._execute_negotiated_actions(resolution)
             
             # Reset failure counts after forced negotiation
@@ -251,8 +297,14 @@ class GameEngine:
                     self.agent_failed_move_history[agent_id] = []
                 print(f"🔄 Agent {agent_id}: Reset failure count and move history after deadlock negotiation")
     
-    # Run one step of the simulation with forced conflict detection
+    # Run one step of the simulation — dispatches to mode-specific implementation
     def run_simulation_step(self) -> bool:
+        if self.simulation_mode in ('async', 'lifelong'):
+            return self._run_async_step()
+        return self._run_turn_based_step()
+
+    # Run one turn-based simulation step (original logic, zero behavioural change)
+    def _run_turn_based_step(self) -> bool:
         # Check for external stop request (benchmark timeout)
         if self.stop_requested:
             return False
@@ -289,7 +341,7 @@ class GameEngine:
         if stagnation_conflict['has_conflicts']:
             print(f"🚫 STAGNATION DETECTED! Forcing negotiation for stuck agents...")
             # Force negotiation for stagnant agents
-            resolution = self._negotiate_conflicts(stagnation_conflict, {})
+            resolution, _ = self._negotiate_conflicts(stagnation_conflict, {})
             self._execute_negotiated_actions(resolution)
             
             # Reset position history after forced resolution
@@ -331,7 +383,7 @@ class GameEngine:
             self.collision_count += len(conflict_info['conflict_points'])
             
             # Use Central Negotiator to resolve conflicts
-            resolution = self._negotiate_conflicts(conflict_info, forced_moves)
+            resolution, _ = self._negotiate_conflicts(conflict_info, forced_moves)
             self._execute_negotiated_actions(resolution)
             negotiation_occurred = True
         else:
@@ -347,7 +399,7 @@ class GameEngine:
                     print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
                     # Track collision for metrics
                     self.collision_count += len(normal_conflict_info['conflict_points'])
-                    resolution = self._negotiate_conflicts(normal_conflict_info, normal_moves)
+                    resolution, _ = self._negotiate_conflicts(normal_conflict_info, normal_moves)
                     self._execute_negotiated_actions(resolution)
                     negotiation_occurred = True
                 else:
@@ -380,7 +432,463 @@ class GameEngine:
         
         self.current_turn += 1
         return not self.simulation_complete
-    
+
+    def _run_async_step(self) -> bool:
+        """Run one truly-async simulation tick.
+
+        Non-conflicting agents always advance each tick.  When a conflict is
+        detected, *only* the involved agents are frozen while a background
+        daemon thread calls the LLM.  All other agents keep moving and the
+        matplotlib window stays live throughout the negotiation.
+        """
+        # ── Guard checks ──────────────────────────────────────────────────
+        if self.stop_requested:
+            return False
+
+        if self.timeout_seconds > 0 and self.simulation_start_time:
+            if time.time() - self.simulation_start_time >= self.timeout_seconds:
+                if not self.silent_mode:
+                    print(f"\n{Fore.YELLOW}⏱️  Time limit ({self.timeout_seconds}s) reached!{Style.RESET_ALL}")
+                return False
+
+        # For async/lifelong the simulation is bounded by timeout_seconds, not max_turns.
+        if self.simulation_complete or (self.simulation_mode not in ('async', 'lifelong') and self.current_turn >= self.max_turns):
+            return False
+
+        if not self.silent_mode:
+            print(f"\n{Fore.YELLOW}=== TICK {self._async_tick + 1} (ASYNC) ==={Style.RESET_ALL}")
+
+        # ── Step 1: Apply completed background-negotiation results ────────
+        self._apply_pending_negotiation_results()
+
+        # ── Step 2: Tick all agents ───────────────────────────────────────
+        for agent in self.agents.values():
+            agent.update_turn()
+        for agent_id, agent in self.agents.items():
+            if hasattr(agent, '_hmas2_validated'):
+                setattr(agent, '_hmas2_validated', False)
+
+        for agent_id in list(self.agents.keys()):
+            self._check_box_delivery(agent_id)
+
+        # ── Step 3: Classify agents: frozen vs. free ─────────────────────
+        free_agent_ids: set = set(self.agents.keys()) - self._pending_resolution_agents
+
+        # ── Step 4: Stagnation check (free agents only) ───────────────────
+        stagnant_free: set = set()
+        stagnation_conflict = self.detect_stagnation_conflicts()
+        if stagnation_conflict['has_conflicts']:
+            stagnant_free = set(stagnation_conflict['conflicting_agents']) & free_agent_ids
+            if stagnant_free:
+                filtered = dict(stagnation_conflict)
+                filtered['conflicting_agents'] = list(stagnant_free)
+                filtered['agents'] = [
+                    a for a in stagnation_conflict.get('agents', [])
+                    if a['id'] in stagnant_free
+                ]
+                conflict_key = frozenset(stagnant_free)
+                if conflict_key not in self._active_negotiations:
+                    if not self.silent_mode:
+                        print(f"🚫 STAGNATION! Background resolve for agents: {stagnant_free}")
+                    for aid in stagnant_free:
+                        self._conflict_hold_positions[aid] = self.agents[aid].position
+                        self.agent_position_history.pop(aid, None)
+                        self.agent_failed_move_history.pop(aid, None)
+                    self._pending_resolution_agents.update(stagnant_free)
+                    self._start_background_negotiation(conflict_key, filtered, {})
+
+        # ── Step 5: Forced moves for active free agents ───────────────────
+        active_free_ids = free_agent_ids - stagnant_free
+        forced_moves: Dict[int, List] = {}
+        for agent_id in active_free_ids:
+            agent = self.agents[agent_id]
+            if not agent.is_waiting and agent.target_position:
+                if (hasattr(agent, '_has_negotiated_path') and
+                        getattr(agent, '_has_negotiated_path', False) and
+                        agent.planned_path):
+                    forced_moves[agent_id] = agent.planned_path.copy()
+                else:
+                    map_state = self.warehouse_map.get_state_dict()
+                    forced_path = self._plan_forced_path(agent, map_state)
+                    if forced_path:
+                        forced_moves[agent_id] = forced_path
+
+        conflicting_ids: set = set()
+
+        if forced_moves:
+            # ── Step 6: Detect primary conflicts ─────────────────────────
+            conflict_info = self.conflict_detector.detect_path_conflicts(
+                forced_moves, self.current_turn)
+
+            if conflict_info['has_conflicts']:
+                conflicting_ids = set(conflict_info['conflicting_agents'])
+                conflict_key = frozenset(conflicting_ids)
+                if conflict_key not in self._active_negotiations:
+                    if not self.silent_mode:
+                        print(f"{Fore.RED}ASYNC CONFLICT! Agents: {conflicting_ids} "
+                              f"→ background thread{Style.RESET_ALL}")
+                    self.collision_count += len(conflict_info['conflict_points'])
+                    for aid in conflicting_ids:
+                        self._conflict_hold_positions[aid] = self.agents[aid].position
+                    self._pending_resolution_agents.update(conflicting_ids)
+                    self._start_background_negotiation(
+                        conflict_key, conflict_info, forced_moves)
+
+            # ── Step 7: Move non-conflicting free agents ──────────────────
+            non_conflicting_ids = active_free_ids - conflicting_ids
+            normal_moves: Dict[int, List] = {}
+            for agent_id in non_conflicting_ids:
+                agent = self.agents[agent_id]
+                if not agent.is_waiting and agent.target_position:
+                    if (hasattr(agent, '_has_negotiated_path') and
+                            getattr(agent, '_has_negotiated_path', False) and
+                            agent.planned_path and len(agent.planned_path) > 1):
+                        normal_moves[agent_id] = agent.planned_path.copy()
+                    else:
+                        needs_replan = (
+                            not agent.planned_path or
+                            (agent.planned_path and
+                             agent.planned_path[-1] != agent.target_position)
+                        )
+                        if needs_replan:
+                            map_state = self.warehouse_map.get_state_dict()
+                            agent.planned_path = self._plan_normal_path(agent, map_state)
+                        if agent.planned_path:
+                            normal_moves[agent_id] = agent.planned_path.copy()
+
+            if normal_moves:
+                normal_conflict = self.conflict_detector.detect_path_conflicts(
+                    normal_moves, self.current_turn)
+                if normal_conflict['has_conflicts']:
+                    sec_ids = set(normal_conflict['conflicting_agents'])
+                    sec_key = frozenset(sec_ids)
+                    if sec_key not in self._active_negotiations:
+                        if not self.silent_mode:
+                            print(f"{Fore.YELLOW}Secondary conflict: {sec_ids} "
+                                  f"→ background thread{Style.RESET_ALL}")
+                        self.collision_count += len(normal_conflict['conflict_points'])
+                        for aid in sec_ids:
+                            self._conflict_hold_positions[aid] = self.agents[aid].position
+                        self._pending_resolution_agents.update(sec_ids)
+                        self._start_background_negotiation(
+                            sec_key, normal_conflict, normal_moves)
+                    # Execute only truly conflict-free agents
+                    free_normal = {k: v for k, v in normal_moves.items()
+                                   if k not in sec_ids}
+                    if free_normal:
+                        self._execute_planned_moves(free_normal)
+                        deadlock = self.detect_move_failure_deadlocks(free_normal)
+                        if deadlock['has_conflicts']:
+                            dl_ids = set(deadlock['conflicting_agents'])
+                            dl_key = frozenset(dl_ids)
+                            if dl_key not in self._active_negotiations:
+                                for aid in dl_ids:
+                                    self._conflict_hold_positions[aid] = self.agents[aid].position
+                                self._pending_resolution_agents.update(dl_ids)
+                                self._start_background_negotiation(dl_key, deadlock, free_normal)
+                else:
+                    if not self.silent_mode:
+                        print(f"{Fore.GREEN}No conflicts. Executing moves...{Style.RESET_ALL}")
+                    self._execute_planned_moves(normal_moves)
+                    deadlock = self.detect_move_failure_deadlocks(normal_moves)
+                    if deadlock['has_conflicts']:
+                        dl_ids = set(deadlock['conflicting_agents'])
+                        dl_key = frozenset(dl_ids)
+                        if dl_key not in self._active_negotiations:
+                            for aid in dl_ids:
+                                self._conflict_hold_positions[aid] = self.agents[aid].position
+                            self._pending_resolution_agents.update(dl_ids)
+                            self._start_background_negotiation(dl_key, deadlock, normal_moves)
+        else:
+            if not self.silent_mode:
+                print("No free agents with targets.")
+
+        # ── Step 8: Update map, log path positions, refresh display ───────
+        self._update_map_state()
+        self._async_tick += 1
+        self.current_turn += 1
+        self._log_async_state(negotiation_occurred=False)
+        self._update_async_display()
+
+        # Lifelong terminates only via timeout
+        if self.simulation_mode == 'lifelong':
+            return True
+
+        if self._check_completion():
+            if not self.silent_mode:
+                print(f"{Fore.GREEN}🎉 All agents reached their targets!{Style.RESET_ALL}")
+            self.simulation_complete = True
+            return False
+
+        return True
+
+    # ------------------------------------------------------------------ #
+    #  Truly-async infrastructure: background negotiation threads          #
+    # ------------------------------------------------------------------ #
+
+    def _start_background_negotiation(
+        self,
+        conflict_key: frozenset,
+        conflict_info: Dict,
+        forced_moves: Dict,
+    ) -> None:
+        """Fire a daemon thread that calls the LLM without blocking the sim."""
+        self._active_negotiations.add(conflict_key)
+
+        # Snapshot the map state now so the background thread works with a
+        # consistent picture even as other agents continue to move.
+        conflict_info_copy = dict(conflict_info)
+        if 'map_state_snapshot' not in conflict_info_copy:
+            conflict_info_copy['map_state_snapshot'] = self.warehouse_map.get_state_dict()
+        forced_moves_copy = dict(forced_moves)
+
+        def _negotiation_worker() -> None:
+            try:
+                resolution, neg_data = self._negotiate_conflicts(
+                    conflict_info_copy, forced_moves_copy)
+            except Exception as exc:
+                if not self.silent_mode:
+                    print(f"{Fore.RED}❌ Background negotiation error for agents "
+                          f"{set(conflict_key)}: {exc}{Style.RESET_ALL}")
+                resolution = {'agent_actions': {}, 'resolution': 'error'}
+                neg_data = {}
+            self._negotiation_result_queue.put({
+                'conflict_key': conflict_key,
+                'agent_ids': list(conflict_key),
+                'resolution': resolution,
+                'negotiation_data': neg_data,
+            })
+
+        threading.Thread(target=_negotiation_worker, daemon=True).start()
+
+    def _apply_pending_negotiation_results(self) -> None:
+        """Drain the result queue and unfreeze agents with their new paths."""
+        while True:
+            try:
+                result = self._negotiation_result_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            conflict_key: frozenset = result['conflict_key']
+            agent_ids: list = result['agent_ids']
+            resolution: Dict = result['resolution']
+            neg_data = result.get('negotiation_data')
+
+            if not self.silent_mode:
+                print(f"{Fore.GREEN}✅ Negotiation done for agents: "
+                      f"{set(agent_ids)}{Style.RESET_ALL}")
+
+            self._execute_negotiated_actions(resolution)
+
+            # If the LLM returned a deadlock (no actions), clear the stale conflicting
+            # paths so agents can replan from scratch instead of cycling forever.
+            if resolution.get('resolution') == 'deadlock_skipped':
+                for aid in agent_ids:
+                    if aid in self.agents:
+                        a = self.agents[aid]
+                        if hasattr(a, '_has_negotiated_path'):
+                            a._has_negotiated_path = False
+                        a.planned_path = []
+                if not self.silent_mode:
+                    print(f"{Fore.YELLOW}⚠️  Deadlock: cleared paths for {set(agent_ids)}, "
+                          f"agents will replan{Style.RESET_ALL}")
+
+            # Unfreeze agents
+            self._pending_resolution_agents -= set(agent_ids)
+            for aid in agent_ids:
+                self._conflict_hold_positions.pop(aid, None)
+            self._active_negotiations.discard(conflict_key)
+
+            # Log the negotiation event
+            if self.log_enabled and self.logger and neg_data:
+                event = {
+                    'tick': self._async_tick,
+                    'timestamp': datetime.now().isoformat(),
+                    'conflicting_agents': agent_ids,
+                    'negotiation_data': neg_data,
+                    'agent_path_indices': {
+                        str(aid): len(
+                            self.logger.log_data.get('agent_paths', {})
+                            .get(str(aid), [])
+                        ) - 1
+                        for aid in self.agents
+                    },
+                }
+                self.logger.log_async_negotiation(event)
+
+    def _drain_pending_negotiations(self, timeout: float = 60.0) -> None:
+        """Block until all in-flight background negotiations finish or timeout.
+
+        After returning, any negotiations that timed out are discarded from
+        `_active_negotiations`.  Their conflicting agents may remain in
+        `_pending_resolution_agents`; this is acceptable because the caller
+        is about to save logs and shut down.
+        """
+        deadline = time.time() + timeout
+        while self._active_negotiations and time.time() < deadline:
+            self._apply_pending_negotiation_results()
+            time.sleep(0.1)
+        if self._active_negotiations:
+            print(f"⚠️  Timed out waiting for background negotiation(s): "
+                  f"{self._active_negotiations}")
+            self._active_negotiations.clear()
+        # Final drain to capture any last-second results
+        self._apply_pending_negotiation_results()
+
+    # ------------------------------------------------------------------ #
+    #  Async mode helpers: live display + path-based logging               #
+    # ------------------------------------------------------------------ #
+
+    def _setup_async_display(self) -> None:
+        """Open a non-blocking matplotlib window for live async simulation display."""
+        if self.silent_mode:
+            return
+        try:
+            import matplotlib
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as patches
+            plt.ion()
+            self._async_fig, self._async_ax = plt.subplots(
+                figsize=(max(8, self.width * 0.6), max(6, self.height * 0.6)),
+                num='Async Simulation — Live View'
+            )
+            try:
+                self._async_fig.canvas.manager.set_window_title('Async Simulation — Live View')
+            except Exception:
+                pass
+            print("🖥️  Live async display window opened")
+        except Exception as e:
+            print(f"⚠️  Could not open async live display: {e}")
+            self._async_fig = None
+            self._async_ax = None
+
+    def _update_async_display(self) -> None:
+        """Redraw the live matplotlib window with the current simulation state."""
+        if self.silent_mode or self._async_fig is None:
+            return
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as patches
+
+            # Fixed colour list — no numpy needed
+            _COLOURS = [
+                '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+                '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+            ]
+
+            ax = self._async_ax
+            ax.clear()
+            ax.set_xlim(-0.5, self.width - 0.5)
+            ax.set_ylim(-0.5, self.height - 0.5)
+            ax.set_aspect('equal')
+            ax.invert_yaxis()
+            ax.grid(True, alpha=0.3)
+            ax.set_title(
+                f"{'Lifelong' if self.simulation_mode == 'lifelong' else 'Async'} "
+                f"— Tick {self._async_tick}  "
+                f"| Deliveries: {self.successful_deliveries}"
+                + (f"  | ⏳ {len(self._pending_resolution_agents)} negotiating"
+                   if self._pending_resolution_agents else ""),
+                fontsize=10
+            )
+
+            grid = self.warehouse_map.grid
+            for y in range(self.height):
+                for x in range(self.width):
+                    cell = grid[y, x]
+                    if cell == '#':
+                        ax.add_patch(patches.Rectangle(
+                            (x - 0.5, y - 0.5), 1, 1,
+                            facecolor='#444', alpha=0.85, zorder=1))
+                    elif cell == 'T':
+                        ax.add_patch(patches.Rectangle(
+                            (x - 0.4, y - 0.4), 0.8, 0.8,
+                            linewidth=2, edgecolor='red',
+                            facecolor='#ffcccc', alpha=0.7, zorder=2))
+                        ax.text(x, y, 'T', ha='center', va='center',
+                                fontsize=7, color='red', fontweight='bold', zorder=3)
+                    elif cell == 'B':
+                        ax.add_patch(patches.Rectangle(
+                            (x - 0.3, y - 0.3), 0.6, 0.6,
+                            linewidth=2, edgecolor='#8B4513',
+                            facecolor='#DEB887', alpha=0.85, zorder=2))
+                        ax.text(x, y, 'B', ha='center', va='center',
+                                fontsize=7, color='#5C3317', fontweight='bold', zorder=3)
+
+            # Agent paths so far + current positions
+            for i, (agent_id, agent) in enumerate(self.agents.items()):
+                colour = _COLOURS[i % len(_COLOURS)]
+                frozen = agent_id in self._pending_resolution_agents
+
+                # Draw recorded path trimmed to the current task
+                if self.log_enabled and self.logger:
+                    full_path = self.logger.log_data.get('agent_paths', {}).get(str(agent_id), [])
+                    trail_start = self._agent_trail_start.get(agent_id, 0)
+                    path = full_path[trail_start:]
+                    if len(path) > 1:
+                        xs = [p[0] for p in path]
+                        ys = [p[1] for p in path]
+                        ax.plot(xs, ys, color=colour, linewidth=1.5, alpha=0.4, zorder=4)
+
+                # Current position marker
+                x, y = agent.position
+                edge = 'red' if frozen else 'black'
+                lw = 2.5 if frozen else 1.5
+                ax.add_patch(patches.Circle(
+                    (x, y), 0.28, facecolor=colour,
+                    edgecolor=edge, linewidth=lw, alpha=0.9, zorder=5))
+                ax.text(x, y, str(agent_id),
+                        ha='center', va='center',
+                        fontsize=8, color='white', fontweight='bold', zorder=6)
+                if frozen:
+                    ax.text(x, y - 0.45, '❄', ha='center', va='top',
+                            fontsize=9, zorder=6)
+
+            plt.pause(self._async_tick_interval)
+
+        except Exception:
+            # Display is non-critical — silently ignore errors
+            pass
+
+    def _close_async_display(self) -> None:
+        """Keep the live window open when the simulation finishes (user can close manually)."""
+        if self._async_fig is not None:
+            try:
+                import matplotlib.pyplot as plt
+                self._async_fig.canvas.manager.set_window_title(
+                    'Async Simulation — Complete (close to exit)')
+                plt.ioff()
+                plt.show(block=False)
+            except Exception:
+                pass
+
+    def _log_async_state(self, negotiation_occurred: bool) -> None:
+        """Append current agent positions to path logs; record negotiation events."""
+        if not self.log_enabled or not self.logger:
+            return
+
+        for agent_id, agent in self.agents.items():
+            self.logger.append_agent_path(agent_id, agent.position)
+
+        if negotiation_occurred and self._current_negotiation_data:
+            event = {
+                'tick': self._async_tick,
+                'timestamp': datetime.now().isoformat(),
+                'conflicting_agents': [
+                    aid for aid in self.agents
+                    if aid in self._pending_resolution_agents
+                ],
+                'negotiation_data': self._current_negotiation_data,
+                'agent_path_indices': {
+                    str(aid): len(
+                        self.logger.log_data.get('agent_paths', {}).get(str(aid), [])
+                    ) - 1
+                    for aid in self.agents
+                },
+            }
+            self.logger.log_async_negotiation(event)
+            self._current_negotiation_data = None
+
     # Get planned moves for all active agents
     def _get_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
         return self._get_normal_planned_moves()
@@ -484,17 +992,20 @@ class GameEngine:
         return normal_path
     
     # Use Central Negotiator to resolve conflicts
-    def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Dict:
+    def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Tuple[Dict, Optional[Dict]]:
         print("🤖 Initiating LLM-based conflict negotiation...")
         
         # Track negotiation timing
         negotiation_start_time = time.time()
         
         # Prepare conflict data for negotiator
+        # Use a pre-captured map snapshot if available (set by _start_background_negotiation)
+        # so the background thread works with a consistent map state.
         conflict_data = {
             'agents': [],
             'conflict_points': conflict_info['conflict_points'],
-            'map_state': self.warehouse_map.get_state_dict(),
+            'map_state': conflict_info.get(
+                'map_state_snapshot', self.warehouse_map.get_state_dict()),
             'turn': self.current_turn
         }
         
@@ -550,30 +1061,32 @@ class GameEngine:
         # Check for deadlock (empty dict means turn should be skipped)
         if not resolution:  # Empty dict
             print(f"🛑 Negotiation deadlock - turn skipped (no movement)")
-            self._current_negotiation_data = self._build_negotiation_log_data(
+            neg_data = self._build_negotiation_log_data(
                 conflict_data, prompts_data, {}, refinement_history, {}, {}
             )
+            self._current_negotiation_data = neg_data  # keep for turn-based compat
             return {
                 'agent_actions': {},
                 'resolution': 'deadlock_skipped',
                 'reasoning': 'Negotiation failed to resolve after max refinement iterations',
                 'refinement_history': refinement_history
-            }
+            }, neg_data
         
         # Build negotiation log data for unified logger
         # Extract agent validations from refinement history or resolution
         agent_validations = self._extract_agent_validations(resolution, refinement_history)
         final_actions = self._extract_final_actions(resolution)
         
-        self._current_negotiation_data = self._build_negotiation_log_data(
+        neg_data = self._build_negotiation_log_data(
             conflict_data, prompts_data, resolution, refinement_history, agent_validations, final_actions
         )
+        self._current_negotiation_data = neg_data  # keep for turn-based compat
         
         # Add refinement history if available
         if refinement_history:
             resolution['refinement_history'] = refinement_history
         
-        return resolution
+        return resolution, neg_data
     
     # Build structured negotiation log data
     def _build_negotiation_log_data(
@@ -675,10 +1188,9 @@ class GameEngine:
                 # Update agent's planned path with negotiated path
                 negotiated_path = action_data.get('path', [])
                 if negotiated_path and len(negotiated_path) > 0:
-                    # Convert path elements to tuples for consistency
-                    # Store the path as-is from the LLM response
-                    # If it includes current position, agent will "wait" on first execution
-                    # If it doesn't include current position, agent will move immediately
+                    # Convert path elements to tuples and store the full LLM path.
+                    # _execute_action will skip path[0] if it equals the current
+                    # position, so the agent always advances on the first call.
                     updated_path = [tuple(pos) if isinstance(pos, (list, tuple)) else pos for pos in negotiated_path]
                     agent.set_path(updated_path)
                     
@@ -688,13 +1200,22 @@ class GameEngine:
                 success = agent.execute_negotiated_action(action_data, map_state)
                 
                 if success:
-                    # After successful move, update the negotiated path by removing the first step
+                    # After a successful move the agent is now at agent.position
+                    # (the new cell).  Strip all leading planned_path entries up
+                    # to and including that cell so the remainder is still ahead.
                     if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
-                        if len(agent.planned_path) > 1:
-                            # Remove the first step and keep the rest
-                            agent.planned_path = agent.planned_path[1:]
+                        # Find the first occurrence of the new position in the
+                        # stored path and keep everything after it.
+                        new_pos = agent.position
+                        try:
+                            idx = agent.planned_path.index(new_pos)
+                            remaining = agent.planned_path[idx + 1:]
+                        except ValueError:
+                            # New position not found in path; consume one step.
+                            remaining = agent.planned_path[1:]
+                        if remaining:
+                            agent.planned_path = remaining
                         else:
-                            # Path completed, clear the negotiated path flag
                             agent._has_negotiated_path = False
                             agent.planned_path = []
                     
@@ -852,6 +1373,92 @@ class GameEngine:
                         if agent_id in self.agent_failed_move_history:
                             self.agent_failed_move_history[agent_id] = []
                             print(f"🧹 Agent {agent_id}: Cleared failed move history (task completed)")
+
+                        # Lifelong mode: log completion and assign a new task immediately
+                        if self.simulation_mode == 'lifelong':
+                            self._log_lifelong_task_completion(agent_id)
+                            self._assign_next_task_lifelong(agent_id)
+
+    # Log task completion timing for lifelong metrics
+    def _log_lifelong_task_completion(self, agent_id: int):
+        task_start = self._agent_task_start_turns.get(agent_id, 0)
+        duration = self.current_turn - task_start
+        record = {
+            'agent_id': agent_id,
+            'turn': self.current_turn,
+            'task_duration_turns': duration,
+            'timestamp': datetime.now().isoformat()
+        }
+        self._lifelong_task_completions.append(record)
+        if self.log_enabled and self.logger and hasattr(self.logger, 'log_task_completion'):
+            self.logger.log_task_completion(agent_id, self.current_turn, duration)
+
+    def _assign_next_task_lifelong(self, agent_id: int):
+        """Assign a new random box+target pair to agent after delivery in lifelong mode."""
+        # Collect currently occupied positions to avoid overlapping new tasks
+        occupied = set()
+        for pos in self.warehouse_map.agents.values():
+            occupied.add(pos)
+        for pos in self.warehouse_map.boxes.values():
+            occupied.add(pos)
+        for pos in self.warehouse_map.targets.values():
+            occupied.add(pos)
+
+        # Gather all walkable (non-wall) positions
+        walkable = [
+            (x, y)
+            for y in range(self.warehouse_map.height)
+            for x in range(self.warehouse_map.width)
+            if self.warehouse_map.grid[y, x] != CellType.WALL.value
+        ]
+        available = [pos for pos in walkable if pos not in occupied]
+
+        if len(available) < 2:
+            print(f"⚠️  Agent {agent_id}: Not enough free cells for new lifelong task")
+            return
+
+        random.shuffle(available)
+        box_pos = available[0]
+        target_pos = available[1]
+
+        # Place box and target (reuse agent_id as the entity ID for simplicity)
+        box_x, box_y = box_pos
+        self.warehouse_map.boxes[agent_id] = box_pos
+        self.warehouse_map.grid[box_y, box_x] = CellType.BOX.value
+
+        target_x, target_y = target_pos
+        self.warehouse_map.targets[agent_id] = target_pos
+        self.warehouse_map.grid[target_y, target_x] = CellType.TARGET.value
+
+        # Ensure agent goal mapping is current
+        self.warehouse_map.agent_goals[agent_id] = agent_id
+
+        # Point agent at the new box and reset path state
+        agent = self.agents[agent_id]
+        agent.set_target(box_pos)
+        if hasattr(agent, '_has_negotiated_path'):
+            agent._has_negotiated_path = False
+        agent.planned_path = []
+
+        # Record task start turn for duration tracking
+        self._agent_task_start_turns[agent_id] = self.current_turn
+
+        # Record new trail start so live display and offline visualizer only show the current task
+        if self.log_enabled and self.logger:
+            current_path_len = len(self.logger.log_data.get('agent_paths', {}).get(str(agent_id), []))
+            self._agent_trail_start[agent_id] = current_path_len
+            if hasattr(self.logger, 'log_task_boundary'):
+                self.logger.log_task_boundary(agent_id, current_path_len)
+            if hasattr(self.logger, 'log_task_assignment'):
+                self.logger.log_task_assignment(agent_id, current_path_len, box_pos, target_pos)
+        else:
+            self._agent_trail_start[agent_id] = 0
+
+        print(f"🔄 Agent {agent_id}: New lifelong task — box at {box_pos}, target at {target_pos}")
+
+        # Plan an initial path to the new box
+        map_state = self.warehouse_map.get_state_dict()
+        agent.plan_path(map_state)
     
     # Update warehouse map with current agent positions
     def _update_map_state(self):
@@ -1111,7 +1718,14 @@ class GameEngine:
             'avg_conflict_resolution_time_ms': round(avg_resolution_time_ms, 2),
             'total_turns': total_turns,
             'total_negotiations': turns_with_negotiations,
-            'total_collisions': self.collision_count
+            'total_collisions': self.collision_count,
+            # Lifelong throughput metrics
+            'throughput_tasks_per_second': round(
+                self.successful_deliveries / makespan_seconds, 4
+            ) if makespan_seconds > 0 else 0,
+            'throughput_tasks_per_turn': round(
+                self.successful_deliveries / total_turns, 4
+            ),
         }
     
     # Save simulation log
@@ -1140,21 +1754,13 @@ class GameEngine:
         os.makedirs(output_dir, exist_ok=True)
         log_path = os.path.join(output_dir, filename)
         
-        # Calculate summary for logger
-        turns = self.logger.log_data['turns']
-        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
-        routine_turns = [t for t in turns if t.get('type') == 'routine']
-        hmas2_metrics = self.logger._calculate_hmas2_metrics(negotiation_turns)
-        
-        self.logger.log_data['summary'] = {
-            'total_turns': len(turns),
-            'routine_turns': len(routine_turns),
-            'negotiation_turns': len(negotiation_turns),
-            'total_conflicts': len(negotiation_turns),
-            'hmas2_metrics': hmas2_metrics,
-            'performance_metrics': metrics,
-            'completion_timestamp': datetime.now().isoformat()
-        }
+        # Build mode-aware summary
+        if self.simulation_mode == 'async':
+            self.logger.log_data['summary'] = self.logger._compute_async_summary(metrics)
+        elif self.simulation_mode == 'lifelong':
+            self.logger.log_data['summary'] = self.logger._compute_lifelong_summary(metrics)
+        else:
+            self.logger.log_data['summary'] = self.logger._compute_turnbased_summary(metrics)
         
         # Save to specified path
         with open(log_path, 'w', encoding='utf-8') as f:
@@ -1174,20 +1780,27 @@ class GameEngine:
         
         print(f"\n{Fore.CYAN}🚀 Starting Interactive Simulation{Style.RESET_ALL}")
         
-        auto_mode = False
-        
-        while self.run_simulation_step():
-            if not auto_mode:
-                user_input = input("\nPress Enter for next step (or command): ").strip().lower()
-                
-                if user_input == 'q':
-                    print("Simulation terminated by user.")
-                    break
-                elif user_input == 'auto':
-                    auto_mode = True
-                    print("Switching to auto mode...")
-            else:
-                time.sleep(1)  # Auto delay
+        if self.simulation_mode in ('async', 'lifelong'):
+            # Async / lifelong: auto-run with live display
+            print(f"{Fore.CYAN}{'Async' if self.simulation_mode == 'async' else 'Lifelong'} mode: running automatically with live display...{Style.RESET_ALL}")
+            while self.run_simulation_step():
+                pass
+            # Wait for any in-flight background negotiations to finish
+            self._drain_pending_negotiations()
+            self._close_async_display()
+        else:
+            auto_mode = False
+            while self.run_simulation_step():
+                if not auto_mode:
+                    user_input = input("\nPress Enter for next step (or command): ").strip().lower()
+                    if user_input == 'q':
+                        print("Simulation terminated by user.")
+                        break
+                    elif user_input == 'auto':
+                        auto_mode = True
+                        print("Switching to auto mode...")
+                else:
+                    time.sleep(1)  # Auto delay
         
         # Save log when simulation ends
         result = self.save_simulation_log()
@@ -1197,4 +1810,5 @@ class GameEngine:
             log_path, metrics = result
             self._display_performance_metrics(metrics)
         
-        print(f"\n{Fore.GREEN}Simulation completed in {self.current_turn} turns!{Style.RESET_ALL}")
+        mode_label = f"{self._async_tick} ticks" if self.simulation_mode in ('async', 'lifelong') else f"{self.current_turn} turns"
+        print(f"\n{Fore.GREEN}Simulation completed in {mode_label}!{Style.RESET_ALL}")

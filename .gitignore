@@ -33,7 +33,3 @@ ENV/
 .idea/
 *.swp
 *.swo
-
-# Logs
-logs/*.log
-*.log
