@@ -36,6 +36,9 @@ from src.logging import UnifiedLogger
 init(autoreset=True)
 load_dotenv()
 
+# Delay between simulation turns to reflect realistic agent movement time
+AGENT_MOVEMENT_DELAY_SECONDS = 0.3
+
 # Configuration for benchmark runs
 @dataclass
 class BenchmarkConfig:
@@ -533,12 +536,13 @@ def run_single_round(
         
         start_time = time.time()
         
-        # Run simulation loop
+        # Run simulation loop with 300ms delay per turn to reflect realistic agent movement time
         while game_engine.run_simulation_step():
             # Check for stop request
             if game_engine.stop_requested:
                 status = 'timeout'
                 break
+            time.sleep(AGENT_MOVEMENT_DELAY_SECONDS)
         
         elapsed = time.time() - start_time
         
