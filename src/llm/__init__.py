@@ -19,6 +19,7 @@ class OpenRouterClient:
         self.provider_order = self._parse_provider_order()
         self.reasoning_enabled = os.getenv('OPENROUTER_REASONING_ENABLED', 'false').lower() == 'true'
         self.reasoning_exclude = os.getenv('OPENROUTER_REASONING_EXCLUDE', 'false').lower() == 'true'
+        self.reasoning_effort = os.getenv('OPENROUTER_REASONING_EFFORT', 'medium').lower()
         
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -76,12 +77,14 @@ class OpenRouterClient:
             }
         
         # Add reasoning configuration if enabled
-        if self.reasoning_enabled or self.reasoning_exclude:
+        if self.reasoning_enabled or self.reasoning_exclude or self.reasoning_effort or self.reasoning_max_tokens:
             payload["reasoning"] = {}
             if self.reasoning_enabled:
                 payload["reasoning"]["enabled"] = True
             if self.reasoning_exclude:
                 payload["reasoning"]["exclude"] = True
+            if self.reasoning_effort:
+                payload["reasoning"]["effort"] = self.reasoning_effort
         
         # Add any additional kwargs
         payload.update(kwargs)
