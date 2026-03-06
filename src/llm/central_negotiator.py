@@ -6,6 +6,7 @@ Uses powerful model for complex reasoning and negotiation with iterative refinem
 import json
 import os
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple, Optional, Callable
 from datetime import datetime
 from ..llm import OpenRouterClient
@@ -280,40 +281,51 @@ class CentralNegotiator:
 
         validation_results = {}
         map_state = conflict_data.get('map_state', {})
-        
-        for agent_id, validator_func in agent_validators.items():
+
+        def _validate_single(agent_id: int, validator_func: Callable) -> Tuple[int, Dict]:
             agent_id_str = str(agent_id)
             agent_action = plan.get(agent_id_str)
-            
+
             if not agent_action:
-                validation_results[agent_id] = {
+                return agent_id, {
                     "valid": False,
                     "reason": "No action provided for this agent",
                     "alternative": None
                 }
-                continue
-            
+
             try:
-                # Call validator with correct parameter names: agent_id, proposed_action, current_state (map_state)
                 result = validator_func(
                     agent_id=agent_id,
                     proposed_action=agent_action,
-                    current_state=map_state  # map_state is the current_state parameter name expected by validator
+                    current_state=map_state
                 )
-                
-                validation_results[agent_id] = {
+                return agent_id, {
                     "valid": result.get("valid", False),
                     "reason": result.get("reason", "Validation failed"),
                     "alternative": result.get("alternative")
                 }
             except Exception as e:
                 logger.error(f"Validation error for agent {agent_id}: {str(e)}")
-                validation_results[agent_id] = {
+                return agent_id, {
                     "valid": False,
                     "reason": f"Validation error: {str(e)}",
                     "alternative": None
                 }
-        
+
+        num_agents = len(agent_validators)
+        max_workers = min(num_agents, 32)
+        print(f"   ⚡ Running parallel validation for {num_agents} agent(s) ({max_workers} workers)...")
+        logger.info(f"Starting parallel validation for {num_agents} agents with {max_workers} workers")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_validate_single, agent_id, validator_func): agent_id
+                for agent_id, validator_func in agent_validators.items()
+            }
+            for future in as_completed(futures):
+                agent_id, result = future.result()
+                validation_results[agent_id] = result
+
         return validation_results
     
     # Build feedback summary from rejected agents for refinement
