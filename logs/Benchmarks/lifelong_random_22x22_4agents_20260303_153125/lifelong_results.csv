@@ -1,0 +1,2 @@
+Round,Status,TotalTasks,Throughput_tasks_per_s,Throughput_tasks_per_turn,TotalTurns,TotalNegotiations,CollisionRate,TotalTokens,TokensPerTask,AvgResolutionTime_ms,Duration_s
+1,completed,51,0.1639,0.0616,828,11,0.014,65240,1279.22,31771.47,310.41

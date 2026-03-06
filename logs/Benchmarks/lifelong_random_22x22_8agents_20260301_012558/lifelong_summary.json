@@ -1,0 +1,47 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-03-01T01:28:58.875048",
+    "layout_name": "random_22x22",
+    "config": {
+      "num_agents": 8,
+      "num_rounds": 1,
+      "duration_seconds": 120,
+      "seed": 42,
+      "spatial_hints_enabled": true
+    },
+    "mode": "lifelong"
+  },
+  "overall_results": {
+    "total_rounds": 1,
+    "completed_rounds": 1,
+    "failed_rounds": 0
+  },
+  "average_metrics": {
+    "avg_tasks_per_round": 22.0,
+    "avg_throughput_tasks_per_second": 0.1221,
+    "avg_throughput_tasks_per_turn": 0.0675,
+    "avg_turns_per_round": 326.0,
+    "avg_negotiations_per_round": 14.0,
+    "avg_collision_rate": 0.04,
+    "total_tokens_used": 81081,
+    "avg_tokens_per_round": 81081.0,
+    "avg_tokens_per_task": 3685.5,
+    "avg_resolution_time_ms": 30328.92
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "completed",
+      "total_tasks_completed": 22,
+      "throughput_tasks_per_second": 0.1221,
+      "throughput_tasks_per_turn": 0.0675,
+      "total_turns": 326,
+      "total_negotiations": 14,
+      "collision_rate": 0.04,
+      "total_tokens_used": 81081,
+      "tokens_per_task": 3685.5,
+      "avg_conflict_resolution_time_ms": 30328.92,
+      "duration_seconds": 179.45
+    }
+  ]
+}
