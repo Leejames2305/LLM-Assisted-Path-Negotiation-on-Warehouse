@@ -47,6 +47,7 @@ class BenchmarkConfig:
     time_limit_seconds: int
     seed: int
     spatial_hints_enabled: bool
+    difficulty: float = 0.0
     
     @classmethod
     def from_env(cls) -> 'BenchmarkConfig':
@@ -56,7 +57,8 @@ class BenchmarkConfig:
             num_rounds=int(os.getenv('BENCHMARK_NUM_ROUNDS', '5')),
             time_limit_seconds=int(os.getenv('BENCHMARK_TIME_LIMIT_SECONDS', '300')),
             seed=int(os.getenv('BENCHMARK_SEED', '42')),
-            spatial_hints_enabled=os.getenv('BENCHMARK_SPATIAL_HINTS_ENABLED', 'true').lower() == 'true'
+            spatial_hints_enabled=os.getenv('BENCHMARK_SPATIAL_HINTS_ENABLED', 'true').lower() == 'true',
+            difficulty=float(os.getenv('BENCHMARK_DIFFICULTY', '0.0'))
         )
 
 # Results from a single benchmark round
@@ -508,6 +510,7 @@ def run_single_round(
         # Configure for benchmark mode
         game_engine.timeout_seconds = config.time_limit_seconds
         game_engine.silent_mode = False  # Keep output visible for now
+        game_engine.difficulty = config.difficulty
         
         # Configure spatial hints
         game_engine.central_negotiator.set_spatial_hints(config.spatial_hints_enabled)
@@ -1389,6 +1392,22 @@ def main():
             print(f"{Fore.RED}❌ Invalid number of rounds ({config.num_rounds}). Must be >= 1.{Style.RESET_ALL}")
             return
 
+        # Difficulty selection for turn-based benchmark
+        print(f"\n{Fore.CYAN}Select difficulty (goal alteration at turns 15, 30 and 50):{Style.RESET_ALL}")
+        print(f"  0. None — no goal alteration (default)")
+        print(f"  1. Easy — 25% of remaining goals altered randomly")
+        print(f"  2. Hard — 50% of remaining goals altered randomly")
+        diff_input = input(f"\n{Fore.CYAN}Difficulty (0/1/2, default 0): {Style.RESET_ALL}").strip()
+        if diff_input == '1':
+            config.difficulty = 0.25
+            print(f"{Fore.GREEN}✅ Difficulty: Easy (25% goal alteration){Style.RESET_ALL}")
+        elif diff_input == '2':
+            config.difficulty = 0.5
+            print(f"{Fore.GREEN}✅ Difficulty: Hard (50% goal alteration){Style.RESET_ALL}")
+        else:
+            config.difficulty = 0.0
+            print(f"{Fore.GREEN}✅ Difficulty: None (no goal alteration){Style.RESET_ALL}")
+
     # Select layout or generate random map
     print(f"\n{Fore.CYAN}Choose layout source:{Style.RESET_ALL}")
     print(f"  1. Select existing layout")
@@ -1419,6 +1438,9 @@ def main():
     else:
         print(f"   Time Limit: {config.time_limit_seconds}s/round")
     print(f"   Seed: {config.seed}")
+    if not is_lifelong and not is_async:
+        difficulty_label = {0.0: 'None', 0.25: 'Easy (25%)', 0.5: 'Hard (50%)'}.get(config.difficulty, str(config.difficulty))
+        print(f"   Difficulty: {difficulty_label}")
 
     confirm = input(f"\n{Fore.CYAN}Start benchmark? (Y/n): {Style.RESET_ALL}").strip().lower()
     if confirm == 'n':
