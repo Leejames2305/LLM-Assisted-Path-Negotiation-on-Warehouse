@@ -92,6 +92,22 @@ def main():
             game_engine.simulation_mode = 'turn_based'
             print(f"{Fore.GREEN}✅ Mode: Turn-based{Style.RESET_ALL}")
 
+            # Difficulty selection only applies to Turn-based mode
+            print(f"\n{Fore.CYAN}Select difficulty (goal alteration at turns 15, 30 and 50):{Style.RESET_ALL}")
+            print(f"  0. None — no goal alteration (default)")
+            print(f"  1. Easy — 25% of remaining goals altered randomly")
+            print(f"  2. Hard — 50% of remaining goals altered randomly")
+            diff_input = input(f"\n{Fore.CYAN}Difficulty (0/1/2, default 0): {Style.RESET_ALL}").strip()
+            if diff_input == '1':
+                game_engine.difficulty = 0.25
+                print(f"{Fore.GREEN}✅ Difficulty: Easy (25% goal alteration){Style.RESET_ALL}")
+            elif diff_input == '2':
+                game_engine.difficulty = 0.5
+                print(f"{Fore.GREEN}✅ Difficulty: Hard (50% goal alteration){Style.RESET_ALL}")
+            else:
+                game_engine.difficulty = 0.0
+                print(f"{Fore.GREEN}✅ Difficulty: None (no goal alteration){Style.RESET_ALL}")
+
         game_engine.run_interactive_simulation()
         
     except KeyboardInterrupt:

@@ -72,6 +72,10 @@ class GameEngine:
         # Simulation mode: 'turn_based' (default), 'async', or 'lifelong'
         self.simulation_mode = 'turn_based'
 
+        # Difficulty level for turn-based mode: 0.0 (none), 0.25 (easy), 0.5 (hard)
+        # Controls the fraction of remaining goals randomly relocated at turns 15, 30, and 50
+        self.difficulty: float = 0.0
+
         # Async mode: agents blocked waiting for LLM resolution
         self._pending_resolution_agents: set = set()
 
@@ -150,6 +154,7 @@ class GameEngine:
             self.logger.initialize({
                 'type': 'interactive_simulation',
                 'simulation_mode': self.simulation_mode,
+                'difficulty': self.difficulty,
                 'map_size': [self.warehouse_map.width, self.warehouse_map.height],
                 'grid': self.warehouse_map.grid.tolist(),
                 'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
@@ -297,6 +302,91 @@ class GameEngine:
                     self.agent_failed_move_history[agent_id] = []
                 print(f"🔄 Agent {agent_id}: Reset failure count and move history after deadlock negotiation")
     
+    def _apply_difficulty_goal_alteration(self):
+        """Alter a fraction of remaining goals in place at turns 15, 30, and 50."""
+        if self.difficulty == 0.0:
+            return
+
+        # Find agents whose delivery target has not yet been completed
+        remaining_agent_ids = [
+            agent_id for agent_id in self.agents
+            if self.warehouse_map.agent_goals.get(agent_id) in self.warehouse_map.targets
+        ]
+
+        if not remaining_agent_ids:
+            return
+
+        # Ensure at least one goal is altered when difficulty is non-zero
+        num_to_alter = max(1, int(len(remaining_agent_ids) * self.difficulty))
+        num_to_alter = min(num_to_alter, len(remaining_agent_ids))
+
+        selected_ids = random.sample(remaining_agent_ids, num_to_alter)
+
+        if not self.silent_mode:
+            print(f"\n{Fore.MAGENTA}⚡ DIFFICULTY EVENT (Turn {self.current_turn + 1}): "
+                  f"Altering {num_to_alter}/{len(remaining_agent_ids)} remaining goals "
+                  f"(difficulty={self.difficulty}){Style.RESET_ALL}")
+
+        # Build occupied set to avoid placing new targets on existing entities
+        occupied: set = set()
+        for pos in self.warehouse_map.agents.values():
+            occupied.add(pos)
+        for pos in self.warehouse_map.boxes.values():
+            occupied.add(pos)
+        for pos in self.warehouse_map.targets.values():
+            occupied.add(pos)
+
+        for agent_id in selected_ids:
+            target_id = self.warehouse_map.agent_goals[agent_id]
+            old_target_pos = self.warehouse_map.targets[target_id]
+
+            # Free the old target position only when no agent or box currently occupies it,
+            # so subsequent iterations may reuse the cell without creating overlapping entities.
+            agent_positions = set(self.warehouse_map.agents.values())
+            box_positions = set(self.warehouse_map.boxes.values())
+            if old_target_pos not in agent_positions and old_target_pos not in box_positions:
+                occupied.discard(old_target_pos)
+
+            available = [
+                (x, y)
+                for y in range(self.warehouse_map.height)
+                for x in range(self.warehouse_map.width)
+                if self.warehouse_map.grid[y, x] != CellType.WALL.value
+                and (x, y) not in occupied
+            ]
+
+            if not available:
+                if not self.silent_mode:
+                    print(f"  ⚠️  Agent {agent_id}: No available positions for goal alteration, skipping")
+                occupied.add(old_target_pos)
+                continue
+
+            new_target_pos = random.choice(available)
+            occupied.add(new_target_pos)
+
+            # Update grid: clear old target marker, place new one
+            old_x, old_y = old_target_pos
+            new_x, new_y = new_target_pos
+            if self.warehouse_map.grid[old_y, old_x] == CellType.TARGET.value:
+                self.warehouse_map.grid[old_y, old_x] = CellType.EMPTY.value
+            self.warehouse_map.grid[new_y, new_x] = CellType.TARGET.value
+
+            # Update the targets dictionary
+            self.warehouse_map.targets[target_id] = new_target_pos
+
+            # Redirect the agent if it is currently carrying its box toward the old target
+            agent = self.agents[agent_id]
+            if agent.carrying_box and agent.target_position == old_target_pos:
+                agent.set_target(new_target_pos)
+                agent.planned_path = []
+                if hasattr(agent, '_has_negotiated_path'):
+                    agent._has_negotiated_path = False
+                if not self.silent_mode:
+                    print(f"  🎯 Agent {agent_id}: Goal redirected {old_target_pos} → {new_target_pos} (currently delivering)")
+            else:
+                if not self.silent_mode:
+                    print(f"  🎯 Agent {agent_id}: Goal altered {old_target_pos} → {new_target_pos}")
+
     # Run one step of the simulation — dispatches to mode-specific implementation
     def run_simulation_step(self) -> bool:
         if self.simulation_mode in ('async', 'lifelong'):
@@ -322,6 +412,10 @@ class GameEngine:
         
         if not self.silent_mode:
             print(f"\n{Fore.YELLOW}=== TURN {self.current_turn + 1} ==={Style.RESET_ALL}")
+        
+        # Apply difficulty goal alteration at turns 15, 30, and 50
+        if (self.current_turn + 1) in {15, 30, 50}:
+            self._apply_difficulty_goal_alteration()
         
         # Update all agents for new turn
         for agent in self.agents.values():

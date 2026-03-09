@@ -26,6 +26,7 @@ If no file is provided, will prompt to select from available logs.
 
 import json
 import os
+import re
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -35,6 +36,9 @@ import numpy as np
 from bisect import bisect_right
 from datetime import datetime
 import argparse
+
+# Human-readable labels for the difficulty setting stored in simulation logs
+_DIFF_LABELS = {0.0: 'None', 0.25: 'Easy (25%)', 0.5: 'Hard (50%)'}
 
 class SimulationVisualizer:
     def __init__(self, log_file_path):
@@ -57,6 +61,8 @@ class SimulationVisualizer:
             print(f"🔢 Total turns: {len(self.sim_data.get('turns', []))}")
             summary = self.sim_data.get('summary', {})
             print(f"⚔️  Negotiation turns: {summary.get('negotiation_turns', 'N/A')}")
+            difficulty = self.sim_data['scenario'].get('difficulty', 0.0)
+            print(f"⚡ Difficulty: {_DIFF_LABELS.get(difficulty, str(difficulty))}")
             
         except Exception as e:
             print(f"❌ Error loading simulation data: {e}")
@@ -523,6 +529,10 @@ class SimulationVisualizer:
         stats_text = []
         stats_text.append(f"Turn {turn_data['turn']}")
         stats_text.append(f"Type: {turn_data['type'].title()}")
+        # Show difficulty setting
+        _diff = self.sim_data['scenario'].get('difficulty', 0.0)
+        if _diff:
+            stats_text.append(f"Difficulty: {_DIFF_LABELS.get(_diff, str(_diff))}")
         stats_text.append("")
         
         # Agent statistics
@@ -698,7 +708,8 @@ class AsyncVisualizer:
         print(f"✅ Loaded async simulation: {self.total_frames} frames, "
               f"{len(self.agent_paths)} agents, "
               f"{len(self.negotiation_events)} negotiation events")
-
+        _diff = self.scenario.get('difficulty', 0.0)
+        print(f"⚡ Difficulty: {_DIFF_LABELS.get(_diff, str(_diff))}")
     # ------------------------------------------------------------------
     def _setup_visualization(self) -> None:
         map_w = min(20, max(8, self.width * 0.6))
@@ -958,6 +969,12 @@ class AsyncVisualizer:
         lines = [
             f"Frame: {frame}/{self.total_frames - 1}",
             f"Mode: async",
+        ]
+        # Show difficulty if set
+        _diff = self.scenario.get('difficulty', 0.0)
+        if _diff:
+            lines.append(f"Difficulty: {_DIFF_LABELS.get(_diff, str(_diff))}")
+        lines += [
             "",
             "Agent positions:",
         ]
@@ -1028,18 +1045,34 @@ def select_log_file():
     
     print("📁 Available simulation logs:")
     for i, log_file in enumerate(log_files, 1):
-        # Extract timestamp from filename (support both formats)
         basename = os.path.basename(log_file)
-        timestamp_str = basename.replace("simulation_log_", "").replace("sim_log_", "").replace(".json", "")
+        # Strip known prefixes and extension to isolate the timestamp portion
+        stem = basename
+        for prefix in ("sim_log_", "simulation_log_"):
+            if stem.startswith(prefix):
+                stem = stem[len(prefix):]
+                break
+        stem = stem.replace(".json", "")
+
+        # Detect difficulty tag (e.g. "d025_20250101_120000" → tag "d025", ts "20250101_120000")
+        diff_label = ""
+        _m = re.match(r'^(d\d{3})_(.+)$', stem)
+        if _m:
+            try:
+                diff_val = int(_m.group(1)[1:]) / 100
+                stem = _m.group(2)  # remainder is the timestamp
+                diff_label = f" [difficulty={diff_val}]"
+            except (ValueError, IndexError):
+                pass
+
         try:
-            timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+            timestamp = datetime.strptime(stem, "%Y%m%d_%H%M%S")
             formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        except:
-            formatted_time = timestamp_str
-        
-        # Mark format type
+        except Exception:
+            formatted_time = stem
+
         format_type = "unified" if basename.startswith("sim_log_") else "legacy"
-        print(f"   {i}. {basename} ({formatted_time}) [{format_type}]")
+        print(f"   {i}. {basename} ({formatted_time}) [{format_type}]{diff_label}")
     
     while True:
         try:
