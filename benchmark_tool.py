@@ -52,13 +52,13 @@ class BenchmarkConfig:
     @classmethod
     def from_env(cls) -> 'BenchmarkConfig':
         # Load configuration from environment variables
+        # Note: difficulty is not read from env; it is always prompted interactively
         return cls(
             num_agents=int(os.getenv('BENCHMARK_NUM_AGENTS', '2')),
             num_rounds=int(os.getenv('BENCHMARK_NUM_ROUNDS', '5')),
             time_limit_seconds=int(os.getenv('BENCHMARK_TIME_LIMIT_SECONDS', '300')),
             seed=int(os.getenv('BENCHMARK_SEED', '42')),
             spatial_hints_enabled=os.getenv('BENCHMARK_SPATIAL_HINTS_ENABLED', 'true').lower() == 'true',
-            difficulty=float(os.getenv('BENCHMARK_DIFFICULTY', '0.0'))
         )
 
 # Results from a single benchmark round

@@ -340,8 +340,12 @@ class GameEngine:
             target_id = self.warehouse_map.agent_goals[agent_id]
             old_target_pos = self.warehouse_map.targets[target_id]
 
-            # Free the old target position so subsequent agents may use it
-            occupied.discard(old_target_pos)
+            # Free the old target position only when no agent or box currently occupies it,
+            # so subsequent iterations may reuse the cell without creating overlapping entities.
+            agent_positions = set(self.warehouse_map.agents.values())
+            box_positions = set(self.warehouse_map.boxes.values())
+            if old_target_pos not in agent_positions and old_target_pos not in box_positions:
+                occupied.discard(old_target_pos)
 
             available = [
                 (x, y)

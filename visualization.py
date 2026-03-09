@@ -1048,7 +1048,7 @@ def select_log_file():
         basename = os.path.basename(log_file)
         # Strip known prefixes and extension to isolate the timestamp portion
         stem = basename
-        for prefix in ("emergency_sim_log_", "sim_log_", "simulation_log_"):
+        for prefix in ("sim_log_", "simulation_log_"):
             if stem.startswith(prefix):
                 stem = stem[len(prefix):]
                 break
