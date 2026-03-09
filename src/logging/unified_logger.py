@@ -84,6 +84,7 @@ class UnifiedLogger:
         self.log_data['scenario'] = {
             'type': scenario_data.get('type', 'simulation'),
             'simulation_mode': mode,
+            'difficulty': scenario_data.get('difficulty', 0.0),
             'map_size': scenario_data.get('map_size', [0, 0]),
             'grid': scenario_data.get('grid', []),
             'initial_agents': self._to_json_safe(scenario_data.get('initial_agents', {})),
@@ -225,10 +226,15 @@ class UnifiedLogger:
                 return None
             self.log_data['summary'] = self._compute_turnbased_summary(performance_metrics)
         
-        # Generate filename
+        # Generate filename, embedding difficulty tag for turn-based logs
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         prefix = "emergency_" if emergency else ""
-        filename = f"{prefix}sim_log_{timestamp}.json"
+        difficulty = self.log_data.get('scenario', {}).get('difficulty', 0.0)
+        if simulation_mode == 'turn_based' and difficulty > 0.0:
+            diff_tag = f"_d{int(difficulty * 100):03d}_"
+        else:
+            diff_tag = "_"
+        filename = f"{prefix}sim_log{diff_tag}{timestamp}.json"
         
         # Save to logs directory
         log_path = os.path.join("logs", filename)

@@ -154,6 +154,7 @@ class GameEngine:
             self.logger.initialize({
                 'type': 'interactive_simulation',
                 'simulation_mode': self.simulation_mode,
+                'difficulty': self.difficulty,
                 'map_size': [self.warehouse_map.width, self.warehouse_map.height],
                 'grid': self.warehouse_map.grid.tolist(),
                 'initial_agents': {str(k): list(v) for k, v in self.warehouse_map.agents.items()},
