@@ -1385,8 +1385,8 @@ def main():
         num_rounds = config.num_rounds
 
         # Validate turn-based configuration
-        if config.num_agents < 1 or config.num_agents > 10:
-            print(f"{Fore.RED}❌ Invalid number of agents ({config.num_agents}). Must be 1-10.{Style.RESET_ALL}")
+        if config.num_agents < 1 or config.num_agents > 32:
+            print(f"{Fore.RED}❌ Invalid number of agents ({config.num_agents}). Must be 1-32.{Style.RESET_ALL}")
             return
         if config.num_rounds < 1:
             print(f"{Fore.RED}❌ Invalid number of rounds ({config.num_rounds}). Must be >= 1.{Style.RESET_ALL}")

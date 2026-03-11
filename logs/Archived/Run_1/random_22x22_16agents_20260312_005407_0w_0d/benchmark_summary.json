@@ -1,0 +1,73 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-03-12T01:23:02.704872",
+    "layout_name": "random_22x22",
+    "config": {
+      "num_agents": 16,
+      "num_rounds": 3,
+      "time_limit_seconds": 600,
+      "seed": 42,
+      "spatial_hints_enabled": true,
+      "difficulty": 0.0
+    }
+  },
+  "overall_results": {
+    "total_rounds": 3,
+    "successful_rounds": 1,
+    "timeout_rounds": 2,
+    "failed_rounds": 0,
+    "success_rate": 33.33333333333333
+  },
+  "average_metrics": {
+    "avg_csr": 33.333333333333336,
+    "avg_makespan_seconds": 577.0833333333334,
+    "avg_collision_rate": 1.3523333333333334,
+    "avg_path_efficiency": 100.0,
+    "total_tokens_used": 226229,
+    "avg_tokens_per_round": 75409.66666666667,
+    "avg_resolution_time_ms": 108124.45666666667,
+    "avg_turns_per_round": 30.0,
+    "avg_negotiations_per_round": 5.333333333333333
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 659.36,
+      "collision_rate": 2.286,
+      "path_efficiency": 100,
+      "total_tokens_used": 92283,
+      "avg_conflict_resolution_time_ms": 93875.02,
+      "total_turns": 7,
+      "total_negotiations": 7,
+      "total_collisions": 16
+    },
+    {
+      "round_num": 2,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 450.77,
+      "collision_rate": 0.104,
+      "path_efficiency": 100,
+      "total_tokens_used": 59053,
+      "avg_conflict_resolution_time_ms": 106659.76,
+      "total_turns": 77,
+      "total_negotiations": 4,
+      "total_collisions": 8
+    },
+    {
+      "round_num": 3,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 621.12,
+      "collision_rate": 1.667,
+      "path_efficiency": 100,
+      "total_tokens_used": 74893,
+      "avg_conflict_resolution_time_ms": 123838.59,
+      "total_turns": 6,
+      "total_negotiations": 5,
+      "total_collisions": 10
+    }
+  ]
+}
