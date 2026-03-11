@@ -1,0 +1,73 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-03-11T22:14:55.484862",
+    "layout_name": "random_22x22",
+    "config": {
+      "num_agents": 8,
+      "num_rounds": 3,
+      "time_limit_seconds": 600,
+      "seed": 42,
+      "spatial_hints_enabled": true,
+      "difficulty": 0.25
+    }
+  },
+  "overall_results": {
+    "total_rounds": 3,
+    "successful_rounds": 2,
+    "timeout_rounds": 1,
+    "failed_rounds": 0,
+    "success_rate": 66.66666666666666
+  },
+  "average_metrics": {
+    "avg_csr": 66.66666666666667,
+    "avg_makespan_seconds": 286.17,
+    "avg_collision_rate": 0.3183333333333333,
+    "avg_path_efficiency": 100.0,
+    "total_tokens_used": 119692,
+    "avg_tokens_per_round": 39897.333333333336,
+    "avg_resolution_time_ms": 87620.40999999999,
+    "avg_turns_per_round": 31.333333333333332,
+    "avg_negotiations_per_round": 2.6666666666666665
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 640.31,
+      "collision_rate": 0.857,
+      "path_efficiency": 100,
+      "total_tokens_used": 89982,
+      "avg_conflict_resolution_time_ms": 127622.56,
+      "total_turns": 7,
+      "total_negotiations": 5,
+      "total_collisions": 6
+    },
+    {
+      "round_num": 2,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 122.11,
+      "collision_rate": 0.061,
+      "path_efficiency": 100,
+      "total_tokens_used": 16704,
+      "avg_conflict_resolution_time_ms": 55915.79,
+      "total_turns": 33,
+      "total_negotiations": 2,
+      "total_collisions": 2
+    },
+    {
+      "round_num": 3,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 96.09,
+      "collision_rate": 0.037,
+      "path_efficiency": 100,
+      "total_tokens_used": 13006,
+      "avg_conflict_resolution_time_ms": 79322.88,
+      "total_turns": 54,
+      "total_negotiations": 1,
+      "total_collisions": 2
+    }
+  ]
+}

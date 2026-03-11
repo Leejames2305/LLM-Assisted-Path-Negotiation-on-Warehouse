@@ -69,8 +69,8 @@ class AgentValidator:
         ]
         
         # Adjust parameters for reasoning models - use lower token limits for efficiency
-        max_tokens = 50000 if self.is_reasoning_model else 50000
-        temperature = 0.2 if self.is_reasoning_model else 0.3  # Very low temperature for consistent validation
+        max_tokens = 5000 if self.is_reasoning_model else 12800
+        temperature = 0.5 if self.is_reasoning_model else 0.5  # Very low temperature for consistent validation
         
         response = self.client.send_request(
             model=self.model,
@@ -148,8 +148,8 @@ class AgentValidator:
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=50000,
-            temperature=0.3
+            max_tokens=12800,
+            temperature=0.5
         )
         
         if response:
