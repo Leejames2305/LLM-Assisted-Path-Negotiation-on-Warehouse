@@ -607,25 +607,19 @@ class SimulationVisualizer:
                 stats_text.append(f"Approvals: {hmas2_metrics.get('approvals', 0)}")
                 stats_text.append(f"Rejections: {hmas2_metrics.get('rejections', 0)}")
         
-        # Display statistics text with overflow protection
-        y_pos = 0.97
-        line_spacing = 0.038  # Slightly more compact spacing
-        truncated = False
-        
-        for i, line in enumerate(stats_text):
-            # Check if we're approaching the bottom boundary
-            if y_pos < 0.03:
-                # Add truncation indicator and stop
-                self.ax_stats.text(0.05, y_pos, "... (truncated)", 
-                                 transform=self.ax_stats.transAxes, 
-                                 fontsize=8, verticalalignment='top',
-                                 fontstyle='italic', color='gray')
-                truncated = True
-                break
-            
-            self.ax_stats.text(0.05, y_pos, line, transform=self.ax_stats.transAxes, 
-                             fontsize=8, verticalalignment='top')
-            y_pos -= line_spacing
+        # Dynamically adjust font size and line spacing to fit all lines without truncation
+        n_lines = len(stats_text)
+        # 96 ≈ 8pt × 12 lines, giving a practical cap; clamp to [6, 8] to stay readable
+        font_size = max(6, min(8, int(96 / max(n_lines, 1))))
+        y_top = 0.97
+        y_bottom = 0.02
+        step = (y_top - y_bottom) / max(n_lines, 1)
+
+        y_pos = y_top
+        for line in stats_text:
+            self.ax_stats.text(0.05, y_pos, line, transform=self.ax_stats.transAxes,
+                             fontsize=font_size, verticalalignment='top')
+            y_pos -= step
     
     def show(self):
         """Show the visualization"""
@@ -704,14 +698,6 @@ class AsyncVisualizer:
         for ev in self.negotiation_events:
             tick = ev.get('tick', 0)
             self.neg_by_frame.setdefault(tick, []).append(ev)
-
-        # Precompute cumulative negotiation counts per frame tick for O(1) title updates
-        sorted_neg_ticks = sorted(self.neg_by_frame.keys())
-        self._cumulative_neg: list = []  # list of (tick, cumulative_count)
-        running = 0
-        for tick in sorted_neg_ticks:
-            running += len(self.neg_by_frame[tick])
-            self._cumulative_neg.append((tick, running))
 
         print(f"✅ Loaded async simulation: {self.total_frames} frames, "
               f"{len(self.agent_paths)} agents, "
@@ -838,17 +824,10 @@ class AsyncVisualizer:
 
             sim_mode = self.scenario.get('simulation_mode', 'async')
             title = f"{'Lifelong' if sim_mode == 'lifelong' else 'Async'} Path Replay — Frame {frame}/{self.total_frames - 1}"
-            # Count negotiations that have occurred up to and including the current frame
-            # Uses precomputed cumulative list for O(log N) lookup instead of O(N)
-            neg_so_far = 0
-            if self._cumulative_neg:
-                idx = bisect_right(self._cumulative_neg, (frame, float('inf'))) - 1
-                if idx >= 0:
-                    neg_so_far = self._cumulative_neg[idx][1]
-            total_neg = len(self.negotiation_events)
+            # Show how many agents are currently negotiating at this frame
+            negotiating_now = len(frozen_ids)
             if active_neg:
-                title += f"  ⚔️  Negotiation ({len(active_neg)})"
-            title += f"  |  Negotiations: {neg_so_far}/{total_neg}"
+                title += f"  ⚔️  Negotiating: {negotiating_now} agent{'s' if negotiating_now != 1 else ''}"
             ax.set_title(title, fontsize=10)
 
             # Draw walls
