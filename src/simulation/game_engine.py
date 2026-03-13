@@ -841,6 +841,8 @@ class GameEngine:
             import matplotlib
             import matplotlib.pyplot as plt
             import matplotlib.patches as patches
+            # Close any existing figure with the same name so each round starts clean.
+            plt.close('Async Simulation — Live View')
             plt.ion()
             self._async_fig, self._async_ax = plt.subplots(
                 figsize=(max(8, self.width * 0.6), max(6, self.height * 0.6)),

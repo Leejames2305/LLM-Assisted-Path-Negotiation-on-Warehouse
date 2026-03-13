@@ -607,25 +607,19 @@ class SimulationVisualizer:
                 stats_text.append(f"Approvals: {hmas2_metrics.get('approvals', 0)}")
                 stats_text.append(f"Rejections: {hmas2_metrics.get('rejections', 0)}")
         
-        # Display statistics text with overflow protection
-        y_pos = 0.97
-        line_spacing = 0.038  # Slightly more compact spacing
-        truncated = False
-        
-        for i, line in enumerate(stats_text):
-            # Check if we're approaching the bottom boundary
-            if y_pos < 0.03:
-                # Add truncation indicator and stop
-                self.ax_stats.text(0.05, y_pos, "... (truncated)", 
-                                 transform=self.ax_stats.transAxes, 
-                                 fontsize=8, verticalalignment='top',
-                                 fontstyle='italic', color='gray')
-                truncated = True
-                break
-            
-            self.ax_stats.text(0.05, y_pos, line, transform=self.ax_stats.transAxes, 
-                             fontsize=8, verticalalignment='top')
-            y_pos -= line_spacing
+        # Dynamically adjust font size and line spacing to fit all lines without truncation
+        n_lines = len(stats_text)
+        # 96 ≈ 8pt × 12 lines, giving a practical cap; clamp to [6, 8] to stay readable
+        font_size = max(6, min(8, int(96 / max(n_lines, 1))))
+        y_top = 0.97
+        y_bottom = 0.02
+        step = (y_top - y_bottom) / max(n_lines, 1)
+
+        y_pos = y_top
+        for line in stats_text:
+            self.ax_stats.text(0.05, y_pos, line, transform=self.ax_stats.transAxes,
+                             fontsize=font_size, verticalalignment='top')
+            y_pos -= step
     
     def show(self):
         """Show the visualization"""
@@ -699,11 +693,36 @@ class AsyncVisualizer:
                 if cell == '#':
                     self.walls.add((x, y))
 
-        # Index negotiation events by the path-index at which they occurred
+        # Index negotiation events by every frame the agents were frozen.
+        # Events are logged at the *resolution* tick, but agents may have been
+        # frozen for many frames before that.  Scan each conflicting agent's
+        # path backwards from the resolution index to find the freeze start.
         self.neg_by_frame: dict = {}
         for ev in self.negotiation_events:
             tick = ev.get('tick', 0)
-            self.neg_by_frame.setdefault(tick, []).append(ev)
+            conflicting = ev.get('conflicting_agents', [])
+            path_indices = ev.get('agent_path_indices', {})
+
+            # Find the earliest frame any conflicting agent was frozen
+            freeze_start = tick
+            for aid in conflicting:
+                path = self.agent_paths.get(str(aid), [])
+                res_idx = path_indices.get(str(aid), tick)
+                if 0 <= res_idx < len(path):
+                    frozen_pos = tuple(path[res_idx]) if isinstance(path[res_idx], list) else path[res_idx]
+                    local_start = res_idx
+                    for i in range(res_idx - 1, -1, -1):
+                        pos = tuple(path[i]) if isinstance(path[i], list) else path[i]
+                        if pos != frozen_pos:
+                            local_start = i + 1
+                            break
+                    else:
+                        local_start = 0
+                    freeze_start = min(freeze_start, local_start)
+
+            # Register this event for every frame in [freeze_start, tick]
+            for f in range(freeze_start, tick + 1):
+                self.neg_by_frame.setdefault(f, []).append(ev)
 
         print(f"✅ Loaded async simulation: {self.total_frames} frames, "
               f"{len(self.agent_paths)} agents, "
@@ -828,9 +847,12 @@ class AsyncVisualizer:
             for ev in active_neg:
                 frozen_ids.update(str(a) for a in ev.get('conflicting_agents', []))
 
-            title = f"Async Path Replay — Frame {frame}/{self.total_frames - 1}"
+            sim_mode = self.scenario.get('simulation_mode', 'async')
+            title = f"{'Lifelong' if sim_mode == 'lifelong' else 'Async'} Path Replay — Frame {frame}/{self.total_frames - 1}"
+            # Show how many agents are currently negotiating at this frame
+            negotiating_now = len(frozen_ids)
             if active_neg:
-                title += f"  ⚔️  Negotiation ({len(active_neg)})"
+                title += f"  ⚔️  Negotiating: {negotiating_now} agent{'s' if negotiating_now != 1 else ''}"
             ax.set_title(title, fontsize=10)
 
             # Draw walls
@@ -848,8 +870,16 @@ class AsyncVisualizer:
                     idx = bisect_right(keys, frame) - 1
                     if idx >= 0:
                         active = assignments[idx]
-                        if active.get('box_pos'):
-                            active_boxes[aid] = active['box_pos']
+                        box_pos = active.get('box_pos')
+                        if box_pos:
+                            # Only show the box if the agent has not yet visited its position
+                            # (i.e. has not picked it up in this task)
+                            task_path_start = active.get('path_index', 0)
+                            agent_path = self.agent_paths.get(aid, [])
+                            end = min(frame + 1, len(agent_path))
+                            segment = agent_path[task_path_start:end]
+                            if not any(pos == box_pos for pos in segment):
+                                active_boxes[aid] = box_pos
                         if active.get('target_pos'):
                             active_targets[aid] = active['target_pos']
             else:
@@ -968,7 +998,7 @@ class AsyncVisualizer:
 
         lines = [
             f"Frame: {frame}/{self.total_frames - 1}",
-            f"Mode: async",
+            f"Mode: {self.scenario.get('simulation_mode', 'async')}",
         ]
         # Show difficulty if set
         _diff = self.scenario.get('difficulty', 0.0)
@@ -995,20 +1025,34 @@ class AsyncVisualizer:
         lines.append("")
         if self.summary:
             lines.append("Summary:")
-            lines.append(f"  Total ticks: {self.summary.get('total_ticks', 'N/A')}")
+            sim_mode = self.scenario.get('simulation_mode', 'async')
+            # 'total_ticks' is the async key; lifelong uses 'total_turns'
+            total_ticks = self.summary.get('total_ticks')
+            if total_ticks is None:
+                total_ticks = self.summary.get('total_turns', 'N/A')
+            ticks_label = "Total turns" if sim_mode == 'lifelong' else "Total ticks"
+            lines.append(f"  {ticks_label}: {total_ticks}")
             lines.append(f"  Tasks done: {self.summary.get('total_tasks_completed', 'N/A')}")
-            lines.append(f"  Negotiations: {self.summary.get('total_negotiation_events', 'N/A')}")
+            # 'total_negotiation_events' is the async key; lifelong nests it under 'negotiation_metrics'
+            neg_count = self.summary.get('total_negotiation_events')
+            if neg_count is None:
+                neg_count = self.summary.get('negotiation_metrics', {}).get('total_negotiations', 'N/A')
+            lines.append(f"  Negotiations: {neg_count}")
 
-        y = 0.97
+        # Dynamically adjust font size and line spacing to fit all lines without truncation
+        n_lines = len(lines)
+        # 96 ≈ 8pt × 12 lines, giving a practical cap; clamp to [6, 8] to stay readable
+        font_size = max(6, min(8, int(96 / max(n_lines, 1))))
+        # Top/bottom padding in axes fraction; distribute remaining space across lines
+        y_top = 0.97
+        y_bottom = 0.02
+        step = (y_top - y_bottom) / max(n_lines, 1)
+
+        y = y_top
         for line in lines:
-            if y < 0.02:
-                ax.text(0.05, y, "… (truncated)",
-                        transform=ax.transAxes, fontsize=7,
-                        verticalalignment='top', color='gray')
-                break
             ax.text(0.05, y, line, transform=ax.transAxes,
-                    fontsize=8, verticalalignment='top')
-            y -= 0.038
+                    fontsize=font_size, verticalalignment='top')
+            y -= step
 
     # ------------------------------------------------------------------
     def show(self) -> None:
