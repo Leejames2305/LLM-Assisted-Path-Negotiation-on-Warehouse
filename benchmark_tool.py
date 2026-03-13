@@ -651,6 +651,8 @@ def save_benchmark_summary(
     
     # Calculate averages (excluding failed rounds for some metrics)
     valid_results = [r for r in results if r.status != 'failed']
+    # Exclude timeout rounds from makespan calculation to prevent outliers
+    success_results = [r for r in results if r.status == 'success']
     
     def safe_avg(values: List[float]) -> float:
         return sum(values) / len(values) if values else 0.0
@@ -670,7 +672,7 @@ def save_benchmark_summary(
         },
         'average_metrics': {
             'avg_csr': safe_avg([r.cooperative_success_rate for r in results]),
-            'avg_makespan_seconds': safe_avg([r.makespan_seconds for r in valid_results]),
+            'avg_makespan_seconds': safe_avg([r.makespan_seconds for r in success_results]),
             'avg_collision_rate': safe_avg([r.collision_rate for r in valid_results]),
             'avg_path_efficiency': safe_avg([r.path_efficiency for r in valid_results]),
             'total_tokens_used': sum(r.total_tokens_used for r in results),
