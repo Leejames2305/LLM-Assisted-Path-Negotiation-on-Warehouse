@@ -705,6 +705,14 @@ class AsyncVisualizer:
             tick = ev.get('tick', 0)
             self.neg_by_frame.setdefault(tick, []).append(ev)
 
+        # Precompute cumulative negotiation counts per frame tick for O(1) title updates
+        sorted_neg_ticks = sorted(self.neg_by_frame.keys())
+        self._cumulative_neg: list = []  # list of (tick, cumulative_count)
+        running = 0
+        for tick in sorted_neg_ticks:
+            running += len(self.neg_by_frame[tick])
+            self._cumulative_neg.append((tick, running))
+
         print(f"✅ Loaded async simulation: {self.total_frames} frames, "
               f"{len(self.agent_paths)} agents, "
               f"{len(self.negotiation_events)} negotiation events")
@@ -830,8 +838,17 @@ class AsyncVisualizer:
 
             sim_mode = self.scenario.get('simulation_mode', 'async')
             title = f"{'Lifelong' if sim_mode == 'lifelong' else 'Async'} Path Replay — Frame {frame}/{self.total_frames - 1}"
+            # Count negotiations that have occurred up to and including the current frame
+            # Uses precomputed cumulative list for O(log N) lookup instead of O(N)
+            neg_so_far = 0
+            if self._cumulative_neg:
+                idx = bisect_right(self._cumulative_neg, (frame, float('inf'))) - 1
+                if idx >= 0:
+                    neg_so_far = self._cumulative_neg[idx][1]
+            total_neg = len(self.negotiation_events)
             if active_neg:
                 title += f"  ⚔️  Negotiation ({len(active_neg)})"
+            title += f"  |  Negotiations: {neg_so_far}/{total_neg}"
             ax.set_title(title, fontsize=10)
 
             # Draw walls
@@ -1004,11 +1021,13 @@ class AsyncVisualizer:
         lines.append("")
         if self.summary:
             lines.append("Summary:")
+            sim_mode = self.scenario.get('simulation_mode', 'async')
             # 'total_ticks' is the async key; lifelong uses 'total_turns'
             total_ticks = self.summary.get('total_ticks')
             if total_ticks is None:
                 total_ticks = self.summary.get('total_turns', 'N/A')
-            lines.append(f"  Total ticks: {total_ticks}")
+            ticks_label = "Total turns" if sim_mode == 'lifelong' else "Total ticks"
+            lines.append(f"  {ticks_label}: {total_ticks}")
             lines.append(f"  Tasks done: {self.summary.get('total_tasks_completed', 'N/A')}")
             # 'total_negotiation_events' is the async key; lifelong nests it under 'negotiation_metrics'
             neg_count = self.summary.get('total_negotiation_events')
@@ -1016,16 +1035,20 @@ class AsyncVisualizer:
                 neg_count = self.summary.get('negotiation_metrics', {}).get('total_negotiations', 'N/A')
             lines.append(f"  Negotiations: {neg_count}")
 
-        y = 0.97
+        # Dynamically adjust font size and line spacing to fit all lines without truncation
+        n_lines = len(lines)
+        # 96 ≈ 8pt × 12 lines, giving a practical cap; clamp to [6, 8] to stay readable
+        font_size = max(6, min(8, int(96 / max(n_lines, 1))))
+        # Top/bottom padding in axes fraction; distribute remaining space across lines
+        y_top = 0.97
+        y_bottom = 0.02
+        step = (y_top - y_bottom) / max(n_lines, 1)
+
+        y = y_top
         for line in lines:
-            if y < 0.02:
-                ax.text(0.05, y, "… (truncated)",
-                        transform=ax.transAxes, fontsize=7,
-                        verticalalignment='top', color='gray')
-                break
             ax.text(0.05, y, line, transform=ax.transAxes,
-                    fontsize=8, verticalalignment='top')
-            y -= 0.038
+                    fontsize=font_size, verticalalignment='top')
+            y -= step
 
     # ------------------------------------------------------------------
     def show(self) -> None:
