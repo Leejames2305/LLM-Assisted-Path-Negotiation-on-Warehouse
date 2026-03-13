@@ -727,6 +727,10 @@ class CentralNegotiator:
             
             # Close any open string literal
             if in_string:
+                # If we ended inside a string with a dangling backslash escape,
+                # drop the backslash so the added quote properly terminates the string.
+                if escape_next and fixed_json and fixed_json[-1] == '\\':
+                    fixed_json = fixed_json[:-1]
                 fixed_json += '"'
             
             # Remove a trailing comma that may now be exposed before the close tokens
@@ -741,7 +745,7 @@ class CentralNegotiator:
             print(f"🔧 Recovery successful: {fixed_json[:100]}...")
             return result
             
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError:
             return None
     
     # Create resolution specifically for deadlock breaking
