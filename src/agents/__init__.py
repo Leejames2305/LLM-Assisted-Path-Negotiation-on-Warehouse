@@ -133,9 +133,9 @@ class RobotAgent:
             # the agent actually advances to the next cell rather than "waiting".
             if path and len(path) > 0:
                 next_pos = tuple(path[0])
-                # If the first step is the current position, advance to the second step.
-                if next_pos == self.position and len(path) > 1:
-                    next_pos = tuple(path[1])
+                # [Disabled as it might be intentional by LLM] If the first step is the current position, advance to the second step.
+                # if next_pos == self.position and len(path) > 1:
+                #     next_pos = tuple(path[1])
                 success, failure_reason = self.move_to(next_pos, map_state)
                 if not success and failure_reason:
                     print(f"   ⚠️ Action execution failed: {failure_reason}")

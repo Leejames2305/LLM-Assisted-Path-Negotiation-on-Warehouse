@@ -240,8 +240,8 @@ class CentralNegotiator:
         ]
         
         # Adjust parameters for reasoning models
-        max_tokens = 12800 if self.is_reasoning_model else 6400
-        temperature = 0.5 if self.is_reasoning_model else 0.5
+        max_tokens = 64000 if self.is_reasoning_model else 12800
+        temperature = 0.5 if self.is_reasoning_model else 0.4
         
         response = self.client.send_request(
             model=self.model,
@@ -376,7 +376,7 @@ class CentralNegotiator:
                     self.client.create_system_message(system_prompt),
                     self.client.create_user_message(refinement_prompt)
                 ],
-                max_tokens=12800,
+                max_tokens=64000,
                 temperature=0.5
             )
             
@@ -479,10 +479,10 @@ class CentralNegotiator:
 
         RESPONSE FORMAT:
         {{
-            "resolution": "reroute|priority|wait",
+            "resolution": "reroute|wait",
             "agent_actions": {{
-                "0": {{"action": "move|wait", "path": [[x,y], [x,y], ...], "priority": 1}},
-                "1": {{"action": "move|wait", "path": [[x,y], [x,y], ...], "priority": 2}}
+                "0": {{"action": "move|wait", "path": [[x,y], [x,y], ...]}},
+                "1": {{"action": "move|wait", "path": [[x,y], [x,y], ...]}}
             }},
             "reasoning": "Detailed explanation of how rejections were addressed"
         }}
@@ -516,10 +516,10 @@ class CentralNegotiator:
         
         RESPONSE FORMAT:
         {
-            "resolution": "priority|reroute|wait",
+            "resolution": "reroute|wait",
             "agent_actions": {
-                "0": {"action": "move|wait", "path": [[x,y]...], "priority": 1},
-                "1": {"action": "move|wait", "path": [[x,y], [x,y], ...], "priority": 2}
+                "0": {"action": "move|wait", "path": [[x,y]...]},
+                "1": {"action": "move|wait", "path": [[x,y], [x,y], ...]}
             },
             "reasoning": "Brief explanation of chosen strategy"
         }
@@ -539,23 +539,15 @@ class CentralNegotiator:
         3. Each agent must have a complete path from current position to target
         4. Provide full paths in all refined actions
         5. Prioritize addressing the specific rejection reasons provided
-
-        RESOLUTION STRATEGIES:
-        1. "priority": Assign movement priorities
-           Use when: Agents have non-overlapping goals but conflicting immediate paths
-           How it works:
-           - Higher priority agents move first
-           - Lower priority agents wait in current position
-           - Example: Agent 0 moves through narrow passage first, while Agent 1 waits until passage clear
         
-        2. "reroute": Use empty spaces in Map for temporary positioning
+        1. "reroute": Use empty spaces in Map for temporary positioning
             Use when: The map has available space for strategic repositioning/waiting
             How it works:
            - Guide the agents to temporary safe spots, then resume original path after waiting specific number of rounds
            - Example: Agent 0 moves to nearby empty cell to let Agent 1 pass, then continues
            - Prefer this strategies when wiggle spaces are available. Analyze the map layout to find creative positioning opportunities!
         
-        3. "wait": Conservative pause
+        2. "wait": Conservative pause
             Use when: Pause the agent due to complex conflicts or lack of space
             How it works:
            - The selected agent waits at original position until next turn
@@ -571,9 +563,9 @@ class CentralNegotiator:
 
         RESPONSE FORMAT:
         {
-            "resolution": "priority|reroute|wait",
+            "resolution": "reroute|wait",
             "agent_actions": {
-                "0": {"action": "move|wait", "path": [[x,y]...], "priority": 1}
+                "0": {"action": "move|wait", "path": [[x,y]...]}
             },
             "reasoning": "Brief explanation of chosen strategy"
         }
@@ -633,7 +625,7 @@ class CentralNegotiator:
                     
                     description += "\n💡 REROUTING STRATEGIES:\n"
                     description += "- 'reroute': Use wiggle rooms for temporary waiting/bypassing\n"
-                    description += "- 'priority': Assign movement priority + others wait in place\n"
+                    # description += "- 'priority': Assign movement priority + others wait in place\n"
                     description += "- 'wait': Pause the agent due to complex conflicts or lack of space\n"
             
             # Add map visualization (always show, but wiggle rooms only if hints enabled)
@@ -683,9 +675,9 @@ class CentralNegotiator:
         
         # If all parsing fails, create a simple resolution
         return {
-            "resolution": "priority",
+            "resolution": "wait",
             "agent_actions": {},
-            "reasoning": "Failed to parse LLM response, using default priority resolution"
+            "reasoning": "Failed LLM response, default to wait"
         }
     
     # Attempt to recover from truncated JSON
@@ -836,7 +828,7 @@ class CentralNegotiator:
         response = self.client.send_request(
             model=self.model,
             messages=messages,
-            max_tokens=12800,
+            max_tokens=64000,
             temperature=0.5
         )
         
