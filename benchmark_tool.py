@@ -964,6 +964,9 @@ def run_lifelong_round(
         elapsed = time.time() - start_time
         print(f"\n{Fore.GREEN}✅ Lifelong round {round_num} completed after {elapsed:.1f}s{Style.RESET_ALL}")
 
+        # Close the live display so the next round starts with a clean window
+        game_engine._close_async_display()
+
         metrics = game_engine.calculate_performance_metrics()
         tokens = metrics.get('total_tokens_used', 0)
         tasks = game_engine.successful_deliveries
