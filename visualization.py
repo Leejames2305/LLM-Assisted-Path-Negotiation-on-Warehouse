@@ -693,11 +693,36 @@ class AsyncVisualizer:
                 if cell == '#':
                     self.walls.add((x, y))
 
-        # Index negotiation events by the path-index at which they occurred
+        # Index negotiation events by every frame the agents were frozen.
+        # Events are logged at the *resolution* tick, but agents may have been
+        # frozen for many frames before that.  Scan each conflicting agent's
+        # path backwards from the resolution index to find the freeze start.
         self.neg_by_frame: dict = {}
         for ev in self.negotiation_events:
             tick = ev.get('tick', 0)
-            self.neg_by_frame.setdefault(tick, []).append(ev)
+            conflicting = ev.get('conflicting_agents', [])
+            path_indices = ev.get('agent_path_indices', {})
+
+            # Find the earliest frame any conflicting agent was frozen
+            freeze_start = tick
+            for aid in conflicting:
+                path = self.agent_paths.get(str(aid), [])
+                res_idx = path_indices.get(str(aid), tick)
+                if 0 <= res_idx < len(path):
+                    frozen_pos = tuple(path[res_idx]) if isinstance(path[res_idx], list) else path[res_idx]
+                    local_start = res_idx
+                    for i in range(res_idx - 1, -1, -1):
+                        pos = tuple(path[i]) if isinstance(path[i], list) else path[i]
+                        if pos != frozen_pos:
+                            local_start = i + 1
+                            break
+                    else:
+                        local_start = 0
+                    freeze_start = min(freeze_start, local_start)
+
+            # Register this event for every frame in [freeze_start, tick]
+            for f in range(freeze_start, tick + 1):
+                self.neg_by_frame.setdefault(f, []).append(ev)
 
         print(f"✅ Loaded async simulation: {self.total_frames} frames, "
               f"{len(self.agent_paths)} agents, "
