@@ -828,7 +828,8 @@ class AsyncVisualizer:
             for ev in active_neg:
                 frozen_ids.update(str(a) for a in ev.get('conflicting_agents', []))
 
-            title = f"Async Path Replay — Frame {frame}/{self.total_frames - 1}"
+            sim_mode = self.scenario.get('simulation_mode', 'async')
+            title = f"{'Lifelong' if sim_mode == 'lifelong' else 'Async'} Path Replay — Frame {frame}/{self.total_frames - 1}"
             if active_neg:
                 title += f"  ⚔️  Negotiation ({len(active_neg)})"
             ax.set_title(title, fontsize=10)
@@ -848,8 +849,16 @@ class AsyncVisualizer:
                     idx = bisect_right(keys, frame) - 1
                     if idx >= 0:
                         active = assignments[idx]
-                        if active.get('box_pos'):
-                            active_boxes[aid] = active['box_pos']
+                        box_pos = active.get('box_pos')
+                        if box_pos:
+                            # Only show the box if the agent has not yet visited its position
+                            # (i.e. has not picked it up in this task)
+                            task_path_start = active.get('path_index', 0)
+                            agent_path = self.agent_paths.get(aid, [])
+                            end = min(frame + 1, len(agent_path))
+                            segment = agent_path[task_path_start:end]
+                            if not any(pos == box_pos for pos in segment):
+                                active_boxes[aid] = box_pos
                         if active.get('target_pos'):
                             active_targets[aid] = active['target_pos']
             else:
@@ -968,7 +977,7 @@ class AsyncVisualizer:
 
         lines = [
             f"Frame: {frame}/{self.total_frames - 1}",
-            f"Mode: async",
+            f"Mode: {self.scenario.get('simulation_mode', 'async')}",
         ]
         # Show difficulty if set
         _diff = self.scenario.get('difficulty', 0.0)
@@ -995,9 +1004,17 @@ class AsyncVisualizer:
         lines.append("")
         if self.summary:
             lines.append("Summary:")
-            lines.append(f"  Total ticks: {self.summary.get('total_ticks', 'N/A')}")
+            # 'total_ticks' is the async key; lifelong uses 'total_turns'
+            total_ticks = self.summary.get('total_ticks')
+            if total_ticks is None:
+                total_ticks = self.summary.get('total_turns', 'N/A')
+            lines.append(f"  Total ticks: {total_ticks}")
             lines.append(f"  Tasks done: {self.summary.get('total_tasks_completed', 'N/A')}")
-            lines.append(f"  Negotiations: {self.summary.get('total_negotiation_events', 'N/A')}")
+            # 'total_negotiation_events' is the async key; lifelong nests it under 'negotiation_metrics'
+            neg_count = self.summary.get('total_negotiation_events')
+            if neg_count is None:
+                neg_count = self.summary.get('negotiation_metrics', {}).get('total_negotiations', 'N/A')
+            lines.append(f"  Negotiations: {neg_count}")
 
         y = 0.97
         for line in lines:
