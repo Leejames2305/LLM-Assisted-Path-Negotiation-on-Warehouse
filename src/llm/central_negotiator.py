@@ -675,11 +675,16 @@ class CentralNegotiator:
             try:
                 result = json.loads(json_str)
                 return result
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 # Try to recover from truncated JSON
                 recovered_json = self._attempt_json_recovery(json_str)
                 if recovered_json:
                     return recovered_json
+        elif start_idx != -1:
+            # No closing brace found at all — still attempt recovery on the full JSON portion
+            recovered_json = self._attempt_json_recovery(response[start_idx:])
+            if recovered_json:
+                return recovered_json
         
         # If all parsing fails, create a simple resolution
         return {
@@ -688,28 +693,57 @@ class CentralNegotiator:
             "reasoning": "Failed to parse LLM response, using default priority resolution"
         }
     
-    # Attempt to recover from truncated JSON
+    # Attempt to recover from truncated JSON using stack-based bracket matching.
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
         try:
-            # Common truncation fixes
             fixed_json = json_str.rstrip()
             
-            # If it ends with a comma, remove it and add closing brace
-            if fixed_json.endswith(','):
-                fixed_json = fixed_json.rstrip(',') + '}'
+            # Walk the string to find every unclosed { and [, tracking string context
+            # so bracket characters inside string values are ignored.
+            # Mismatched closers (e.g. `{]`) are intentionally skipped to stay safe.
+            stack = []
+            in_string = False
+            escape_next = False
             
-            # If it doesn't end with closing brace, add one
-            elif not fixed_json.endswith('}'):
-                fixed_json += '}'
+            for char in fixed_json:
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if char == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if char == '{':
+                    stack.append('}')
+                elif char == '[':
+                    stack.append(']')
+                elif char in ('}', ']'):
+                    if stack and stack[-1] == char:
+                        stack.pop()
             
-            # Try to fix incomplete string values
-            if fixed_json.count('"') % 2 != 0:
+            # Close any open string literal
+            if in_string:
+                # If we ended inside a string with a dangling backslash escape,
+                # drop the backslash so the added quote properly terminates the string.
+                if escape_next and fixed_json and fixed_json[-1] == '\\':
+                    fixed_json = fixed_json[:-1]
                 fixed_json += '"'
-                if not fixed_json.endswith('}'):
-                    fixed_json += '}'
             
-            print(f"🔧 Recovery attempt: {fixed_json[:100]}...")
-            return json.loads(fixed_json)
+            # Remove a trailing comma that may now be exposed before the close tokens
+            stripped = fixed_json.rstrip()
+            if stripped and stripped[-1] == ',':
+                fixed_json = stripped[:-1]
+            
+            # Append the closing tokens in reverse push order
+            fixed_json += ''.join(reversed(stack))
+            
+            result = json.loads(fixed_json)
+            print(f"🔧 Recovery successful: {fixed_json[:100]}...")
+            return result
             
         except json.JSONDecodeError:
             return None
