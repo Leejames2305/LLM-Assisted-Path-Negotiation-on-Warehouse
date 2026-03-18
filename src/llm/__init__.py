@@ -103,7 +103,8 @@ class OpenRouterClient:
         while attempt <= self.max_retries:
             try:
                 if attempt > 0:
-                    delay = self.retry_backoff ** attempt
+                    # Use retry_backoff as the initial delay and apply exponential (doubling) backoff
+                    delay = self.retry_backoff * (2 ** (attempt - 1))
                     print(f"⏳ Retry attempt {attempt}/{self.max_retries} — waiting {delay:.1f}s before retrying...")
                     time.sleep(delay)
                 
@@ -124,17 +125,19 @@ class OpenRouterClient:
                         'total_tokens': data['usage'].get('total_tokens', 0)
                     }
                     
-                    # Update cumulative counters
+                    # Update cumulative counters when usage data is available
                     self.total_prompt_tokens += usage_data['prompt_tokens']
                     self.total_completion_tokens += usage_data['completion_tokens']
                     self.total_tokens_used += usage_data['total_tokens']
-                    self.request_count += 1
                     
                     print(f"📊 Tokens used: {usage_data['total_tokens']} (prompt: {usage_data['prompt_tokens']}, completion: {usage_data['completion_tokens']})")
                 
                 # Log provider information if available
                 if 'provider' in data:
                     print(f"✅ Response from provider: {data['provider']}")
+                
+                # Count every successful request, regardless of whether usage data is present
+                self.request_count += 1
                 
                 if finish_reason == 'length':
                     print("⚠️  WARNING: Response truncated due to token limit!")
