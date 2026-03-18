@@ -670,13 +670,10 @@ class CentralNegotiator:
         # Try to extract JSON from response
         response = response.strip()
 
-        # Strategy 1: Find the last occurrence of "agent_actions" and scan backwards
-        # to locate the enclosing top-level JSON object.  This correctly handles
-        # reasoning-heavy responses (e.g. grok, claude-thinking) where the model
-        # emits chain-of-thought text or multiple draft JSON blocks before the
-        # final answer — using rfind ensures we always pick the last (authoritative)
-        # block rather than the first (draft) one.
-        result = self._extract_last_json_with_key(response, "agent_actions")
+        # Strategy 1: Extract all valid JSON objects and choose the best
+        # negotiation-shaped candidate. This avoids false positives from
+        # inline examples/drafts in reasoning-heavy responses.
+        result = self._extract_best_negotiation_json(response)
         if result:
             return result
 
@@ -707,33 +704,102 @@ class CentralNegotiator:
             "reasoning": "Failed LLM response, default to wait"
         }
 
-    # Extract the last JSON object that contains a given key from a response string.
-    # Scanning from the last occurrence of the key backwards avoids picking up
-    # earlier draft JSON blocks that reasoning models often produce inline.
-    def _extract_last_json_with_key(self, response: str, key: str) -> Optional[Dict]:
-        key_pattern = f'"{key}"'
-        last_key_pos = response.rfind(key_pattern)
-        if last_key_pos == -1:
+    # Extract and score JSON candidates to pick the best negotiation object.
+    def _extract_best_negotiation_json(self, response: str) -> Optional[Dict]:
+        """Return the most likely negotiation payload from mixed LLM text.
+
+        Some models emit multiple JSON blocks (drafts/examples + final answer).
+        This parser extracts all top-level JSON objects and selects the best
+        candidate using `_score_negotiation_candidate`.
+        """
+        candidates: List[Dict] = []
+
+        depth = 0
+        start_idx = -1
+        in_string = False
+        escape_next = False
+
+        for idx, char in enumerate(response):
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == '\\' and in_string:
+                escape_next = True
+                continue
+
+            if char == '"':
+                in_string = not in_string
+                continue
+
+            if in_string:
+                continue
+
+            if char == '{':
+                if depth == 0:
+                    start_idx = idx
+                depth += 1
+            elif char == '}' and depth > 0:
+                depth -= 1
+                if depth == 0 and start_idx != -1:
+                    json_str = response[start_idx:idx + 1]
+                    try:
+                        parsed = json.loads(json_str)
+                        if isinstance(parsed, dict):
+                            candidates.append(parsed)
+                    except json.JSONDecodeError:
+                        recovered = self._attempt_json_recovery(json_str)
+                        if isinstance(recovered, dict):
+                            candidates.append(recovered)
+                    start_idx = -1
+
+        if not candidates:
             return None
 
-        # Scan backwards from the key position to find the opening '{' of the
-        # enclosing JSON object (the top-level brace that contains this key).
-        start = last_key_pos - 1
-        while start >= 0 and response[start] != '{':
-            start -= 1
-        if start < 0:
-            return None
+        best_candidate: Optional[Dict] = None
+        best_score = -1
 
-        # Use the last '}' in the response as the end boundary.
-        end = response.rfind('}') + 1
-        if end <= start:
-            return None
+        for candidate in candidates:
+            score = self._score_negotiation_candidate(candidate)
+            if score > best_score:
+                best_score = score
+                best_candidate = candidate
 
-        json_str = response[start:end]
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return self._attempt_json_recovery(json_str)
+        # Accept only candidates that look like a real negotiation payload.
+        if best_score > 0:
+            return best_candidate
+        return None
+
+    # Score how likely this JSON object is to be the intended negotiation payload.
+    def _score_negotiation_candidate(self, candidate: Dict) -> int:
+        """Score a parsed JSON object for negotiation suitability.
+
+        Scoring heuristics:
+        - +10 per numeric agent action key
+        - +2 if actions are under the expected `agent_actions` dict
+        - +3 if `resolution` exists
+        - +1 if `reasoning` exists
+        Higher score means the candidate is more likely to be the intended
+        final negotiation payload.
+        """
+        score = 0
+        action_count = 0
+
+        agent_actions = candidate.get("agent_actions")
+        if isinstance(agent_actions, dict):
+            action_count = sum(1 for k in agent_actions.keys() if str(k).isdigit())
+            score += 2  # shape bonus: explicit HMAS response format
+        else:
+            action_count = sum(1 for k in candidate.keys() if str(k).isdigit())
+
+        score += action_count * 10  # prefer richer action coverage
+
+        if "resolution" in candidate:
+            score += 3
+        if "reasoning" in candidate:
+            score += 1
+
+        return score
     
     # Attempt to recover from truncated JSON using stack-based bracket matching.
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
