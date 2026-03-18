@@ -5,10 +5,14 @@ OpenRouter API Client for LLM Communication
 import requests
 import json
 import os
+import time
 from typing import Dict, List, Optional, Tuple, Union
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# HTTP status codes that are transient and worth retrying
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 class OpenRouterClient:
     def __init__(self, api_key: Optional[str] = None):
@@ -20,6 +24,10 @@ class OpenRouterClient:
         self.reasoning_enabled = os.getenv('OPENROUTER_REASONING_ENABLED', 'false').lower() == 'true'
         self.reasoning_exclude = os.getenv('OPENROUTER_REASONING_EXCLUDE', 'false').lower() == 'true'
         self.reasoning_effort = os.getenv('OPENROUTER_REASONING_EFFORT', 'medium').lower()
+        
+        # Retry configuration — 3 attempts with 2× exponential backoff (2s, 4s, 8s)
+        self.max_retries = 3
+        self.retry_backoff = 2.0
         
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -57,7 +65,7 @@ class OpenRouterClient:
         self.total_completion_tokens = 0
         self.request_count = 0
     
-    # Send request to OpenRouter with advanced parameters
+    # Send request to OpenRouter with advanced parameters, retrying on transient errors
     def send_request(self, model: str, messages: List[Dict], max_tokens: int = 64000, temperature: float = 0.7, return_full_response: bool = False, **kwargs) -> Union[Optional[str], Tuple[Optional[str], Dict]]:
         if not self.api_key:
             raise ValueError("OpenRouter API key not found. Please set OPENROUTER_API_KEY in .env file")
@@ -91,64 +99,97 @@ class OpenRouterClient:
         
         usage_data = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
         
-        try:
-            print(f"📡 Sending request to {model}...")
-            
-            response = requests.post(self.base_url, headers=self.headers, data=json.dumps(payload), timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            content = data['choices'][0]['message']['content']
-            finish_reason = data['choices'][0].get('finish_reason', 'unknown')
-            
-            # Extract token usage from response
-            if 'usage' in data:
-                usage_data = {
-                    'prompt_tokens': data['usage'].get('prompt_tokens', 0),
-                    'completion_tokens': data['usage'].get('completion_tokens', 0),
-                    'total_tokens': data['usage'].get('total_tokens', 0)
-                }
+        attempt = 0
+        while attempt <= self.max_retries:
+            try:
+                if attempt > 0:
+                    delay = self.retry_backoff ** attempt
+                    print(f"⏳ Retry attempt {attempt}/{self.max_retries} — waiting {delay:.1f}s before retrying...")
+                    time.sleep(delay)
                 
-                # Update cumulative counters
-                self.total_prompt_tokens += usage_data['prompt_tokens']
-                self.total_completion_tokens += usage_data['completion_tokens']
-                self.total_tokens_used += usage_data['total_tokens']
-                self.request_count += 1
+                print(f"📡 Sending request to {model}...")
                 
-                print(f"📊 Tokens used: {usage_data['total_tokens']} (prompt: {usage_data['prompt_tokens']}, completion: {usage_data['completion_tokens']})")
+                response = requests.post(self.base_url, headers=self.headers, data=json.dumps(payload), timeout=30)
+                response.raise_for_status()
+                
+                data = response.json()
+                content = data['choices'][0]['message']['content']
+                finish_reason = data['choices'][0].get('finish_reason', 'unknown')
+                
+                # Extract token usage from response
+                if 'usage' in data:
+                    usage_data = {
+                        'prompt_tokens': data['usage'].get('prompt_tokens', 0),
+                        'completion_tokens': data['usage'].get('completion_tokens', 0),
+                        'total_tokens': data['usage'].get('total_tokens', 0)
+                    }
+                    
+                    # Update cumulative counters
+                    self.total_prompt_tokens += usage_data['prompt_tokens']
+                    self.total_completion_tokens += usage_data['completion_tokens']
+                    self.total_tokens_used += usage_data['total_tokens']
+                    self.request_count += 1
+                    
+                    print(f"📊 Tokens used: {usage_data['total_tokens']} (prompt: {usage_data['prompt_tokens']}, completion: {usage_data['completion_tokens']})")
+                
+                # Log provider information if available
+                if 'provider' in data:
+                    print(f"✅ Response from provider: {data['provider']}")
+                
+                if finish_reason == 'length':
+                    print("⚠️  WARNING: Response truncated due to token limit!")
+                
+                if return_full_response:
+                    return content, usage_data
+                return content
             
-            # Log provider information if available
-            if 'provider' in data:
-                print(f"✅ Response from provider: {data['provider']}")
+            except requests.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else None
+                self._log_request_error(e, e.response)
+                
+                # Retry on transient errors only
+                if status_code in _RETRYABLE_STATUS_CODES and attempt < self.max_retries:
+                    attempt += 1
+                    continue
+                
+                if return_full_response:
+                    return None, usage_data
+                return None
             
-            if finish_reason == 'length':
-                print("⚠️  WARNING: Response truncated due to token limit!")
+            except requests.RequestException as e:
+                self._log_request_error(e, getattr(e, 'response', None))
+                
+                # Retry on connection-level errors (timeouts, resets, etc.)
+                if attempt < self.max_retries:
+                    attempt += 1
+                    continue
+                
+                if return_full_response:
+                    return None, usage_data
+                return None
             
-            if return_full_response:
-                return content, usage_data
-            return content
-        
-        except requests.RequestException as e:
-            print(f"❌ Error making request to OpenRouter: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                try:
-                    error_details = e.response.json()
-                    print(f"🔍 Error details: {error_details}")
-                except:
-                    print(f"🔍 Response content: {e.response.text}")
-            if return_full_response:
-                return None, usage_data
-            return None
-        except KeyError as e:
-            print(f"Unexpected response format: {e}")
-            if return_full_response:
-                return None, usage_data
-            return None
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            if return_full_response:
-                return None, usage_data
-            return None
+            except KeyError as e:
+                # Non-retryable: malformed response structure — return immediately
+                print(f"Unexpected response format: {e}")
+                if return_full_response:
+                    return None, usage_data
+                return None
+            except Exception as e:
+                # Non-retryable: unexpected error — return immediately
+                print(f"Unexpected error: {e}")
+                if return_full_response:
+                    return None, usage_data
+                return None
+    
+    # Log an HTTP / connection error with optional response body details
+    def _log_request_error(self, e: Exception, response) -> None:
+        print(f"❌ Error making request to OpenRouter: {e}")
+        if response is not None:
+            try:
+                error_details = response.json()
+                print(f"🔍 Error details: {error_details}")
+            except Exception:
+                print(f"🔍 Response content: {response.text}")
     
     def create_system_message(self, content: str) -> Dict:
         return {"role": "system", "content": content}
