@@ -670,10 +670,9 @@ class CentralNegotiator:
         # Try to extract JSON from response
         response = response.strip()
 
-        # Strategy 1: Extract all valid JSON objects and choose the best
-        # negotiation-shaped candidate. This avoids false positives from
-        # inline examples/drafts in reasoning-heavy responses.
-        result = self._extract_best_negotiation_json(response)
+        # Strategy 1: Parse the first complete top-level JSON payload from
+        # the response. This avoids accidental merging with trailing examples.
+        result = self._extract_first_complete_json_payload(response)
         if result:
             return result
 
@@ -704,15 +703,9 @@ class CentralNegotiator:
             "reasoning": "Failed LLM response, default to wait"
         }
 
-    # Extract and score JSON candidates to pick the best negotiation object.
-    def _extract_best_negotiation_json(self, response: str) -> Optional[Dict]:
-        """Return the most likely negotiation payload from mixed LLM text.
-
-        Some models emit multiple JSON blocks (drafts/examples + final answer).
-        This parser extracts all top-level JSON objects and selects the best
-        candidate using `_score_negotiation_candidate`.
-        """
-        candidates: List[Dict] = []
+    # Extract the first complete top-level JSON payload from model output.
+    def _extract_first_complete_json_payload(self, response: str) -> Optional[Dict]:
+        """Return the first complete JSON object that looks like a plan payload."""
 
         depth = 0
         start_idx = -1
@@ -745,61 +738,21 @@ class CentralNegotiator:
                     json_str = response[start_idx:idx + 1]
                     try:
                         parsed = json.loads(json_str)
-                        if isinstance(parsed, dict):
-                            candidates.append(parsed)
+                        if isinstance(parsed, dict) and self._is_plan_payload(parsed):
+                            return parsed
                     except json.JSONDecodeError:
                         recovered = self._attempt_json_recovery(json_str)
-                        if isinstance(recovered, dict):
-                            candidates.append(recovered)
+                        if isinstance(recovered, dict) and self._is_plan_payload(recovered):
+                            return recovered
                     start_idx = -1
 
-        if not candidates:
-            return None
-
-        best_candidate: Optional[Dict] = None
-        best_score = -1
-
-        for candidate in candidates:
-            score = self._score_negotiation_candidate(candidate)
-            if score > best_score:
-                best_score = score
-                best_candidate = candidate
-
-        # Accept only candidates that look like a real negotiation payload.
-        if best_score > 0:
-            return best_candidate
         return None
 
-    # Score how likely this JSON object is to be the intended negotiation payload.
-    def _score_negotiation_candidate(self, candidate: Dict) -> int:
-        """Score a parsed JSON object for negotiation suitability.
-
-        Scoring heuristics:
-        - +10 per numeric agent action key
-        - +2 if actions are under the expected `agent_actions` dict
-        - +3 if `resolution` exists
-        - +1 if `reasoning` exists
-        Higher score means the candidate is more likely to be the intended
-        final negotiation payload.
-        """
-        score = 0
-        action_count = 0
-
-        agent_actions = candidate.get("agent_actions")
-        if isinstance(agent_actions, dict):
-            action_count = sum(1 for k in agent_actions.keys() if str(k).isdigit())
-            score += 2  # shape bonus: explicit HMAS response format
-        else:
-            action_count = sum(1 for k in candidate.keys() if str(k).isdigit())
-
-        score += action_count * 10  # prefer richer action coverage
-
-        if "resolution" in candidate:
-            score += 3
-        if "reasoning" in candidate:
-            score += 1
-
-        return score
+    # Check whether parsed JSON has expected plan structure.
+    def _is_plan_payload(self, payload: Dict) -> bool:
+        return isinstance(payload.get("agent_actions"), dict) or any(
+            str(k).isdigit() for k in payload.keys()
+        )
     
     # Attempt to recover from truncated JSON using stack-based bracket matching.
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
