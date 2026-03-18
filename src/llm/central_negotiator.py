@@ -670,13 +670,7 @@ class CentralNegotiator:
         # Try to extract JSON from response
         response = response.strip()
 
-        # Strategy 1: Parse the first complete top-level JSON payload from
-        # the response. This avoids accidental merging with trailing examples.
-        result = self._extract_first_complete_json_payload(response)
-        if result:
-            return result
-
-        # Strategy 2: Original approach — first '{' to last '}'
+        # first '{' to last '}'
         start_idx = response.find('{')
         end_idx = response.rfind('}') + 1
 
@@ -703,57 +697,6 @@ class CentralNegotiator:
             "reasoning": "Failed LLM response, default to wait"
         }
 
-    # Extract the first complete top-level JSON payload from model output.
-    def _extract_first_complete_json_payload(self, response: str) -> Optional[Dict]:
-        """Return the first complete JSON object that looks like a plan payload."""
-
-        depth = 0
-        start_idx = -1
-        in_string = False
-        escape_next = False
-
-        for idx, char in enumerate(response):
-            if escape_next:
-                escape_next = False
-                continue
-
-            if char == '\\' and in_string:
-                escape_next = True
-                continue
-
-            if char == '"':
-                in_string = not in_string
-                continue
-
-            if in_string:
-                continue
-
-            if char == '{':
-                if depth == 0:
-                    start_idx = idx
-                depth += 1
-            elif char == '}' and depth > 0:
-                depth -= 1
-                if depth == 0 and start_idx != -1:
-                    json_str = response[start_idx:idx + 1]
-                    try:
-                        parsed = json.loads(json_str)
-                        if isinstance(parsed, dict) and self._is_plan_payload(parsed):
-                            return parsed
-                    except json.JSONDecodeError:
-                        recovered = self._attempt_json_recovery(json_str)
-                        if isinstance(recovered, dict) and self._is_plan_payload(recovered):
-                            return recovered
-                    start_idx = -1
-
-        return None
-
-    # Check whether parsed JSON has expected plan structure.
-    def _is_plan_payload(self, payload: Dict) -> bool:
-        return isinstance(payload.get("agent_actions"), dict) or any(
-            str(k).isdigit() for k in payload.keys()
-        )
-    
     # Attempt to recover from truncated JSON using stack-based bracket matching.
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
         try:
