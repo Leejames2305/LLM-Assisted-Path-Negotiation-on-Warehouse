@@ -77,7 +77,7 @@ class OpenRouterClient:
             }
         
         # Add reasoning configuration if enabled
-        if self.reasoning_enabled or self.reasoning_exclude or self.reasoning_effort:
+        if self.reasoning_enabled:
             payload["reasoning"] = {}
             if self.reasoning_enabled:
                 payload["reasoning"]["enabled"] = True
