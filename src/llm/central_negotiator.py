@@ -477,14 +477,14 @@ class CentralNegotiator:
         4. No two agents can occupy the same cell at any point
         5. Provide full paths for all agents
 
-        RESPONSE FORMAT:
+        FEW-SHOT EXAMPLE:
         {{
-            "resolution": "reroute|wait",
+            "resolution": "reroute",
             "agent_actions": {{
-                "0": {{"action": "move|wait", "path": [[x,y], [x,y], ...]}},
-                "1": {{"action": "move|wait", "path": [[x,y], [x,y], ...]}}
+                "3": {{"action": "move", "path": [[5,5],[5,6],[4,6],[5,6],[5,7]]}},
+                "7": {{"action": "wait", "path": [[8,8],[8,8],[8,8],[8,9],[8,10]]}}
             }},
-            "reasoning": "Detailed explanation of how rejections were addressed"
+            "reasoning": "Reroute Agent 3 via wiggle (4,6) to let Agent 7 pass, then resume."
         }}
 
         Return ONLY valid JSON, no additional text.
@@ -496,32 +496,44 @@ class CentralNegotiator:
         return """You are an expert robot conflict resolver specializing in plan refinement.
 
         Your task is to refine a previously rejected multi-agent conflict resolution plan based on specific validator feedback.
+        Respond ONLY with valid JSON.
 
         CORE RULES:
         0. Origin (0,0) is at TOP-LEFT corner
         1. Only orthogonal adjacent moves (up, down, left, right)
         2. No two agents can occupy the same cell simultaneously
-        3. Each agent must have a complete path from current position to target
-        4. Provide full paths in all refined actions
-        5. Prioritize addressing the specific rejection reasons provided
+        3. Paths must ONLY go far enough to safely PASS all listed CONFLICT POINTS
+        4. Prioritize addressing the specific rejection reasons provided
+        5. When building any path, every step must NEVER be on # in the MAP LAYOUT
 
+        RESOLUTIONS:
+        1. "reroute": Use empty spaces in Map for temporary positioning
+            Use when: The map has available space for strategic repositioning/waiting
+            How it works:
+           - Guide the agents to temporary safe spots, then resume original path after waiting specific number of rounds
+           - Example: Agent 0 moves to nearby empty cell to let Agent 1 pass, then continues
+           - Prefer this strategies when wiggle spaces are available by analyzing the map layout to find creative positioning opportunities!
+        
+        2. "wait": Conservative pause
+            Use when: Pause the agent due to complex conflicts or lack of space
+            How it works:
+           - The selected agent waits at original position until next turn
+           - Example: Agent 0 wait, while Agent 1 reroute
+        
         REFINEMENT STRATEGY:
         - Analyze each rejection reason in depth
         - Identify the root cause of validation failures
         - Propose alternative routing or timed-waiting strategies
         - Maintain safety constraints: no collisions, valid moves only
 
-        OUTPUT REQUIREMENT:
-        Return ONLY valid JSON with no markdown formatting or text outside the JSON structure.
-        
-        RESPONSE FORMAT:
+        FEW-SHOT EXAMPLE:
         {
-            "resolution": "reroute|wait",
+            "resolution": "reroute",
             "agent_actions": {
-                "0": {"action": "move|wait", "path": [[x,y]...]},
-                "1": {"action": "move|wait", "path": [[x,y], [x,y], ...]}
+                "3": {"action": "move", "path": [[5,5],[5,6],[4,6],[5,6],[5,7]]},
+                "7": {"action": "wait", "path": [[8,8],[8,8],[8,8],[8,9],[8,10]]}
             },
-            "reasoning": "Brief explanation of chosen strategy"
+            "reasoning": "Reroute Agent 3 via wiggle (4,6) to let Agent 7 pass, then resume."
         }
         """
     
@@ -534,18 +546,20 @@ class CentralNegotiator:
         return """You are an expert robot conflict resolver. Respond ONLY with valid JSON.
 
         CORE RULES:
+        0. Origin (0,0) is at TOP-LEFT corner
         1. Only orthogonal adjacent moves (up, down, left, right)
         2. No two agents can occupy the same cell simultaneously
-        3. Each agent must have a complete path from current position to target
-        4. Provide full paths in all refined actions
-        5. Prioritize addressing the specific rejection reasons provided
+        3. Paths must ONLY go far enough to safely PASS all listed CONFLICT POINTS
+        4. Prioritize addressing the specific rejection reasons provided
+        5. When building any path, every step must NEVER be on # in the MAP LAYOUT
         
+        RESOLUTIONS:
         1. "reroute": Use empty spaces in Map for temporary positioning
             Use when: The map has available space for strategic repositioning/waiting
             How it works:
            - Guide the agents to temporary safe spots, then resume original path after waiting specific number of rounds
            - Example: Agent 0 moves to nearby empty cell to let Agent 1 pass, then continues
-           - Prefer this strategies when wiggle spaces are available. Analyze the map layout to find creative positioning opportunities!
+           - Prefer this strategies when wiggle spaces are available by analyzing the map layout to find creative positioning opportunities!
         
         2. "wait": Conservative pause
             Use when: Pause the agent due to complex conflicts or lack of space
@@ -561,13 +575,14 @@ class CentralNegotiator:
         - out_of_bounds: Move exceeded map boundaries - stay within bounds
         - not_adjacent: Move was diagonal or too far - ensure orthogonal moves only
 
-        RESPONSE FORMAT:
+        FEW-SHOT EXAMPLE:
         {
-            "resolution": "reroute|wait",
+            "resolution": "reroute",
             "agent_actions": {
-                "0": {"action": "move|wait", "path": [[x,y]...]}
+                "3": {"action": "move", "path": [[5,5],[5,6],[4,6],[5,6],[5,7]]},
+                "7": {"action": "wait", "path": [[8,8],[8,8],[8,8],[8,9],[8,10]]}
             },
-            "reasoning": "Brief explanation of chosen strategy"
+            "reasoning": "Reroute Agent 3 via wiggle (4,6) to let Agent 7 pass, then resume."
         }
         """
     
