@@ -256,12 +256,17 @@ class CentralNegotiator:
                 
                 # Handle different response formats:
                 # 1. If result has 'agent_actions' key, use it
-                # 2. If result has agent IDs as top-level keys (0, 1, etc.), use result as is
+                # 2. If result has agent IDs as top-level keys (any integer string), use result as is
                 # 3. Otherwise return empty
                 if 'agent_actions' in result:
-                    return result.get('agent_actions', {}), prompts_data
-                elif any(str(i) in result for i in range(10)):  # Check for agent IDs as keys
-                    return result, prompts_data
+                    raw = result.get('agent_actions', {})
+                    if not isinstance(raw, dict):
+                        raw = {}
+                    # Normalise keys to strings so validators can always do plan.get(str(id))
+                    return {str(k): v for k, v in raw.items()}, prompts_data
+                elif isinstance(result, dict) and any(str(k).isdigit() for k in result.keys()):
+                    # Normalise keys to strings
+                    return {str(k): v for k, v in result.items()}, prompts_data
                 else:
                     return {}, prompts_data
             except Exception as e:
@@ -282,15 +287,19 @@ class CentralNegotiator:
         validation_results = {}
         map_state = conflict_data.get('map_state', {})
 
+        # Normalise plan keys to strings once so all lookups use str(agent_id).
+        # This prevents mismatches when a fallback path builds the plan with int keys.
+        normalized_plan = {str(k): v for k, v in plan.items()}
+
         def _validate_single(agent_id: int, validator_func: Callable) -> Tuple[int, Dict]:
             agent_id_str = str(agent_id)
-            agent_action = plan.get(agent_id_str)
+            agent_action = normalized_plan.get(agent_id_str)
 
-            if not agent_action:
+            if agent_action is None:
                 return agent_id, {
                     "valid": False,
                     "reason": "No action provided for this agent",
-                    "alternative": None
+                    "alternative": {"action": "wait", "reason": "not_in_plan"}
                 }
 
             try:
@@ -382,15 +391,18 @@ class CentralNegotiator:
             
             if response:
                 refined_response = self._parse_negotiation_response(response)  # type: ignore
-                
+
                 # Handle different response formats (same as initial plan):
                 # 1. If response has 'agent_actions' key, use it
-                # 2. If response has agent IDs as top-level keys (0, 1, etc.), use response as is
+                # 2. If response has agent IDs as top-level keys (any integer string), use response as is
                 # 3. Otherwise return current plan as fallback
                 if 'agent_actions' in refined_response:
-                    refined_plan = refined_response.get("agent_actions", current_plan)
-                elif any(str(i) in refined_response for i in range(10)):  # Check for agent IDs as keys
-                    refined_plan = refined_response
+                    raw = refined_response.get("agent_actions", current_plan)
+                    if not isinstance(raw, dict):
+                        raw = current_plan
+                    refined_plan = {str(k): v for k, v in raw.items()}
+                elif isinstance(refined_response, dict) and any(str(k).isdigit() for k in refined_response.keys()):
+                    refined_plan = {str(k): v for k, v in refined_response.items()}
                 else:
                     refined_plan = current_plan
                 
@@ -657,11 +669,21 @@ class CentralNegotiator:
     def _parse_negotiation_response(self, response: str) -> Dict:
         # Try to extract JSON from response
         response = response.strip()
-        
-        # Look for JSON in the response
+
+        # Strategy 1: Find the last occurrence of "agent_actions" and scan backwards
+        # to locate the enclosing top-level JSON object.  This correctly handles
+        # reasoning-heavy responses (e.g. grok, claude-thinking) where the model
+        # emits chain-of-thought text or multiple draft JSON blocks before the
+        # final answer — using rfind ensures we always pick the last (authoritative)
+        # block rather than the first (draft) one.
+        result = self._extract_last_json_with_key(response, "agent_actions")
+        if result:
+            return result
+
+        # Strategy 2: Original approach — first '{' to last '}'
         start_idx = response.find('{')
         end_idx = response.rfind('}') + 1
-        
+
         if start_idx != -1 and end_idx > start_idx:
             json_str = response[start_idx:end_idx]
             try:
@@ -677,13 +699,41 @@ class CentralNegotiator:
             recovered_json = self._attempt_json_recovery(response[start_idx:])
             if recovered_json:
                 return recovered_json
-        
+
         # If all parsing fails, create a simple resolution
         return {
             "resolution": "wait",
             "agent_actions": {},
             "reasoning": "Failed LLM response, default to wait"
         }
+
+    # Extract the last JSON object that contains a given key from a response string.
+    # Scanning from the last occurrence of the key backwards avoids picking up
+    # earlier draft JSON blocks that reasoning models often produce inline.
+    def _extract_last_json_with_key(self, response: str, key: str) -> Optional[Dict]:
+        key_pattern = f'"{key}"'
+        last_key_pos = response.rfind(key_pattern)
+        if last_key_pos == -1:
+            return None
+
+        # Scan backwards from the key position to find the opening '{' of the
+        # enclosing JSON object (the top-level brace that contains this key).
+        start = last_key_pos - 1
+        while start >= 0 and response[start] != '{':
+            start -= 1
+        if start < 0:
+            return None
+
+        # Use the last '}' in the response as the end boundary.
+        end = response.rfind('}') + 1
+        if end <= start:
+            return None
+
+        json_str = response[start:end]
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            return self._attempt_json_recovery(json_str)
     
     # Attempt to recover from truncated JSON using stack-based bracket matching.
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
@@ -757,13 +807,13 @@ class CentralNegotiator:
                 # First agent gets priority - try original move
                 planned_path = agent.get('planned_path', [])
                 if len(planned_path) > 1:
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "move",
                         "path": planned_path[:3],  # Only next few steps
                         "priority": 1
                     }
                 else:
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "wait",
                         "wait_turns": 1,
                         "priority": 1
@@ -774,14 +824,14 @@ class CentralNegotiator:
                 
                 if alternative_pos:
                     # Step aside temporarily
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "move", 
                         "path": [current_pos, alternative_pos, current_pos],  # Step aside and back
                         "priority": 2
                     }
                 else:
                     # Wait if no safe step-aside available
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "wait",
                         "wait_turns": 2,
                         "priority": 3
@@ -818,7 +868,7 @@ class CentralNegotiator:
         agent_actions = {}
         for i, agent in enumerate(agents):
             agent_id = agent['id']
-            agent_actions[agent_id] = {
+            agent_actions[str(agent_id)] = {
                 "action": "move" if i == 0 else "wait",
                 "path": agent.get('planned_path', []),
                 "priority": len(agents) - i,
