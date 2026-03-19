@@ -1,0 +1,73 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-03-20T00:34:32.740265",
+    "layout_name": "random_22x22",
+    "config": {
+      "num_agents": 8,
+      "num_rounds": 3,
+      "time_limit_seconds": 600,
+      "seed": 42,
+      "spatial_hints_enabled": true,
+      "difficulty": 0.25
+    }
+  },
+  "overall_results": {
+    "total_rounds": 3,
+    "successful_rounds": 2,
+    "timeout_rounds": 1,
+    "failed_rounds": 0,
+    "success_rate": 66.66666666666666
+  },
+  "average_metrics": {
+    "avg_csr": 66.66666666666667,
+    "avg_makespan_seconds": 331.9,
+    "avg_collision_rate": 0.517,
+    "avg_path_efficiency": 100.0,
+    "total_tokens_used": 423494,
+    "avg_tokens_per_round": 141164.66666666666,
+    "avg_resolution_time_ms": 88074.47666666667,
+    "avg_turns_per_round": 32.333333333333336,
+    "avg_negotiations_per_round": 8.666666666666666
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 486.41,
+      "collision_rate": 0.389,
+      "path_efficiency": 100,
+      "total_tokens_used": 142352,
+      "avg_conflict_resolution_time_ms": 59397.26,
+      "total_turns": 36,
+      "total_negotiations": 8,
+      "total_collisions": 14
+    },
+    {
+      "round_num": 2,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 177.39,
+      "collision_rate": 0.071,
+      "path_efficiency": 100,
+      "total_tokens_used": 29747,
+      "avg_conflict_resolution_time_ms": 168616.38,
+      "total_turns": 28,
+      "total_negotiations": 1,
+      "total_collisions": 2
+    },
+    {
+      "round_num": 3,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 625.96,
+      "collision_rate": 1.091,
+      "path_efficiency": 100,
+      "total_tokens_used": 251395,
+      "avg_conflict_resolution_time_ms": 36209.79,
+      "total_turns": 33,
+      "total_negotiations": 17,
+      "total_collisions": 36
+    }
+  ]
+}

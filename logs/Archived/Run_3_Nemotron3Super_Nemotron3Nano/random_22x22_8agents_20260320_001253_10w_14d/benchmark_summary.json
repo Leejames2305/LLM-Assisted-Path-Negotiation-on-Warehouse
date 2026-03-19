@@ -1,0 +1,73 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-03-20T00:34:34.245510",
+    "layout_name": "random_22x22",
+    "config": {
+      "num_agents": 8,
+      "num_rounds": 3,
+      "time_limit_seconds": 600,
+      "seed": 42,
+      "spatial_hints_enabled": true,
+      "difficulty": 0.25
+    }
+  },
+  "overall_results": {
+    "total_rounds": 3,
+    "successful_rounds": 2,
+    "timeout_rounds": 1,
+    "failed_rounds": 0,
+    "success_rate": 66.66666666666666
+  },
+  "average_metrics": {
+    "avg_csr": 66.66666666666667,
+    "avg_makespan_seconds": 346.155,
+    "avg_collision_rate": 0.405,
+    "avg_path_efficiency": 100.0,
+    "total_tokens_used": 377161,
+    "avg_tokens_per_round": 125720.33333333333,
+    "avg_resolution_time_ms": 50469.193333333336,
+    "avg_turns_per_round": 36.666666666666664,
+    "avg_negotiations_per_round": 9.666666666666666
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 446.19,
+      "collision_rate": 0.444,
+      "path_efficiency": 100,
+      "total_tokens_used": 132522,
+      "avg_conflict_resolution_time_ms": 27007.33,
+      "total_turns": 45,
+      "total_negotiations": 16,
+      "total_collisions": 20
+    },
+    {
+      "round_num": 2,
+      "status": "success",
+      "cooperative_success_rate": 100.0,
+      "makespan_seconds": 246.12,
+      "collision_rate": 0.087,
+      "path_efficiency": 100,
+      "total_tokens_used": 65198,
+      "avg_conflict_resolution_time_ms": 57940.91,
+      "total_turns": 46,
+      "total_negotiations": 4,
+      "total_collisions": 4
+    },
+    {
+      "round_num": 3,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 604.15,
+      "collision_rate": 0.684,
+      "path_efficiency": 100,
+      "total_tokens_used": 179441,
+      "avg_conflict_resolution_time_ms": 66459.34,
+      "total_turns": 19,
+      "total_negotiations": 9,
+      "total_collisions": 13
+    }
+  ]
+}
