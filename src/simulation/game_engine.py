@@ -195,29 +195,79 @@ class GameEngine:
     def detect_stagnation_conflicts(self) -> Dict:
         # Check for agents with consecutive failed moves (not just staying in same position)
         stagnant_agents = []
-        
+
         for agent_id, agent in self.agents.items():
             # Only check agents with active targets
             if agent.target_position is not None:
                 failed_move_count = len(self.agent_failed_move_history.get(agent_id, []))
-                
+
                 if failed_move_count >= self.stagnation_turns:
                     stagnant_agents.append(agent_id)
                     print(f"🚫 Agent {agent_id}: Stagnant due to {failed_move_count} consecutive failed moves")
-        
+
         if stagnant_agents:
             print(f"🚫 STAGNATION DETECTED! Agents with failed moves: {stagnant_agents}")
-            
-            # Calculate fresh planned paths for stagnant agents to provide context
+
+            # Try A* pathfinding first before triggering LLM negotiation
             map_state = self.warehouse_map.get_state_dict()
-            agent_data = []
-            
+            agents_needing_llm = []
+            a_star_resolved = []
+
             for aid in stagnant_agents:
                 agent = self.agents[aid]
-                
+
+                # Try to find a valid path using A* pathfinding
+                print(f"🔍 Agent {aid}: Attempting A* pathfinding to resolve stuck state...")
+                try:
+                    fresh_path = agent.plan_path(map_state)
+
+                    if fresh_path and len(fresh_path) > 0:
+                        # Check if this path conflicts with other agents' paths
+                        path_has_conflict = self._check_path_conflicts_with_others(aid, fresh_path)
+
+                        if not path_has_conflict:
+                            # A* found a valid non-conflicting path, use it
+                            agent.planned_path = fresh_path
+                            agent._has_negotiated_path = False
+                            a_star_resolved.append(aid)
+                            print(f"✅ Agent {aid}: A* resolved stuck state with {len(fresh_path)}-step path")
+
+                            # Clear failed move history for this agent
+                            if aid in self.agent_failed_move_history:
+                                self.agent_failed_move_history[aid] = []
+                            if aid in self.failed_move_counts:
+                                self.failed_move_counts[aid] = 0
+                        else:
+                            # A* path conflicts with other agents, needs LLM
+                            print(f"⚠️  Agent {aid}: A* path conflicts with other agents, needs LLM negotiation")
+                            agents_needing_llm.append(aid)
+                    else:
+                        # A* could not find a path, needs LLM
+                        print(f"⚠️  Agent {aid}: A* could not find valid path, needs LLM negotiation")
+                        agents_needing_llm.append(aid)
+                except Exception as e:
+                    print(f"⚠️  Agent {aid}: A* pathfinding failed: {e}, needs LLM negotiation")
+                    agents_needing_llm.append(aid)
+
+            # Report A* resolution results
+            if a_star_resolved:
+                print(f"🎯 A* successfully resolved {len(a_star_resolved)} stuck agent(s): {a_star_resolved}")
+
+            # If all agents were resolved by A*, no LLM negotiation needed
+            if not agents_needing_llm:
+                print(f"✅ All stagnant agents resolved by A* pathfinding!")
+                return {'has_conflicts': False}
+
+            # Only trigger LLM for agents that A* could not resolve
+            print(f"🤖 Triggering LLM negotiation for {len(agents_needing_llm)} agent(s): {agents_needing_llm}")
+            agent_data = []
+
+            for aid in agents_needing_llm:
+                agent = self.agents[aid]
+
                 # Get fresh planned path for context
                 current_path = agent.planned_path if hasattr(agent, 'planned_path') else []
-                
+
                 # If path is empty or agent has target, try to calculate a fresh path
                 if not current_path and agent.target_position:
                     try:
@@ -228,7 +278,7 @@ class GameEngine:
                     except Exception as e:
                         print(f"⚠️  Agent {aid}: Could not calculate fresh path: {e}")
                         current_path = []
-                
+
                 agent_data.append({
                     'id': aid,
                     'current_pos': agent.position,
@@ -238,17 +288,41 @@ class GameEngine:
                     'failed_move_count': len(self.agent_failed_move_history.get(aid, [])),
                     'failed_move_history': self.agent_failed_move_history.get(aid, [])
                 })
-            
+
             return {
                 'has_conflicts': True,
                 'conflict_type': 'stagnation',
-                'conflicting_agents': stagnant_agents,
-                'conflict_points': [self.agents[aid].position for aid in stagnant_agents],
+                'conflicting_agents': agents_needing_llm,
+                'conflict_points': [self.agents[aid].position for aid in agents_needing_llm],
                 'agents': agent_data
             }
-        
+
         return {'has_conflicts': False}
-    
+
+    # Check if a path for an agent conflicts with other agents' current planned paths
+    def _check_path_conflicts_with_others(self, agent_id: int, path: List[Tuple[int, int]]) -> bool:
+        # Get all other agents' planned paths
+        other_agents_paths = {}
+        for aid, agent in self.agents.items():
+            if aid != agent_id and hasattr(agent, 'planned_path') and agent.planned_path:
+                other_agents_paths[aid] = agent.planned_path
+
+        # If no other agents have paths, no conflict possible
+        if not other_agents_paths:
+            return False
+
+        # Check for conflicts using conflict detector
+        all_paths = {agent_id: path}
+        all_paths.update(other_agents_paths)
+
+        conflict_info = self.conflict_detector.detect_path_conflicts(all_paths, self.current_turn)
+
+        # Return True if conflicts exist and involve this agent
+        if conflict_info['has_conflicts'] and agent_id in conflict_info.get('conflicting_agents', []):
+            return True
+
+        return False
+
     # Detect agents stuck due to too many failed moves
     def detect_move_failure_deadlocks(self, planned_moves: Dict) -> Dict:
         stuck_agents = []
