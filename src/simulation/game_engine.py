@@ -1251,9 +1251,9 @@ class GameEngine:
             agent_actions = resolution.get('agent_actions', {})
         else:
             # Agent IDs are top-level keys, but filter out non-numeric keys (metadata)
-            agent_actions = {k: v for k, v in resolution.items() 
+            agent_actions = {k: v for k, v in resolution.items()
                            if isinstance(k, (int, str)) and (isinstance(k, int) or k.isdigit())}
-        
+
         # Mark all agents as HMAS-2 pre-validated before executing
         # The central negotiator already validated these paths with agents validators,
         # so skip redundant validation in execute_negotiated_action
@@ -1264,10 +1264,10 @@ class GameEngine:
                 agent_id_key = agent_id_str
             else:
                 continue
-            
+
             if agent_id_key in self.agents:
                 setattr(self.agents[agent_id_key], '_hmas2_validated', True)
-        
+
         for agent_id, action_data in agent_actions.items():
             # Convert string agent_id to int if needed for lookup
             if isinstance(agent_id, str) and agent_id.isdigit():
@@ -1276,55 +1276,66 @@ class GameEngine:
                 agent_id_key = agent_id
             else:
                 continue
-            
+
             if agent_id_key in self.agents:
                 agent = self.agents[agent_id_key]
                 map_state = self.warehouse_map.get_state_dict()
-                
+
                 # Update agent's planned path with negotiated path
                 negotiated_path = action_data.get('path', [])
-                if negotiated_path and len(negotiated_path) > 0:
-                    # Convert path elements to tuples and store the full LLM path.
-                    # _execute_action will skip path[0] if it equals the current
-                    # position, so the agent always advances on the first call.
+                action_type = action_data.get('action', 'wait')
+
+                if action_type == 'wait':
+                    # Handle wait action
+                    wait_turns = action_data.get('wait_turns', 1)
+                    agent.wait(wait_turns)
+                    print(f"✅ Agent {agent_id_key}: Staying in place (valid wait)")
+
+                elif negotiated_path and len(negotiated_path) > 0:
+                    # Convert path elements to tuples
                     updated_path = [tuple(pos) if isinstance(pos, (list, tuple)) else pos for pos in negotiated_path]
-                    agent.set_path(updated_path)
-                    
-                    # Mark agent as having a negotiated path to preserve it
+
+                    # Mark as negotiated path BEFORE setting it to prevent agent.move_to from modifying it
                     agent._has_negotiated_path = True
-                
-                success = agent.execute_negotiated_action(action_data, map_state)
-                
-                if success:
-                    # After a successful move the agent is now at agent.position
-                    # (the new cell).  Strip all leading planned_path entries up
-                    # to and including that cell so the remainder is still ahead.
-                    if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
-                        # Find the first occurrence of the new position in the
-                        # stored path and keep everything after it.
-                        new_pos = agent.position
-                        try:
-                            idx = agent.planned_path.index(new_pos)
-                            remaining = agent.planned_path[idx + 1:]
-                        except ValueError:
-                            # New position not found in path; consume one step.
-                            remaining = agent.planned_path[1:]
-                        if remaining:
-                            agent.planned_path = remaining
+                    agent.set_path(updated_path)
+
+                    # Execute the entire negotiated path in this turn
+                    steps_executed = 0
+
+                    # Work with a copy to avoid issues with path modification
+                    path_to_execute = updated_path.copy()
+
+                    for next_pos in path_to_execute:
+                        # Skip if already at this position
+                        if next_pos == agent.position:
+                            continue
+
+                        # Get fresh map state for each move
+                        map_state = self.warehouse_map.get_state_dict()
+                        success, failure_reason = agent.move_to(next_pos, map_state)
+
+                        if success:
+                            steps_executed += 1
+                            print(f"   Step {steps_executed}/{len(path_to_execute)}: Moved to {next_pos}")
+
+                            # Check for box interactions after each successful move
+                            self._check_box_pickup(agent_id_key)
+                            self._check_box_delivery(agent_id_key)
                         else:
-                            agent._has_negotiated_path = False
-                            agent.planned_path = []
-                    
-                    # Check for box interactions after successful move
-                    action_type = action_data.get('action', 'unknown')
-                    if action_type == 'move':
-                        self._check_box_pickup(agent_id_key)
-                        self._check_box_delivery(agent_id_key)
-                        
+                            # Stop executing path on first failure
+                            print(f"❌ Agent {agent_id_key}: Failed to move to {next_pos} - {failure_reason}")
+                            break
+
+                    # Clear the negotiated path flag after full execution attempt
+                    agent._has_negotiated_path = False
+                    agent.planned_path = []
+
+                    if steps_executed > 0:
+                        print(f"🏁 Agent {agent_id_key}: Completed negotiated path ({steps_executed} steps)")
+
                 else:
-                    # On failure, clear the negotiated path flag to allow replanning
-                    if hasattr(agent, '_has_negotiated_path'):
-                        agent._has_negotiated_path = False
+                    # No valid path provided, treat as wait
+                    print(f"⏸️ Agent {agent_id_key}: No path provided, waiting")
     
     # Execute planned moves without conflicts
     def _execute_planned_moves(self, planned_moves: Dict):
