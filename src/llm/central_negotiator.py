@@ -259,9 +259,15 @@ class CentralNegotiator:
                 # 2. If result has agent IDs as top-level keys (0, 1, etc.), use result as is
                 # 3. Otherwise return empty
                 if 'agent_actions' in result:
-                    return result.get('agent_actions', {}), prompts_data
-                elif any(str(i) in result for i in range(10)):  # Check for agent IDs as keys
-                    return result, prompts_data
+                    # return result.get('agent_actions', {}), prompts_data
+                    raw = result.get('agent_actions', {})
+                    if not isinstance(raw, dict):
+                        raw = {}
+                    # Normalise keys to strings so validators can always do plan.get(str(id))
+                    return {str(k): v for k, v in raw.items()}, prompts_data
+                elif isinstance(result, dict) and any(str(k).isdigit() for k in result.keys()):
+                    # Normalise keys to strings
+                    return {str(k): v for k, v in result.items()}, prompts_data
                 else:
                     return {}, prompts_data
             except Exception as e:
@@ -282,15 +288,19 @@ class CentralNegotiator:
         validation_results = {}
         map_state = conflict_data.get('map_state', {})
 
+        # Normalise plan keys to strings once so all lookups use str(agent_id).
+        # This prevents mismatches when a fallback path builds the plan with int keys.
+        normalized_plan = {str(k): v for k, v in plan.items()}
+
         def _validate_single(agent_id: int, validator_func: Callable) -> Tuple[int, Dict]:
             # Try both string and integer keys to handle different JSON formats
-            agent_action = plan.get(str(agent_id)) or plan.get(agent_id)
+            agent_action = normalized_plan.get(str(agent_id))
 
-            if not agent_action:
+            if agent_action is None:
                 return agent_id, {
                     "valid": False,
                     "reason": "No action provided for this agent",
-                    "alternative": None
+                    "alternative": {"action": "wait", "reason": "not_in_plan"}
                 }
 
             try:
@@ -388,9 +398,13 @@ class CentralNegotiator:
                 # 2. If response has agent IDs as top-level keys (0, 1, etc.), use response as is
                 # 3. Otherwise return current plan as fallback
                 if 'agent_actions' in refined_response:
-                    refined_plan = refined_response.get("agent_actions", current_plan)
-                elif any(str(i) in refined_response for i in range(10)):  # Check for agent IDs as keys
-                    refined_plan = refined_response
+                    # refined_plan = refined_response.get("agent_actions", current_plan)
+                    raw = refined_response.get("agent_actions", current_plan)
+                    if not isinstance(raw, dict):
+                        raw = current_plan
+                    refined_plan = {str(k): v for k, v in raw.items()}
+                elif isinstance(refined_response, dict) and any(str(k).isdigit() for k in refined_response.keys()):
+                    refined_plan = {str(k): v for k, v in refined_response.items()}
                 else:
                     refined_plan = current_plan
                 
@@ -772,13 +786,13 @@ class CentralNegotiator:
                 # First agent gets priority - try original move
                 planned_path = agent.get('planned_path', [])
                 if len(planned_path) > 1:
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "move",
                         "path": planned_path[:3],  # Only next few steps
                         "priority": 1
                     }
                 else:
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "wait",
                         "wait_turns": 1,
                         "priority": 1
@@ -789,14 +803,14 @@ class CentralNegotiator:
                 
                 if alternative_pos:
                     # Step aside temporarily
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "move", 
                         "path": [current_pos, alternative_pos, current_pos],  # Step aside and back
                         "priority": 2
                     }
                 else:
                     # Wait if no safe step-aside available
-                    agent_actions[agent_id] = {
+                    agent_actions[str(agent_id)] = {
                         "action": "wait",
                         "wait_turns": 2,
                         "priority": 3
@@ -833,7 +847,7 @@ class CentralNegotiator:
         agent_actions = {}
         for i, agent in enumerate(agents):
             agent_id = agent['id']
-            agent_actions[agent_id] = {
+            agent_actions[str(agent_id)] = {
                 "action": "move" if i == 0 else "wait",
                 "path": agent.get('planned_path', []),
                 "priority": len(agents) - i,
