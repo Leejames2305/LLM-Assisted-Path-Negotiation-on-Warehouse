@@ -203,10 +203,12 @@ class GameEngine:
 
                 if failed_move_count >= self.stagnation_turns:
                     stagnant_agents.append(agent_id)
-                    print(f"🚫 Agent {agent_id}: Stagnant due to {failed_move_count} consecutive failed moves")
+                    if not self.silent_mode:
+                        print(f"🚫 Agent {agent_id}: Stagnant due to {failed_move_count} consecutive failed moves")
 
         if stagnant_agents:
-            print(f"🚫 STAGNATION DETECTED! Agents with failed moves: {stagnant_agents}")
+            if not self.silent_mode:
+                print(f"🚫 STAGNATION DETECTED! Agents with failed moves: {stagnant_agents}")
 
             # Try A* pathfinding first before triggering LLM negotiation
             map_state = self.warehouse_map.get_state_dict()
@@ -217,7 +219,8 @@ class GameEngine:
                 agent = self.agents[aid]
 
                 # Try to find a valid path using A* pathfinding
-                print(f"🔍 Agent {aid}: Attempting A* pathfinding to resolve stuck state...")
+                if not self.silent_mode:
+                    print(f"🔍 Agent {aid}: Attempting A* pathfinding to resolve stuck state...")
                 try:
                     fresh_path = agent.plan_path(map_state)
 
@@ -230,7 +233,8 @@ class GameEngine:
                             agent.planned_path = fresh_path
                             agent._has_negotiated_path = False
                             a_star_resolved.append(aid)
-                            print(f"✅ Agent {aid}: A* resolved stuck state with {len(fresh_path)}-step path")
+                            if not self.silent_mode:
+                                print(f"✅ Agent {aid}: A* resolved stuck state with {len(fresh_path)}-step path")
 
                             # Clear failed move history for this agent
                             if aid in self.agent_failed_move_history:
@@ -239,27 +243,33 @@ class GameEngine:
                                 self.failed_move_counts[aid] = 0
                         else:
                             # A* path conflicts with other agents, needs LLM
-                            print(f"⚠️  Agent {aid}: A* path conflicts with other agents, needs LLM negotiation")
+                            if not self.silent_mode:
+                                print(f"⚠️  Agent {aid}: A* path conflicts with other agents, needs LLM negotiation")
                             agents_needing_llm.append(aid)
                     else:
                         # A* could not find a path, needs LLM
-                        print(f"⚠️  Agent {aid}: A* could not find valid path, needs LLM negotiation")
+                        if not self.silent_mode:
+                            print(f"⚠️  Agent {aid}: A* could not find valid path, needs LLM negotiation")
                         agents_needing_llm.append(aid)
                 except Exception as e:
-                    print(f"⚠️  Agent {aid}: A* pathfinding failed: {e}, needs LLM negotiation")
+                    if not self.silent_mode:
+                        print(f"⚠️  Agent {aid}: A* pathfinding failed: {e}, needs LLM negotiation")
                     agents_needing_llm.append(aid)
 
             # Report A* resolution results
             if a_star_resolved:
-                print(f"🎯 A* successfully resolved {len(a_star_resolved)} stuck agent(s): {a_star_resolved}")
+                if not self.silent_mode:
+                    print(f"🎯 A* successfully resolved {len(a_star_resolved)} stuck agent(s): {a_star_resolved}")
 
             # If all agents were resolved by A*, no LLM negotiation needed
             if not agents_needing_llm:
-                print(f"✅ All stagnant agents resolved by A* pathfinding!")
+                if not self.silent_mode:
+                    print(f"✅ All stagnant agents resolved by A* pathfinding!")
                 return {'has_conflicts': False}
 
             # Only trigger LLM for agents that A* could not resolve
-            print(f"🤖 Triggering LLM negotiation for {len(agents_needing_llm)} agent(s): {agents_needing_llm}")
+            if not self.silent_mode:
+                print(f"🤖 Triggering LLM negotiation for {len(agents_needing_llm)} agent(s): {agents_needing_llm}")
             agent_data = []
 
             for aid in agents_needing_llm:
@@ -274,9 +284,11 @@ class GameEngine:
                         fresh_path = agent.plan_path(map_state)
                         if fresh_path:
                             current_path = fresh_path
-                            print(f"🗺️  Agent {aid}: Calculated fresh path with {len(fresh_path)} steps for stagnation context")
+                            if not self.silent_mode:
+                                print(f"🗺️  Agent {aid}: Calculated fresh path with {len(fresh_path)} steps for stagnation context")
                     except Exception as e:
-                        print(f"⚠️  Agent {aid}: Could not calculate fresh path: {e}")
+                        if not self.silent_mode:
+                            print(f"⚠️  Agent {aid}: Could not calculate fresh path: {e}")
                         current_path = []
 
                 agent_data.append({
@@ -301,18 +313,32 @@ class GameEngine:
 
     # Check if a path for an agent conflicts with other agents' current planned paths
     def _check_path_conflicts_with_others(self, agent_id: int, path: List[Tuple[int, int]]) -> bool:
-        # Get all other agents' planned paths
+        # Normalize the candidate path: ensure it starts with the agent's current position
+        agent = self.agents[agent_id]
+        normalized_candidate_path = path
+        if path and path[0] != agent.position:
+            # Path doesn't start with current position, prepend it
+            normalized_candidate_path = [agent.position] + path
+
+        # Get all other agents' planned paths and normalize them
         other_agents_paths = {}
-        for aid, agent in self.agents.items():
-            if aid != agent_id and hasattr(agent, 'planned_path') and agent.planned_path:
-                other_agents_paths[aid] = agent.planned_path
+        for aid, other_agent in self.agents.items():
+            if aid != agent_id and hasattr(other_agent, 'planned_path') and other_agent.planned_path:
+                other_path = other_agent.planned_path
+                # Normalize: ensure path starts with agent's current position
+                if other_path and other_path[0] != other_agent.position:
+                    # Negotiated path may not include current position, prepend it
+                    normalized_other_path = [other_agent.position] + other_path
+                else:
+                    normalized_other_path = other_path
+                other_agents_paths[aid] = normalized_other_path
 
         # If no other agents have paths, no conflict possible
         if not other_agents_paths:
             return False
 
         # Check for conflicts using conflict detector
-        all_paths = {agent_id: path}
+        all_paths = {agent_id: normalized_candidate_path}
         all_paths.update(other_agents_paths)
 
         conflict_info = self.conflict_detector.detect_path_conflicts(all_paths, self.current_turn)
@@ -326,19 +352,85 @@ class GameEngine:
     # Detect agents stuck due to too many failed moves
     def detect_move_failure_deadlocks(self, planned_moves: Dict) -> Dict:
         stuck_agents = []
-        
+
         # Check for agents with too many failed moves
         for agent_id, failure_count in self.failed_move_counts.items():
             if failure_count >= self.max_failed_moves:
                 stuck_agents.append(agent_id)
-        
+
         if stuck_agents:
-            print(f"🔥 DEADLOCK DETECTED! Agents with {self.max_failed_moves}+ failed moves: {stuck_agents}")
+            if not self.silent_mode:
+                print(f"🔥 DEADLOCK DETECTED! Agents with {self.max_failed_moves}+ failed moves: {stuck_agents}")
+
+            # Try A* pathfinding first before triggering LLM negotiation
+            map_state = self.warehouse_map.get_state_dict()
+            agents_needing_llm = []
+            a_star_resolved = []
+
+            for aid in stuck_agents:
+                if aid not in self.agents:
+                    continue
+
+                agent = self.agents[aid]
+
+                # Try to find a valid path using A* pathfinding
+                if not self.silent_mode:
+                    print(f"🔍 Agent {aid}: Attempting A* pathfinding to resolve deadlock...")
+                try:
+                    fresh_path = agent.plan_path(map_state)
+
+                    if fresh_path and len(fresh_path) > 0:
+                        # Check if this path conflicts with other agents' paths
+                        path_has_conflict = self._check_path_conflicts_with_others(aid, fresh_path)
+
+                        if not path_has_conflict:
+                            # A* found a valid non-conflicting path, use it
+                            agent.planned_path = fresh_path
+                            agent._has_negotiated_path = False
+                            a_star_resolved.append(aid)
+                            if not self.silent_mode:
+                                print(f"✅ Agent {aid}: A* resolved deadlock with {len(fresh_path)}-step path")
+
+                            # Clear failed move history for this agent
+                            if aid in self.agent_failed_move_history:
+                                self.agent_failed_move_history[aid] = []
+                            if aid in self.failed_move_counts:
+                                self.failed_move_counts[aid] = 0
+                        else:
+                            # A* path conflicts with other agents, needs LLM
+                            if not self.silent_mode:
+                                print(f"⚠️  Agent {aid}: A* path conflicts with other agents, needs LLM negotiation")
+                            agents_needing_llm.append(aid)
+                    else:
+                        # A* could not find a path, needs LLM
+                        if not self.silent_mode:
+                            print(f"⚠️  Agent {aid}: A* could not find valid path, needs LLM negotiation")
+                        agents_needing_llm.append(aid)
+                except Exception as e:
+                    if not self.silent_mode:
+                        print(f"⚠️  Agent {aid}: A* pathfinding failed: {e}, needs LLM negotiation")
+                    agents_needing_llm.append(aid)
+
+            # Report A* resolution results
+            if a_star_resolved:
+                if not self.silent_mode:
+                    print(f"🎯 A* successfully resolved {len(a_star_resolved)} deadlocked agent(s): {a_star_resolved}")
+
+            # If all agents were resolved by A*, no LLM negotiation needed
+            if not agents_needing_llm:
+                if not self.silent_mode:
+                    print(f"✅ All deadlocked agents resolved by A* pathfinding!")
+                return {'has_conflicts': False}
+
+            # Only trigger LLM for agents that A* could not resolve
+            if not self.silent_mode:
+                print(f"🤖 Triggering LLM negotiation for {len(agents_needing_llm)} agent(s): {agents_needing_llm}")
+
             return {
                 'has_conflicts': True,
                 'conflict_type': 'deadlock',
-                'conflicting_agents': stuck_agents,
-                'conflict_points': [self.agents[aid].position for aid in stuck_agents if aid in self.agents],
+                'conflicting_agents': agents_needing_llm,
+                'conflict_points': [self.agents[aid].position for aid in agents_needing_llm if aid in self.agents],
                 'agents': [
                     {
                         'id': aid,
@@ -348,33 +440,36 @@ class GameEngine:
                         'stuck_reason': 'failed_moves',
                         'failure_count': self.failed_move_counts.get(aid, 0),
                         'failed_move_history': self.agent_failed_move_history.get(aid, [])
-                    } for aid in stuck_agents if aid in self.agents
+                    } for aid in agents_needing_llm if aid in self.agents
                 ],
                 'deadlock_breaking': True  # Special flag for negotiator
             }
-        
+
         return {'has_conflicts': False}
     
     # Force deadlock negotiation for stuck agents
     def _force_deadlock_negotiation(self, stuck_agents: List[int], planned_moves: Dict):
-        print("🛠️ DEADLOCK BREAKING: Creating artificial conflict to trigger negotiation")
-        
+        if not self.silent_mode:
+            print("🛠️ DEADLOCK BREAKING: Creating artificial conflict to trigger negotiation")
+
         # Create artificial conflict data for deadlock breaking
         conflict_data = self.detect_move_failure_deadlocks(planned_moves)
-        
+
         if conflict_data['has_conflicts']:
             # Force negotiation
-            print(f"🤖 Forcing negotiation for deadlock resolution...")
+            if not self.silent_mode:
+                print(f"🤖 Forcing negotiation for deadlock resolution...")
             resolution, _ = self._negotiate_conflicts(conflict_data, planned_moves)
             self._execute_negotiated_actions(resolution)
-            
+
             # Reset failure counts after forced negotiation
             for agent_id in stuck_agents:
                 self.failed_move_counts[agent_id] = 0
                 # Also clear failed move history
                 if agent_id in self.agent_failed_move_history:
                     self.agent_failed_move_history[agent_id] = []
-                print(f"🔄 Agent {agent_id}: Reset failure count and move history after deadlock negotiation")
+                if not self.silent_mode:
+                    print(f"🔄 Agent {agent_id}: Reset failure count and move history after deadlock negotiation")
     
     def _apply_difficulty_goal_alteration(self):
         """Alter a fraction of remaining goals in place at turns 15, 30, and 50."""
