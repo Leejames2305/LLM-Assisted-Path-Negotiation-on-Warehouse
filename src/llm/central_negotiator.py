@@ -283,8 +283,8 @@ class CentralNegotiator:
         map_state = conflict_data.get('map_state', {})
 
         def _validate_single(agent_id: int, validator_func: Callable) -> Tuple[int, Dict]:
-            agent_id_str = str(agent_id)
-            agent_action = plan.get(agent_id_str)
+            # Try both string and integer keys to handle different JSON formats
+            agent_action = plan.get(str(agent_id)) or plan.get(agent_id)
 
             if not agent_action:
                 return agent_id, {
