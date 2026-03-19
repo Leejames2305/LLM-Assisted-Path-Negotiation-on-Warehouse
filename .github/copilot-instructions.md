@@ -49,15 +49,14 @@ When writing documentation for the project, please adhere to the following guide
 ## Writing commit messages
 When writing commit messages, please follow these conventions:
 - Use the present tense (e.g., "Add feature" instead of "Added feature").
-- Follow the Conventional Commits format: `<type>(<scope>): <subject>`
+- Follow the Conventional Commits format: `<type>: <subject>`
   - `<type>`: feat, fix, docs, style, refactor, test, chore
-  - `<scope>`: optional, indicates the area of the code affected
   - `<subject>`: brief description of the change
 - Add Copilot as co-author for commits generated with its assistance:
   - `Co-authored-by: GitHub Copilot <github-copilot@github.com>`
 
 ## PR instructions
-- Title format: `[feat/bugfix/etc.] <Title...>`
+- Title format: `feat/bugfix/etc: <Title...>`
 - Description should include:
   - Summary of changes made.
   - Any dependencies added or removed.
