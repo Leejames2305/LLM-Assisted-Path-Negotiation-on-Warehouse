@@ -15,6 +15,7 @@ from colorama import init, Fore, Back, Style
 from ..map_generator import WarehouseMap, CellType
 from ..agents import RobotAgent
 from ..llm.central_negotiator import CentralNegotiator
+from ..llm.parallel_negotiator_manager import ParallelNegotiatorManager
 from ..navigation import ConflictDetector, SimplePathfinder
 from ..logging import UnifiedLogger
 
@@ -32,8 +33,12 @@ class GameEngine:
         self.warehouse_map = WarehouseMap(width, height)
         self.agents = {}
         self.central_negotiator = CentralNegotiator()
+        self.parallel_negotiator_manager = ParallelNegotiatorManager()
         self.conflict_detector = ConflictDetector(width, height)
         self.pathfinder = SimplePathfinder(width, height)
+
+        # Enable parallel negotiation mode (can be disabled for benchmarking)
+        self.use_parallel_negotiation = os.getenv('USE_PARALLEL_NEGOTIATION', 'true').lower() == 'true'
         
         # Simulation state
         self.current_turn = 0
@@ -644,9 +649,21 @@ class GameEngine:
             
             # Track collision for metrics
             self.collision_count += len(conflict_info['conflict_points'])
-            
-            # Use Central Negotiator to resolve conflicts
-            resolution, _ = self._negotiate_conflicts(conflict_info, forced_moves)
+
+            # Use parallel or single negotiation based on configuration
+            if self.use_parallel_negotiation:
+                resolution, neg_data_list = self._negotiate_parallel_conflicts(conflict_info, forced_moves)
+                # Handle both single and multiple negotiation logs
+                if isinstance(neg_data_list, list):
+                    # Parallel negotiation returns list
+                    self._current_negotiation_data = neg_data_list
+                else:
+                    # Single negotiation returns dict
+                    self._current_negotiation_data = neg_data_list
+            else:
+                resolution, neg_data = self._negotiate_conflicts(conflict_info, forced_moves)
+                self._current_negotiation_data = neg_data
+
             self._execute_negotiated_actions(resolution)
             negotiation_occurred = True
         else:
@@ -662,7 +679,19 @@ class GameEngine:
                     print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
                     # Track collision for metrics
                     self.collision_count += len(normal_conflict_info['conflict_points'])
-                    resolution, _ = self._negotiate_conflicts(normal_conflict_info, normal_moves)
+
+                    # Use parallel or single negotiation based on configuration
+                    if self.use_parallel_negotiation:
+                        resolution, neg_data_list = self._negotiate_parallel_conflicts(normal_conflict_info, normal_moves)
+                        # Handle both single and multiple negotiation logs
+                        if isinstance(neg_data_list, list):
+                            self._current_negotiation_data = neg_data_list
+                        else:
+                            self._current_negotiation_data = neg_data_list
+                    else:
+                        resolution, neg_data = self._negotiate_conflicts(normal_conflict_info, normal_moves)
+                        self._current_negotiation_data = neg_data
+
                     self._execute_negotiated_actions(resolution)
                     negotiation_occurred = True
                 else:
@@ -1255,7 +1284,138 @@ class GameEngine:
         )
         
         return normal_path
-    
+
+    # Negotiate conflicts using parallel negotiators for independent groups
+    def _negotiate_parallel_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Tuple[Dict, Optional[List[Dict]]]:
+        """
+        Handle parallel conflict negotiation by grouping conflicts and resolving them simultaneously.
+        Returns (merged_resolution, list_of_negotiation_logs)
+        """
+        if not self.silent_mode:
+            print("🔄 Initiating PARALLEL conflict negotiation...")
+
+        # Track negotiation timing
+        negotiation_start_time = time.time()
+
+        # Step 1: Group conflicts into independent groups
+        # Get all planned paths for grouping
+        all_paths = {}
+        for agent_id in conflict_info['conflicting_agents']:
+            path = planned_moves.get(agent_id, [])
+            if not path and agent_id in self.agents:
+                # Use agent's current position if no planned move
+                path = [self.agents[agent_id].position]
+            if path:
+                all_paths[agent_id] = path
+
+        # Use conflict detector to group conflicts
+        conflict_groups = self.conflict_detector.group_conflicts(all_paths, self.current_turn)
+
+        if not conflict_groups:
+            # No groups found, fallback to single-group negotiation
+            if not self.silent_mode:
+                print("⚠️  No conflict groups identified, falling back to single negotiation")
+            return self._negotiate_conflicts(conflict_info, planned_moves)
+
+        if len(conflict_groups) == 1:
+            # Only one group, use regular negotiation
+            if not self.silent_mode:
+                print(f"📋 Only 1 conflict group found, using single negotiation")
+            return self._negotiate_conflicts(conflict_info, planned_moves)
+
+        # Step 2: Prepare conflict data for each group
+        map_state = conflict_info.get('map_state_snapshot', self.warehouse_map.get_state_dict())
+
+        group_conflict_data_list = []
+        for group in conflict_groups:
+            # Build agent data for this group
+            group_agent_data = []
+            for agent_id in group['conflicting_agents']:
+                if agent_id in self.agents:
+                    agent = self.agents[agent_id]
+                    agent_data = {
+                        'id': agent_id,
+                        'current_pos': agent.position,
+                        'target_pos': agent.target_position,
+                        'planned_path': planned_moves.get(agent_id, [])
+                    }
+                    # Add failure history if available
+                    if agent_id in self.agent_failed_move_history:
+                        agent_data['failed_move_history'] = self.agent_failed_move_history[agent_id]
+                    group_agent_data.append(agent_data)
+
+            group_conflict_data = {
+                'agents': group_agent_data,
+                'conflicting_agents': group['conflicting_agents'],
+                'conflict_points': group['conflict_points'],
+                'map_state': map_state,
+                'turn': self.current_turn
+            }
+            group_conflict_data_list.append(group_conflict_data)
+
+        # Step 3: Prepare validators for ALL agents
+        all_agent_validators = {}
+        for agent_id in conflict_info['conflicting_agents']:
+            if agent_id in self.agents:
+                agent = self.agents[agent_id]
+                if hasattr(agent, 'validator'):
+                    all_agent_validators[agent_id] = agent.validator.validate_negotiated_action
+
+        # Step 4: Run parallel negotiations
+        resolutions, negotiation_logs = self.parallel_negotiator_manager.negotiate_parallel_conflicts(
+            group_conflict_data_list,
+            all_agent_validators,
+            silent_mode=self.silent_mode
+        )
+
+        # Step 5: Merge resolutions
+        merged_resolution = self.parallel_negotiator_manager.merge_resolutions(resolutions)
+
+        # Track negotiation time
+        negotiation_end_time = time.time()
+        negotiation_duration = negotiation_end_time - negotiation_start_time
+        self.negotiation_times.append((negotiation_start_time, negotiation_end_time))
+
+        if not self.silent_mode:
+            print(f"⏱️  Total negotiation time: {negotiation_duration:.2f}s")
+
+        # Step 6: Build log data for each group negotiation
+        all_neg_data = []
+        for i, (group_data, log_info) in enumerate(zip(group_conflict_data_list, negotiation_logs)):
+            resolution = log_info.get('resolution', {})
+            refinement_history = log_info.get('refinement_history', [])
+            prompts_data = log_info.get('prompts_data', {})
+
+            # Extract agent validations and final actions
+            agent_validations = self._extract_agent_validations(resolution, refinement_history)
+            final_actions = self._extract_final_actions(resolution)
+
+            neg_data = self._build_negotiation_log_data(
+                group_data,
+                prompts_data,
+                resolution,
+                refinement_history,
+                agent_validations,
+                final_actions
+            )
+
+            # Add group metadata
+            neg_data['group_index'] = i
+            neg_data['total_groups'] = len(conflict_groups)
+            neg_data['negotiation_mode'] = 'parallel'
+
+            all_neg_data.append(neg_data)
+
+        # For backward compatibility, store the merged negotiation data
+        if all_neg_data:
+            self._current_negotiation_data = all_neg_data[0]  # Store first group as default
+
+        # Add refinement history to merged resolution for compatibility
+        if negotiation_logs and 'refinement_history' in negotiation_logs[0]:
+            merged_resolution['refinement_history'] = negotiation_logs[0]['refinement_history']
+
+        return merged_resolution, all_neg_data
+
     # Use Central Negotiator to resolve conflicts
     def _negotiate_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Tuple[Dict, Optional[Dict]]:
         print("🤖 Initiating LLM-based conflict negotiation...")

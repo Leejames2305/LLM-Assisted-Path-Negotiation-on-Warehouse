@@ -202,3 +202,8 @@ class OpenRouterClient:
     
     def create_assistant_message(self, content: str) -> Dict:
         return {"role": "assistant", "content": content}
+
+# Export parallel negotiator manager
+from .parallel_negotiator_manager import ParallelNegotiatorManager
+
+__all__ = ['OpenRouterClient', 'ParallelNegotiatorManager']
