@@ -225,8 +225,8 @@ class CentralNegotiator:
         user_prompt = self._create_conflict_description(conflict_data)
         
         # Add reasoning-specific instructions if using reasoning model
-        if self.is_reasoning_model:
-            user_prompt = self._add_reasoning_instructions(user_prompt)
+        # if self.is_reasoning_model:
+        #     user_prompt = self._add_reasoning_instructions(user_prompt)
         
         # Capture prompts for logging
         prompts_data = {
@@ -451,8 +451,8 @@ class CentralNegotiator:
                 planned_path = agent.get("planned_path")
                 agents_info += (
                     f"\nAgent {agent_id}:\n"
-                    f"  Current Position: {current_pos}\n"
-                    f"  Target: {target_pos}\n"
+                    # f"  Current Position: {current_pos}\n"
+                    # f"  Target: {target_pos}\n"
                     f"  Original Planned Path: {planned_path}\n"
                 )
                 
@@ -490,19 +490,21 @@ class CentralNegotiator:
         3. Ensure all moves are orthogonally adjacent (up, down, left, right only)
         4. No two agents can occupy the same cell at any point
         5. Provide full paths for all agents
-
-        FEW-SHOT EXAMPLE:
-        {{
-            "resolution": "reroute",
-            "agent_actions": {{
-                "3": {{"action": "move", "path": [[5,5],[5,6],[4,6],[5,6],[5,7]]}},
-                "7": {{"action": "wait", "path": [[8,8],[8,8],[8,8],[8,9],[8,10]]}}
-            }},
-            "reasoning": "Reroute Agent 3 via wiggle (4,6) to let Agent 7 pass, then resume."
-        }}
-
-        Return ONLY valid JSON, no additional text.
         """
+
+        # prompt += """
+        # RESPONSE EXAMPLE:
+        # {
+        #     "resolution": "reroute",
+        #     "agent_actions": {
+        #         "3": {"action": "move", "path": [[5,5],[5,6],[4,6],[5,6],[5,7]]},
+        #         "7": {"action": "wait", "path": [[8,8],[8,8],[8,8],[8,9],[8,10]]}
+        #     },
+        #     "reasoning": "Reroute Agent 3 via wiggle (4,6) to let Agent 7 pass, then resume."
+        # }
+
+        # Return ONLY valid JSON, no additional text.
+        # """
         
         return prompt
     
@@ -540,7 +542,7 @@ class CentralNegotiator:
         - Propose alternative routing or timed-waiting strategies
         - Maintain safety constraints: no collisions, valid moves only
 
-        FEW-SHOT EXAMPLE:
+        RESPONSE EXAMPLE:
         {
             "resolution": "reroute",
             "agent_actions": {
@@ -589,7 +591,7 @@ class CentralNegotiator:
         - out_of_bounds: Move exceeded map boundaries - stay within bounds
         - not_adjacent: Move was diagonal or too far - ensure orthogonal moves only
 
-        FEW-SHOT EXAMPLE:
+        RESPONSE EXAMPLE:
         {
             "resolution": "reroute",
             "agent_actions": {
@@ -602,17 +604,19 @@ class CentralNegotiator:
     
     # Create conflict description for user prompt
     def _create_conflict_description(self, conflict_data: Dict) -> str:
-        description = f"TURN {conflict_data.get('turn', 0)} - PATH CONFLICT DETECTED\n\n"
+        # description = f"TURN {conflict_data.get('turn', 0)} - PATH CONFLICT DETECTED\n\n"
         
-        description += "AGENTS IN CONFLICT:\n"
+        description = "AGENTS IN CONFLICT:\n"
         for agent in conflict_data.get('agents', []):
             agent_id = agent['id']
             current = agent['current_pos']
             target = agent.get('target_pos', 'unknown')
             path = agent.get('planned_path', [])
             
-            description += f"- Agent {agent_id}: At {current}, going to {target}\n"
-            description += f"  Planned path: {path}\n"
+            # description += f"- Agent {agent_id}: At {current}, going to {target}\n"
+            # description += f"  Planned path: {path}\n"
+
+            description += f"- Agent {agent_id} Planned Path: {path}\n"
             
             # Add failure history if available
             failed_history = agent.get('failed_move_history', [])
@@ -628,14 +632,14 @@ class CentralNegotiator:
         
         # Add map context if available
         if 'map_state' in conflict_data:
-            description += "\nMAP CONTEXT:\n"
+            # description += "\nMAP CONTEXT:\n"
             agents = conflict_data['map_state'].get('agents', {})
             boxes = conflict_data['map_state'].get('boxes', {})
             targets = conflict_data['map_state'].get('targets', {})
             
-            description += f"All agents: {agents}\n"
-            description += f"Remaining boxes: {boxes}\n"
-            description += f"Remaining targets: {targets}\n"
+            # description += f"All agents: {agents}\n"
+            # description += f"Remaining boxes: {boxes}\n"
+            # description += f"Remaining targets: {targets}\n"
             
             # Add spatial hints only if enabled
             if self.enable_spatial_hints:
