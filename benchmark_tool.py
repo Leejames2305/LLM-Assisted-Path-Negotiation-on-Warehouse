@@ -338,12 +338,14 @@ def generate_random_grid(width: int, height: int, wall_count: int, seed: int, mi
     return (grid, walls_placed)
 
 
-# Generate random valid positions for agents, boxes, and targets, agents spawn near boxes, targets reachable, no overlaps, all on walkable cells
+# Generate random valid positions for agents, boxes, and targets.
+# Optionally force each box to spawn on the same tile as its agent.
 def generate_random_positions(
     layout: Dict,
     num_agents: int,
     seed: int,
-    round_num: int
+    round_num: int,
+    spawn_box_on_agent_tile: bool = False
 ) -> Optional[Dict[str, List[Dict]]]:
     
     grid = layout['grid']
@@ -388,18 +390,21 @@ def generate_random_positions(
             # Pick agent/box starting position
             agent_box_start = available.pop(0)
             
-            # Find adjacent positions for box (including same position)
-            box_candidates = get_adjacent_walkable_cells(grid, agent_box_start)
-            box_candidates = [p for p in box_candidates if p not in used_positions]
-            
-            if not box_candidates:
-                continue
-            
-            # Randomly pick box position from adjacents
-            box_pos = rng.choice(box_candidates)
-            
             # Agent spawns at the starting position
             agent_pos = agent_box_start
+
+            if spawn_box_on_agent_tile:
+                box_pos = agent_pos
+            else:
+                # Find adjacent positions for box (including same position)
+                box_candidates = get_adjacent_walkable_cells(grid, agent_box_start)
+                box_candidates = [p for p in box_candidates if p not in used_positions]
+
+                if not box_candidates:
+                    continue
+
+                # Randomly pick box position from adjacents
+                box_pos = rng.choice(box_candidates)
             
             # Now find a target position that's reachable from box
             target_pos = None
@@ -884,7 +889,8 @@ def run_benchmark(base_layout: Dict, config: BenchmarkConfig) -> List[RoundResul
             base_layout,
             config.num_agents,
             config.seed,
-            round_num
+            round_num,
+            spawn_box_on_agent_tile=True
         )
         
         if positions is None:
