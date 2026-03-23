@@ -15,7 +15,7 @@ import os
 import signal
 import atexit
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 
 # Unified logger to capture simulation data
 class UnifiedLogger:
@@ -73,10 +73,10 @@ class UnifiedLogger:
         atexit.register(cleanup_on_exit)
         
         # Safe print with fallback for encoding issues
-        try:
-            print("🛡️  Emergency save protection enabled (Ctrl+C safe)")
-        except UnicodeEncodeError:
-            print("[LOGGER] Emergency save protection enabled (Ctrl+C safe)")
+        # try:
+        #     print("🛡️  Emergency save protection enabled (Ctrl+C safe)")
+        # except UnicodeEncodeError:
+        #     print("[LOGGER] Emergency save protection enabled (Ctrl+C safe)")
     
     # Initialize logging with scenario metadata
     def initialize(self, scenario_data: Dict) -> None:
@@ -122,18 +122,43 @@ class UnifiedLogger:
         turn_num: int,
         agent_states: Dict,
         map_state: Dict,
-        negotiation_data: Optional[Dict] = None
+        negotiation_data: Optional[Union[Dict, List[Dict]]] = None
         ) -> None:
+        """
+        Log a single turn's data.
+        negotiation_data can be:
+        - None: routine turn with no negotiation
+        - Dict: single negotiation (legacy/fallback mode)
+        - List[Dict]: parallel negotiations (multiple independent groups)
+        """
+
+        # Handle parallel negotiations (list of negotiation data)
+        if isinstance(negotiation_data, list):
+            # Parallel negotiation mode: merge all negotiation data
+            merged_negotiation = {
+                'negotiation_mode': 'parallel',
+                'total_groups': len(negotiation_data),
+                'groups': negotiation_data
+            }
+            turn_type = 'negotiation_parallel'
+        elif negotiation_data is not None:
+            # Single negotiation mode (legacy)
+            merged_negotiation = negotiation_data
+            turn_type = 'negotiation'
+        else:
+            # Routine turn (no negotiation)
+            merged_negotiation = None
+            turn_type = 'routine'
 
         turn_entry = {
             'turn': turn_num,
             'timestamp': datetime.now().isoformat(),
-            'type': 'negotiation' if negotiation_data else 'routine',
+            'type': turn_type,
             'agent_states': self._to_json_safe(agent_states),
             'map_state': self._to_json_safe(map_state),
-            'negotiation': self._to_json_safe(negotiation_data) if negotiation_data else None
+            'negotiation': self._to_json_safe(merged_negotiation) if merged_negotiation else None
         }
-        
+
         self.log_data['turns'].append(turn_entry)
         self._unsaved_data = True
 
@@ -257,7 +282,10 @@ class UnifiedLogger:
             print(f"📊 Summary: {', '.join(parts)}")
         else:
             turns = self.log_data.get('turns', [])
-            negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+            negotiation_turns = [
+                t for t in turns
+                if t.get('type') in ('negotiation', 'negotiation_parallel')
+            ]
             print(f"📝 Simulation log saved to: {log_path}")
             print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
         
@@ -266,13 +294,20 @@ class UnifiedLogger:
     # Build turn-based summary dictionary
     def _compute_turnbased_summary(self, performance_metrics: Optional[Dict] = None) -> Dict:
         turns = self.log_data['turns']
-        negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+        negotiation_turns = [t for t in turns if t.get('type') in ('negotiation', 'negotiation_parallel')]
         routine_turns = [t for t in turns if t.get('type') == 'routine']
+
+        # Count parallel vs single negotiations
+        parallel_negotiation_turns = [t for t in turns if t.get('type') == 'negotiation_parallel']
+        single_negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+
         hmas2_metrics = self._calculate_hmas2_metrics(negotiation_turns)
         return {
             'total_turns': len(turns),
             'routine_turns': len(routine_turns),
             'negotiation_turns': len(negotiation_turns),
+            'parallel_negotiation_turns': len(parallel_negotiation_turns),
+            'single_negotiation_turns': len(single_negotiation_turns),
             'total_conflicts': len(negotiation_turns),
             'hmas2_metrics': hmas2_metrics,
             'performance_metrics': performance_metrics or {},
@@ -404,46 +439,64 @@ class UnifiedLogger:
 
     # Calculate negotiation metrics
     def _calculate_hmas2_metrics(self, negotiation_turns: List[Dict]) -> Dict:
-        total_validations = 0
-        approvals = 0
-        rejections = 0
-        alternatives_suggested = 0
-        total_refinement_iterations = 0
-        
+        metrics = {
+            'total_validations': 0,
+            'approvals': 0,
+            'rejections': 0,
+            'alternatives_suggested': 0,
+            'total_refinement_iterations': 0,
+        }
+
         for turn in negotiation_turns:
             negotiation = turn.get('negotiation')
             if not negotiation:
                 continue
-            
-            hmas2 = negotiation.get('hmas2_stages', {})
-            
-            # Count agent validations
-            validations = hmas2.get('agent_validations', {})
-            for agent_id, val_data in validations.items():
-                total_validations += 1
-                val_result = val_data.get('validation_result', {})
-                if isinstance(val_result, dict):
-                    if val_result.get('valid', False):
-                        approvals += 1
-                    else:
-                        rejections += 1
-                    if val_data.get('alternative_suggested'):
-                        alternatives_suggested += 1
-            
-            # Count refinement iterations
-            refinement = hmas2.get('refinement_loop', {})
-            total_refinement_iterations += refinement.get('total_iterations', 0)
-        
-        disagreement_rate = rejections / total_validations if total_validations > 0 else 0.0
-        
+
+            # Handle parallel negotiation mode
+            if negotiation.get('negotiation_mode') == 'parallel':
+                # Process each group's negotiation data
+                for group_data in negotiation.get('groups', []):
+                    self._process_single_negotiation_metrics(group_data, metrics)
+            else:
+                # Single negotiation mode (legacy)
+                self._process_single_negotiation_metrics(negotiation, metrics)
+
+        total_validations = metrics['total_validations']
+        disagreement_rate = metrics['rejections'] / total_validations if total_validations > 0 else 0.0
+
         return {
-            'total_validations': total_validations,
-            'approvals': approvals,
-            'rejections': rejections,
-            'alternatives_suggested': alternatives_suggested,
-            'total_refinement_iterations': total_refinement_iterations,
+            'total_validations': metrics['total_validations'],
+            'approvals': metrics['approvals'],
+            'rejections': metrics['rejections'],
+            'alternatives_suggested': metrics['alternatives_suggested'],
+            'total_refinement_iterations': metrics['total_refinement_iterations'],
             'disagreement_rate': round(disagreement_rate, 3)
         }
+
+    def _process_single_negotiation_metrics(
+        self,
+        negotiation: Dict,
+        metrics: Dict[str, int],
+    ):
+        """Process metrics for a single negotiation and update shared counters."""
+        hmas2 = negotiation.get('hmas2_stages', {})
+
+        # Count agent validations
+        validations = hmas2.get('agent_validations', {})
+        for agent_id, val_data in validations.items():
+            metrics['total_validations'] += 1
+            val_result = val_data.get('validation_result', {})
+            if isinstance(val_result, dict):
+                if val_result.get('valid', False):
+                    metrics['approvals'] += 1
+                else:
+                    metrics['rejections'] += 1
+                if val_data.get('alternative_suggested'):
+                    metrics['alternatives_suggested'] += 1
+
+        # Count refinement iterations
+        refinement = hmas2.get('refinement_loop', {})
+        metrics['total_refinement_iterations'] += refinement.get('total_iterations', 0)
     
     # Recursive conversion to JSON-serializable format
     def _to_json_safe(self, obj: Any, visited: Optional[set] = None) -> Any:

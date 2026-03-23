@@ -57,25 +57,131 @@ class ConflictDetector:
     # Detect when two agents swap positions
     def _detect_swap_conflicts(self, agents_paths: Dict, turn: int, conflicts: Dict, current_turn: int):
         agent_ids = list(agents_paths.keys())
-        
+
         for i in range(len(agent_ids)):
             for j in range(i + 1, len(agent_ids)):
                 agent1_id, agent2_id = agent_ids[i], agent_ids[j]
                 path1, path2 = agents_paths[agent1_id], agents_paths[agent2_id]
-                
+
                 if turn < len(path1) - 1 and turn < len(path2) - 1:
                     # Check if agents are swapping positions
                     agent1_current = path1[turn]
                     agent1_next = path1[turn + 1]
                     agent2_current = path2[turn]
                     agent2_next = path2[turn + 1]
-                    
+
                     if agent1_current == agent2_next and agent2_current == agent1_next:
                         # Swap conflict detected
                         conflicts['has_conflicts'] = True
                         conflicts['conflict_points'].extend([agent1_current, agent2_current])
                         conflicts['conflicting_agents'].extend([agent1_id, agent2_id])
                         conflicts['conflict_turns'].append(current_turn + turn)
+
+    # Group conflicts into independent conflict groups based on agent connectivity
+    def group_conflicts(self, agents_paths: Dict[int, List[Tuple[int, int]]], current_turn: int = 0) -> List[Dict]:
+        """
+        Group conflicts into independent groups based on agent connectivity.
+        Each group represents agents whose paths interfere with each other.
+        Independent groups can be negotiated in parallel.
+        """
+        conflicts = self.detect_path_conflicts(agents_paths, current_turn)
+
+        if not conflicts['has_conflicts']:
+            return []
+
+        conflicting_agents = set(conflicts['conflicting_agents'])
+
+        # Build adjacency graph: which agents conflict with which
+        agent_graph = {agent_id: set() for agent_id in conflicting_agents}
+
+        # Track all direct conflicts between agent pairs
+        max_path_length = max(len(path) for path in agents_paths.values()) if agents_paths else 0
+
+        for turn in range(max_path_length):
+            turn_positions = {}
+
+            # Detect position conflicts
+            for agent_id, path in agents_paths.items():
+                if agent_id not in conflicting_agents:
+                    continue
+
+                if turn < len(path):
+                    pos = path[turn]
+                else:
+                    pos = path[-1] if path else None
+
+                if pos and pos in turn_positions:
+                    other_agent = turn_positions[pos]
+                    agent_graph[agent_id].add(other_agent)
+                    agent_graph[other_agent].add(agent_id)
+                elif pos:
+                    turn_positions[pos] = agent_id
+
+            # Detect swap conflicts
+            agent_ids = list(conflicting_agents)
+            for i in range(len(agent_ids)):
+                for j in range(i + 1, len(agent_ids)):
+                    agent1_id, agent2_id = agent_ids[i], agent_ids[j]
+                    path1, path2 = agents_paths[agent1_id], agents_paths[agent2_id]
+
+                    if turn < len(path1) - 1 and turn < len(path2) - 1:
+                        agent1_current = path1[turn]
+                        agent1_next = path1[turn + 1]
+                        agent2_current = path2[turn]
+                        agent2_next = path2[turn + 1]
+
+                        if agent1_current == agent2_next and agent2_current == agent1_next:
+                            agent_graph[agent1_id].add(agent2_id)
+                            agent_graph[agent2_id].add(agent1_id)
+
+        # Find connected components using DFS
+        visited = set()
+        conflict_groups = []
+
+        def dfs(agent_id: int, group: Set[int]):
+            """Depth-first search to find all connected agents in conflict group"""
+            if agent_id in visited:
+                return
+            visited.add(agent_id)
+            group.add(agent_id)
+
+            for neighbor in agent_graph[agent_id]:
+                dfs(neighbor, group)
+
+        # Build conflict groups
+        for agent_id in conflicting_agents:
+            if agent_id not in visited:
+                group = set()
+                dfs(agent_id, group)
+
+                # Get conflict points for this group
+                group_conflict_points = []
+                for turn in range(max_path_length):
+                    turn_positions = {}
+                    for aid in group:
+                        path = agents_paths[aid]
+                        if turn < len(path):
+                            pos = path[turn]
+                        else:
+                            pos = path[-1] if path else None
+
+                        if pos:
+                            if pos in turn_positions:
+                                group_conflict_points.append(pos)
+                            else:
+                                turn_positions[pos] = aid
+
+                # Remove duplicates
+                group_conflict_points = list(set(group_conflict_points))
+
+                conflict_groups.append({
+                    'has_conflicts': True,
+                    'conflicting_agents': list(group),
+                    'conflict_points': group_conflict_points,
+                    'conflict_turns': conflicts['conflict_turns']  # Shared for simplicity
+                })
+
+        return conflict_groups
 
 class SimplePathfinder:
     def __init__(self, map_width: int = 8, map_height: int = 6):
