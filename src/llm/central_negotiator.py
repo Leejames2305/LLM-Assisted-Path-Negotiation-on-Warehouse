@@ -29,12 +29,12 @@ class CentralNegotiator:
         self.max_refinement_iterations = 5
         self.refinement_history = []
         
-        if self.enable_spatial_hints:
-            print("🎯 Spatial hints ENABLED - LLM will receive wiggle room guidance")
-        else:
-            print("🚫 Spatial hints DISABLED - Baseline negotiation mode")
+        # if self.enable_spatial_hints:
+        #     print("🎯 Spatial hints ENABLED - LLM will receive wiggle room guidance")
+        # else:
+        #     print("🚫 Spatial hints DISABLED - Baseline negotiation mode")
         
-        print(f"🔄 Refinement loop ENABLED - Max iterations: {self.max_refinement_iterations}")
+        # print(f"🔄 Refinement loop ENABLED - Max iterations: {self.max_refinement_iterations}")
     
     # Check if model supports reasoning features
     def _is_reasoning_model(self, model: str) -> bool:
@@ -65,7 +65,7 @@ class CentralNegotiator:
         }
         
         logger.info(f"Starting conflict negotiation for agents: {[a.get('id') for a in conflict_data.get('agents', [])]}")
-        print(f"🎯 Starting conflict negotiation (max {self.max_refinement_iterations} refinement iterations)")
+        # print(f"🎯 Starting conflict negotiation (max {self.max_refinement_iterations} refinement iterations)")
         
         # Check if this is a deadlock situation requiring special handling
         if conflict_data.get('deadlock_breaking', False) or conflict_data.get('conflict_type') in ['deadlock', 'stagnation']:

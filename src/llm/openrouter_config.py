@@ -137,7 +137,7 @@ class OpenRouterConfig:
             if is_high_end: reasons.append("high-end model")
             if forced_reasoning: reasons.append("forced by env")
             if is_explicit: reasons.append("explicit config")
-            print(f"🧠 Detected reasoning model '{model}': {', '.join(reasons)}")
+            # print(f"🧠 Detected reasoning model '{model}': {', '.join(reasons)}")
         
         return is_reasoning
     

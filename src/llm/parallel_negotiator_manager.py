@@ -136,10 +136,10 @@ class ParallelNegotiatorManager:
             # Collect results as they complete
             results_by_index = {}
             for future in as_completed(futures):
-                group_index, resolution, log_data = future.result()
                 group_index = futures[future]
                 try:
                     _, resolution, log_data = future.result()
+                    results_by_index[group_index] = (resolution, log_data)
                 except Exception as exc:
                     logger.exception(
                         "Parallel negotiation for group %d failed with exception", group_index
@@ -149,9 +149,23 @@ class ParallelNegotiatorManager:
                         "group_index": group_index,
                         "error": str(exc),
                     }
+                    results_by_index[group_index] = (resolution, log_data)
 
         # Sort results by group index to maintain order
         for i in range(num_groups):
+            if i not in results_by_index:
+                logger.error(
+                    "Missing parallel negotiation result for group %d; using deadlock fallback",
+                    i,
+                )
+                results_by_index[i] = (
+                    {},
+                    {
+                        "group_index": i,
+                        "error": "Missing result entry from parallel negotiation",
+                    },
+                )
+
             resolution, log_data = results_by_index[i]
             resolutions.append(resolution)
             negotiation_logs.append(log_data)
