@@ -263,6 +263,86 @@ class SimplePathfinder:
                 obstacles.add(pos)
         
         return self.find_path(start, goal, obstacles)
+
+    # Find a path while avoiding time-specific reservations from previously planned agents
+    def find_path_with_time_constraints(
+        self,
+        start: Tuple[int, int],
+        goal: Tuple[int, int],
+        walls: Set[Tuple[int, int]],
+        reserved_positions_by_turn: Optional[Dict[int, Set[Tuple[int, int]]]] = None,
+        reserved_edges_by_turn: Optional[Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]]] = None,
+        max_time_steps: Optional[int] = None
+    ) -> List[Tuple[int, int]]:
+        if start == goal:
+            return [start]
+
+        reserved_positions_by_turn = reserved_positions_by_turn or {}
+        reserved_edges_by_turn = reserved_edges_by_turn or {}
+        if max_time_steps is None:
+            max_time_steps = max(16, self.map_width * self.map_height * 2)
+
+        def heuristic(a: Tuple[int, int], b: Tuple[int, int]) -> int:
+            return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+        def get_neighbors(pos: Tuple[int, int]) -> List[Tuple[int, int]]:
+            x, y = pos
+            neighbors = [pos]  # Wait-in-place is allowed for time-aware deconfliction
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
+                    nxt = (nx, ny)
+                    if nxt not in walls:
+                        neighbors.append(nxt)
+            return neighbors
+
+        # (f_score, g_score, position, time_step)
+        open_set = [(heuristic(start, goal), 0, start, 0)]
+        came_from: Dict[Tuple[Tuple[int, int], int], Tuple[Tuple[int, int], int]] = {}
+        best_cost: Dict[Tuple[Tuple[int, int], int], int] = {(start, 0): 0}
+
+        while open_set:
+            _, current_g, current_pos, current_t = heapq.heappop(open_set)
+            current_state = (current_pos, current_t)
+
+            if current_g > best_cost.get(current_state, float('inf')):
+                continue
+
+            if current_pos == goal:
+                path = [current_pos]
+                trace_state = current_state
+                while trace_state in came_from:
+                    trace_state = came_from[trace_state]
+                    path.append(trace_state[0])
+                return path[::-1]
+
+            if current_t >= max_time_steps:
+                continue
+
+            next_t = current_t + 1
+            reserved_next_positions = reserved_positions_by_turn.get(next_t, set())
+            reserved_edges = reserved_edges_by_turn.get(current_t, set())
+
+            for neighbor in get_neighbors(current_pos):
+                # Vertex conflict: cannot occupy a reserved position at next turn
+                if neighbor in reserved_next_positions:
+                    continue
+
+                # Edge swap conflict:
+                # if another agent plans current_pos -> neighbor at this turn,
+                # this agent cannot do neighbor -> current_pos simultaneously.
+                if (neighbor, current_pos) in reserved_edges:
+                    continue
+
+                next_state = (neighbor, next_t)
+                tentative_g = current_g + 1
+                if tentative_g < best_cost.get(next_state, float('inf')):
+                    best_cost[next_state] = tentative_g
+                    came_from[next_state] = current_state
+                    tentative_f = tentative_g + heuristic(neighbor, goal)
+                    heapq.heappush(open_set, (tentative_f, tentative_g, neighbor, next_t))
+
+        return []
     
     # Calculate the cost (length) of a path
     def get_path_cost(self, path: List[Tuple[int, int]]) -> int:
