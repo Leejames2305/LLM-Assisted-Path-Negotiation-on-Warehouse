@@ -287,7 +287,7 @@ class SimplePathfinder:
 
         def get_neighbors(pos: Tuple[int, int]) -> List[Tuple[int, int]]:
             x, y = pos
-            neighbors = [pos]  # Wait-in-place is allowed for time-aware deconfliction
+            neighbors = [pos]  # Include current position to allow waiting in place during conflict avoidance
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < self.map_width and 0 <= ny < self.map_height:

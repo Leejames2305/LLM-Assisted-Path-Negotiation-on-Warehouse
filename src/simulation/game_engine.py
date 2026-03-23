@@ -1191,7 +1191,7 @@ class GameEngine:
         reserved_edges_by_turn: Dict[int, set] = {}
 
         # Use a small horizon cap for scalability in larger maps/agent counts.
-        max_time_steps = max(16, self.width * self.height * 2)
+        max_planning_steps = max(16, self.width * self.height * 2)
 
         for agent_id in active_ids:
             agent = self.agents[agent_id]
@@ -1212,7 +1212,7 @@ class GameEngine:
                     walls=walls,
                     reserved_positions_by_turn=reserved_positions_by_turn,
                     reserved_edges_by_turn=reserved_edges_by_turn,
-                    max_time_steps=max_time_steps,
+                    max_time_steps=max_planning_steps,
                 )
 
                 if not path:
