@@ -73,10 +73,10 @@ class UnifiedLogger:
         atexit.register(cleanup_on_exit)
         
         # Safe print with fallback for encoding issues
-        try:
-            print("🛡️  Emergency save protection enabled (Ctrl+C safe)")
-        except UnicodeEncodeError:
-            print("[LOGGER] Emergency save protection enabled (Ctrl+C safe)")
+        # try:
+        #     print("🛡️  Emergency save protection enabled (Ctrl+C safe)")
+        # except UnicodeEncodeError:
+        #     print("[LOGGER] Emergency save protection enabled (Ctrl+C safe)")
     
     # Initialize logging with scenario metadata
     def initialize(self, scenario_data: Dict) -> None:

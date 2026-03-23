@@ -130,11 +130,12 @@ class OpenRouterClient:
                     self.total_completion_tokens += usage_data['completion_tokens']
                     self.total_tokens_used += usage_data['total_tokens']
                     
-                    print(f"📊 Tokens used: {usage_data['total_tokens']} (prompt: {usage_data['prompt_tokens']}, completion: {usage_data['completion_tokens']})")
+                    if 'provider' in data:
+                        print(f"📊 Tokens used:{data['provider']}; {usage_data['total_tokens']} (prompt: {usage_data['prompt_tokens']}, completion: {usage_data['completion_tokens']})")
                 
                 # Log provider information if available
-                if 'provider' in data:
-                    print(f"✅ Response from provider: {data['provider']}")
+                # if 'provider' in data:
+                #     print(f"✅ Response from provider: {data['provider']}")
                 
                 # Count every successful request, regardless of whether usage data is present
                 self.request_count += 1
