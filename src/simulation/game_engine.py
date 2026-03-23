@@ -23,6 +23,12 @@ from ..logging import UnifiedLogger
 init(autoreset=True)
 
 class GameEngine:
+    # Default planning horizon parameters for reservation-based sequential planning.
+    # _MIN_TIME_HORIZON is the minimum horizon in turns.
+    # _GRID_HORIZON_MULTIPLIER scales horizon with map area for larger maps.
+    _MIN_TIME_HORIZON = 16
+    _GRID_HORIZON_MULTIPLIER = 2
+
     def __init__(self, width: int = 8, height: int = 6, num_agents: int = 2):
         """Initialize the game engine with specified parameters"""
         self.width = width
@@ -1193,8 +1199,11 @@ class GameEngine:
         reserved_positions_by_turn: Dict[int, set] = {}
         reserved_edges_by_turn: Dict[int, set] = {}
 
-        # Use a small horizon cap for scalability in larger maps/agent counts.
-        max_planning_steps = max(16, self.width * self.height * 2)
+        # Use a scalable planning-time horizon based on map size.
+        planning_time_horizon = max(
+            self._MIN_TIME_HORIZON,
+            self.width * self.height * self._GRID_HORIZON_MULTIPLIER
+        )
 
         for agent_id in active_ids:
             agent = self.agents[agent_id]
@@ -1215,12 +1224,14 @@ class GameEngine:
                     walls=walls,
                     reserved_positions_by_turn=reserved_positions_by_turn,
                     reserved_edges_by_turn=reserved_edges_by_turn,
-                    max_time_steps=max_planning_steps,
+                    max_time_steps=planning_time_horizon,
                 )
 
                 if not path:
-                    # Fallback to normal planner if time-aware planner cannot solve.
-                    # Unsolved agents will be handled later by conflict/deadlock flow.
+                    # Fallback to normal planner (without time constraints) if
+                    # time-aware planning finds no solution within the horizon.
+                    # If this also fails, the agent is omitted from planned_moves
+                    # and handled by subsequent conflict/deadlock logic.
                     path = self._plan_normal_path(agent, map_state)
 
                 agent.planned_path = path
