@@ -563,6 +563,9 @@ class GameEngine:
                 if not self.silent_mode:
                     print(f"  🎯 Agent {agent_id}: Goal altered {old_target_pos} → {new_target_pos}")
 
+        # Rebuild reservations and replan after difficulty-based target alterations
+        self._replan_with_reservations()
+
     # Run one step of the simulation — dispatches to mode-specific implementation
     def run_simulation_step(self) -> bool:
         if self.simulation_mode in ('async', 'lifelong'):
@@ -1236,6 +1239,14 @@ class GameEngine:
                     reserved_edges_by_turn.setdefault(turn_idx - 1, set()).add((prev, pos))
 
         return planned_moves
+
+    # Replan paths with reservation-based sequential A* and refresh agent path buffers
+    def _replan_with_reservations(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
+        planned_moves = self._get_sequential_planned_moves(agent_ids)
+        for agent_id, path in planned_moves.items():
+            if agent_id in self.agents:
+                self.agents[agent_id].planned_path = path.copy()
+        return planned_moves
         
     # Plan path avoiding other agents - for actual movement
     def _plan_normal_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
@@ -1758,10 +1769,9 @@ class GameEngine:
                             target_pos = self.warehouse_map.targets[target_id]
                             agent.set_target(target_pos)
                             print(f"🎯 Agent {agent_id}: New target set to delivery point {target_pos}")
-                            
-                            # Force immediate path re-planning after target change
-                            map_state = self.warehouse_map.get_state_dict()
-                            agent.plan_path(map_state)
+
+                            # Rebuild reservations and replan all active agents after target change
+                            self._replan_with_reservations()
     
     # Check if agent can deliver box at current position
     def _check_box_delivery(self, agent_id: int):
@@ -1870,9 +1880,8 @@ class GameEngine:
 
         print(f"🔄 Agent {agent_id}: New lifelong task — box at {box_pos}, target at {target_pos}")
 
-        # Plan an initial path to the new box
-        map_state = self.warehouse_map.get_state_dict()
-        agent.plan_path(map_state)
+        # Rebuild reservations and replan all active agents after task assignment
+        self._replan_with_reservations()
     
     # Update warehouse map with current agent positions
     def _update_map_state(self):
