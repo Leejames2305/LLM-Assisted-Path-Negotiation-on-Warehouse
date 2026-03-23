@@ -184,6 +184,11 @@ class ConflictDetector:
         return conflict_groups
 
 class SimplePathfinder:
+    # Default planning horizon parameters for time-aware reservation planning.
+    # Keep this aligned with GameEngine planning-horizon defaults.
+    _MIN_TIME_HORIZON = 16
+    _GRID_HORIZON_MULTIPLIER = 2
+
     def __init__(self, map_width: int = 8, map_height: int = 6):
         self.map_width = map_width
         self.map_height = map_height
@@ -280,14 +285,20 @@ class SimplePathfinder:
         reserved_positions_by_turn = reserved_positions_by_turn or {}
         reserved_edges_by_turn = reserved_edges_by_turn or {}
         if max_time_steps is None:
-            max_time_steps = max(16, self.map_width * self.map_height * 2)
+            max_time_steps = max(
+                self._MIN_TIME_HORIZON,
+                self.map_width * self.map_height * self._GRID_HORIZON_MULTIPLIER
+            )
 
         def heuristic(a: Tuple[int, int], b: Tuple[int, int]) -> int:
             return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
         def get_neighbors(pos: Tuple[int, int]) -> List[Tuple[int, int]]:
             x, y = pos
-            neighbors = [pos]  # Include current position to allow waiting in place during conflict avoidance
+            # Include current position so an agent can wait and delay movement
+            # until future turns when reserved cells become available.
+            # max_time_steps bounds how long the planner can keep waiting.
+            neighbors = [pos]
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
@@ -328,9 +339,9 @@ class SimplePathfinder:
                 if neighbor in reserved_next_positions:
                     continue
 
-                # Edge swap conflict:
-                # if another agent plans current_pos -> neighbor at this turn,
-                # this agent cannot do neighbor -> current_pos simultaneously.
+                # Edge swap conflict: if another agent moves from current_pos to
+                # neighbor at this turn, this agent cannot simultaneously swap
+                # by moving from neighbor to current_pos.
                 if (neighbor, current_pos) in reserved_edges:
                     continue
 
