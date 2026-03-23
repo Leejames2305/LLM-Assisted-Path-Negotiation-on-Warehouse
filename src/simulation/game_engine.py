@@ -23,6 +23,12 @@ from ..logging import UnifiedLogger
 init(autoreset=True)
 
 class GameEngine:
+    # Default planning horizon parameters for reservation-based sequential planning.
+    # _MIN_TIME_HORIZON is the minimum horizon in turns.
+    # _GRID_HORIZON_MULTIPLIER scales horizon with map area for larger maps.
+    _MIN_TIME_HORIZON = 16
+    _GRID_HORIZON_MULTIPLIER = 2
+
     def __init__(self, width: int = 8, height: int = 6, num_agents: int = 2):
         """Initialize the game engine with specified parameters"""
         self.width = width
@@ -563,6 +569,9 @@ class GameEngine:
                 if not self.silent_mode:
                     print(f"  🎯 Agent {agent_id}: Goal altered {old_target_pos} → {new_target_pos}")
 
+        # Rebuild reservations and replan after difficulty-based target alterations
+        self._replan_with_reservations()
+
     # Run one step of the simulation — dispatches to mode-specific implementation
     def run_simulation_step(self) -> bool:
         if self.simulation_mode in ('async', 'lifelong'):
@@ -627,77 +636,51 @@ class GameEngine:
             self.current_turn += 1
             return True
         
-        # PHASE 1: Get forced planned moves (ignoring other agents) for conflict detection
-        forced_moves = self._get_forced_planned_moves()
-        
-        if not forced_moves:
+        # PHASE 1: Sequential A* planning (time-aware against earlier planned agents)
+        planned_moves = self._get_sequential_planned_moves()
+
+        if not planned_moves:
             print("No agents have targets to move towards.")
             # Check if all tasks are complete
             if self._check_completion():
                 print("🎉 All tasks completed! Simulation complete!")
                 self.simulation_complete = True
             return False
-        
-        # Check for conflicts using forced paths
-        conflict_info = self.conflict_detector.detect_path_conflicts(forced_moves, self.current_turn)
-        
+
+        # Check for conflicts after sequential A* planning
+        conflict_info = self.conflict_detector.detect_path_conflicts(planned_moves, self.current_turn)
+
         # Track if negotiation occurred this turn
         negotiation_occurred = False
-        
+
         if conflict_info['has_conflicts']:
             print(f"{Fore.RED}CONFLICT DETECTED!{Style.RESET_ALL}")
             print(f"Conflicting agents: {conflict_info['conflicting_agents']}")
             print(f"Conflict points: {conflict_info['conflict_points']}")
-            
+
             # Track collision for metrics
             self.collision_count += len(conflict_info['conflict_points'])
 
             # Use parallel or single negotiation based on configuration
             if self.use_parallel_negotiation:
-                resolution, negotiation_data = self._negotiate_parallel_conflicts(conflict_info, forced_moves)
+                resolution, negotiation_data = self._negotiate_parallel_conflicts(conflict_info, planned_moves)
                 self._current_negotiation_data = negotiation_data
             else:
-                resolution, neg_data = self._negotiate_conflicts(conflict_info, forced_moves)
+                resolution, neg_data = self._negotiate_conflicts(conflict_info, planned_moves)
                 self._current_negotiation_data = neg_data
 
             self._execute_negotiated_actions(resolution)
             negotiation_occurred = True
         else:
-            # PHASE 2: No conflicts in forced paths - try normal planning
-            print(f"{Fore.GREEN}No conflicts in forced paths. Trying normal planning...{Style.RESET_ALL}")
-            
-            normal_moves = self._get_normal_planned_moves()
-            if normal_moves:
-                # Double-check for conflicts in normal paths
-                normal_conflict_info = self.conflict_detector.detect_path_conflicts(normal_moves, self.current_turn)
-                
-                if normal_conflict_info['has_conflicts']:
-                    print(f"{Fore.YELLOW}Conflicts found in normal paths - negotiating...{Style.RESET_ALL}")
-                    # Track collision for metrics
-                    self.collision_count += len(normal_conflict_info['conflict_points'])
+            print(f"{Fore.GREEN}No conflicts detected. Executing planned moves...{Style.RESET_ALL}")
+            self._execute_planned_moves(planned_moves)
 
-                    # Use parallel or single negotiation based on configuration
-                    if self.use_parallel_negotiation:
-                        resolution, negotiation_data = self._negotiate_parallel_conflicts(normal_conflict_info, normal_moves)
-                        self._current_negotiation_data = negotiation_data
-                    else:
-                        resolution, neg_data = self._negotiate_conflicts(normal_conflict_info, normal_moves)
-                        self._current_negotiation_data = neg_data
-
-                    self._execute_negotiated_actions(resolution)
-                    negotiation_occurred = True
-                else:
-                    print(f"{Fore.GREEN}No conflicts detected. Executing planned moves...{Style.RESET_ALL}")
-                    self._execute_planned_moves(normal_moves)
-                    
-                    # PHASE 3: Check for deadlock after move execution
-                    deadlock_conflict = self.detect_move_failure_deadlocks(normal_moves)
-                    if deadlock_conflict['has_conflicts']:
-                        print(f"🔥 DEADLOCK AFTER MOVES! Forcing resolution...")
-                        self._force_deadlock_negotiation(deadlock_conflict['conflicting_agents'], normal_moves)
-                        negotiation_occurred = True
-            else:
-                print(f"{Fore.YELLOW}No agents can plan paths - all waiting...{Style.RESET_ALL}")
+            # PHASE 2: Check for deadlock after move execution
+            deadlock_conflict = self.detect_move_failure_deadlocks(planned_moves)
+            if deadlock_conflict['has_conflicts']:
+                print(f"🔥 DEADLOCK AFTER MOVES! Forcing resolution...")
+                self._force_deadlock_negotiation(deadlock_conflict['conflicting_agents'], planned_moves)
+                negotiation_occurred = True
         
         # Update map with new agent positions
         self._update_map_state()
@@ -781,28 +764,16 @@ class GameEngine:
                     self._pending_resolution_agents.update(stagnant_free)
                     self._start_background_negotiation(conflict_key, filtered, {})
 
-        # ── Step 5: Forced moves for active free agents ───────────────────
+        # ── Step 5: Sequential time-aware planned moves for active free agents ──
         active_free_ids = free_agent_ids - stagnant_free
-        forced_moves: Dict[int, List] = {}
-        for agent_id in active_free_ids:
-            agent = self.agents[agent_id]
-            if not agent.is_waiting and agent.target_position:
-                if (hasattr(agent, '_has_negotiated_path') and
-                        getattr(agent, '_has_negotiated_path', False) and
-                        agent.planned_path):
-                    forced_moves[agent_id] = agent.planned_path.copy()
-                else:
-                    map_state = self.warehouse_map.get_state_dict()
-                    forced_path = self._plan_forced_path(agent, map_state)
-                    if forced_path:
-                        forced_moves[agent_id] = forced_path
+        planned_moves = self._get_sequential_planned_moves(active_free_ids)
 
         conflicting_ids: set = set()
 
-        if forced_moves:
+        if planned_moves:
             # ── Step 6: Detect primary conflicts ─────────────────────────
             conflict_info = self.conflict_detector.detect_path_conflicts(
-                forced_moves, self.current_turn)
+                planned_moves, self.current_turn)
 
             if conflict_info['has_conflicts']:
                 conflicting_ids = set(conflict_info['conflicting_agents'])
@@ -816,29 +787,15 @@ class GameEngine:
                         self._conflict_hold_positions[aid] = self.agents[aid].position
                     self._pending_resolution_agents.update(conflicting_ids)
                     self._start_background_negotiation(
-                        conflict_key, conflict_info, forced_moves)
+                        conflict_key, conflict_info, planned_moves)
 
             # ── Step 7: Move non-conflicting free agents ──────────────────
             non_conflicting_ids = active_free_ids - conflicting_ids
-            normal_moves: Dict[int, List] = {}
-            for agent_id in non_conflicting_ids:
-                agent = self.agents[agent_id]
-                if not agent.is_waiting and agent.target_position:
-                    if (hasattr(agent, '_has_negotiated_path') and
-                            getattr(agent, '_has_negotiated_path', False) and
-                            agent.planned_path and len(agent.planned_path) > 1):
-                        normal_moves[agent_id] = agent.planned_path.copy()
-                    else:
-                        needs_replan = (
-                            not agent.planned_path or
-                            (agent.planned_path and
-                             agent.planned_path[-1] != agent.target_position)
-                        )
-                        if needs_replan:
-                            map_state = self.warehouse_map.get_state_dict()
-                            agent.planned_path = self._plan_normal_path(agent, map_state)
-                        if agent.planned_path:
-                            normal_moves[agent_id] = agent.planned_path.copy()
+            normal_moves = {
+                agent_id: planned_moves[agent_id]
+                for agent_id in non_conflicting_ids
+                if agent_id in planned_moves
+            }
 
             if normal_moves:
                 normal_conflict = self.conflict_detector.detect_path_conflicts(
@@ -1180,28 +1137,8 @@ class GameEngine:
 
     # Get planned moves for all active agents
     def _get_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
-        return self._get_normal_planned_moves()
-    
-    # Get forced planned moves (ignoring other agents) for conflict detection
-    def _get_forced_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
-        forced_moves = {}
-        
-        for agent_id, agent in self.agents.items():
-            if not agent.is_waiting and agent.target_position:
-                # CRITICAL FIX: Check if agent has a negotiated path first
-                if hasattr(agent, '_has_negotiated_path') and getattr(agent, '_has_negotiated_path', False) and agent.planned_path:
-                    # Use the existing negotiated path instead of replanning
-                    forced_moves[agent_id] = agent.planned_path.copy()
-                else:
-                    # Force path planning ignoring other agents
-                    map_state = self.warehouse_map.get_state_dict()
-                    forced_path = self._plan_forced_path(agent, map_state)
-                    
-                    if forced_path:
-                        forced_moves[agent_id] = forced_path
-        
-        return forced_moves
-    
+        return self._get_sequential_planned_moves()
+
     # Get normal planned moves (avoiding other agents)
     def _get_normal_planned_moves(self) -> Dict[int, List[Tuple[int, int]]]:
         planned_moves = {}
@@ -1231,28 +1168,97 @@ class GameEngine:
                         planned_moves[agent_id] = agent.planned_path.copy()
         
         return planned_moves
-    
-    # Plan path ignoring other agents - for conflict detection
-    def _plan_forced_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
-        # Extract only walls as obstacles (ignore other agents)
-        walls = set()
+
+    # Plan paths sequentially; each next agent avoids previous agents at specific turns
+    def _get_sequential_planned_moves(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
+        planned_moves: Dict[int, List[Tuple[int, int]]] = {}
+
+        if agent_ids is None:
+            candidate_ids = set(self.agents.keys())
+        else:
+            candidate_ids = set(agent_ids)
+
+        active_ids = []
+        for aid in sorted(candidate_ids):
+            agent = self.agents.get(aid)
+            if agent and (not agent.is_waiting) and agent.target_position:
+                active_ids.append(aid)
+
+        if not active_ids:
+            return planned_moves
+
+        map_state = self.warehouse_map.get_state_dict()
         grid = map_state.get('grid', [])
+        walls = set()
         for y, row in enumerate(grid):
             for x, cell in enumerate(row):
                 if cell == '#':
                     walls.add((x, y))
-        
-        # Use pathfinder with only walls as obstacles
-        forced_path = self.pathfinder.find_path_with_obstacles(
-            start=agent.position,
-            goal=agent.target_position,
-            walls=walls,
-            agent_positions={},  # Empty - ignore other agents
-            exclude_agent=agent.agent_id
+
+        # Reservation tables built only from already-planned agents.
+        reserved_positions_by_turn: Dict[int, set] = {}
+        reserved_edges_by_turn: Dict[int, set] = {}
+
+        # Use a scalable planning-time horizon based on map size.
+        planning_time_horizon = max(
+            self._MIN_TIME_HORIZON,
+            self.width * self.height * self._GRID_HORIZON_MULTIPLIER
         )
+
+        for agent_id in active_ids:
+            agent = self.agents[agent_id]
+
+            has_negotiated_path = (
+                hasattr(agent, '_has_negotiated_path') and
+                getattr(agent, '_has_negotiated_path', False) and
+                agent.planned_path and
+                len(agent.planned_path) > 1
+            )
+
+            if has_negotiated_path:
+                path = agent.planned_path.copy()
+            else:
+                path = self.pathfinder.find_path_with_time_constraints(
+                    start=agent.position,
+                    goal=agent.target_position,
+                    walls=walls,
+                    reserved_positions_by_turn=reserved_positions_by_turn,
+                    reserved_edges_by_turn=reserved_edges_by_turn,
+                    max_time_steps=planning_time_horizon,
+                )
+
+                if not path:
+                    # Fallback to normal planner (without time constraints) if
+                    # time-aware planning finds no solution within the horizon.
+                    # If this also fails, the agent is omitted from planned_moves
+                    # and handled by subsequent conflict/deadlock logic.
+                    path = self._plan_normal_path(agent, map_state)
+
+                agent.planned_path = path
+                if hasattr(agent, '_has_negotiated_path'):
+                    agent._has_negotiated_path = False
+
+            if not path:
+                continue
+
+            planned_moves[agent_id] = path.copy()
+
+            for turn_idx, pos in enumerate(path):
+                reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
+                if turn_idx > 0:
+                    prev = path[turn_idx - 1]
+                    reserved_edges_by_turn.setdefault(turn_idx - 1, set()).add((prev, pos))
+
+        return planned_moves
+
+    # Replan paths with reservation-based sequential A* and refresh agent path buffers
+    def _replan_with_reservations(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
+        planned_moves = self._get_sequential_planned_moves(agent_ids)
+        for agent_id, path in planned_moves.items():
+            if agent_id in self.agents:
+                self.agents[agent_id].planned_path = path.copy()
+        return planned_moves
         
-        return forced_path
-    
     # Plan path avoiding other agents - for actual movement
     def _plan_normal_path(self, agent, map_state: Dict) -> List[Tuple[int, int]]:
         # Extract walls
@@ -1774,10 +1780,9 @@ class GameEngine:
                             target_pos = self.warehouse_map.targets[target_id]
                             agent.set_target(target_pos)
                             print(f"🎯 Agent {agent_id}: New target set to delivery point {target_pos}")
-                            
-                            # Force immediate path re-planning after target change
-                            map_state = self.warehouse_map.get_state_dict()
-                            agent.plan_path(map_state)
+
+                            # Rebuild reservations and replan all active agents after target change
+                            self._replan_with_reservations()
     
     # Check if agent can deliver box at current position
     def _check_box_delivery(self, agent_id: int):
@@ -1886,9 +1891,8 @@ class GameEngine:
 
         print(f"🔄 Agent {agent_id}: New lifelong task — box at {box_pos}, target at {target_pos}")
 
-        # Plan an initial path to the new box
-        map_state = self.warehouse_map.get_state_dict()
-        agent.plan_path(map_state)
+        # Rebuild reservations and replan all active agents after task assignment
+        self._replan_with_reservations()
     
     # Update warehouse map with current agent positions
     def _update_map_state(self):

@@ -154,7 +154,7 @@ class OpenRouterConfig:
     def get_recommended_settings_for_model(model: str) -> Dict:
         settings = {
             'max_tokens': 64000,
-            'temperature': 0.5,
+            'temperature': 0.4,
             'reasoning_enabled': False,
             'reasoning_exclude': False
         }
@@ -162,7 +162,7 @@ class OpenRouterConfig:
         if OpenRouterConfig.is_reasoning_model(model):
             settings.update({
                 'max_tokens': 64000,
-                'temperature': 0.5,
+                'temperature': 0.4,
                 'reasoning_enabled': True,
                 'reasoning_exclude': False
             })
