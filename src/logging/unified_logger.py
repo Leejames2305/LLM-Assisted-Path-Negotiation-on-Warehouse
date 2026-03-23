@@ -15,7 +15,7 @@ import os
 import signal
 import atexit
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 
 # Unified logger to capture simulation data
 class UnifiedLogger:
@@ -122,7 +122,7 @@ class UnifiedLogger:
         turn_num: int,
         agent_states: Dict,
         map_state: Dict,
-        negotiation_data: Optional[Dict] = None
+        negotiation_data: Optional[Union[Dict, List[Dict]]] = None
         ) -> None:
         """
         Log a single turn's data.
@@ -282,7 +282,10 @@ class UnifiedLogger:
             print(f"📊 Summary: {', '.join(parts)}")
         else:
             turns = self.log_data.get('turns', [])
-            negotiation_turns = [t for t in turns if t.get('type') == 'negotiation']
+            negotiation_turns = [
+                t for t in turns
+                if t.get('type') in ('negotiation', 'negotiation_parallel')
+            ]
             print(f"📝 Simulation log saved to: {log_path}")
             print(f"📊 Summary: {len(turns)} turns, {len(negotiation_turns)} negotiations")
         
@@ -436,11 +439,13 @@ class UnifiedLogger:
 
     # Calculate negotiation metrics
     def _calculate_hmas2_metrics(self, negotiation_turns: List[Dict]) -> Dict:
-        total_validations = 0
-        approvals = 0
-        rejections = 0
-        alternatives_suggested = 0
-        total_refinement_iterations = 0
+        metrics = {
+            'total_validations': 0,
+            'approvals': 0,
+            'rejections': 0,
+            'alternatives_suggested': 0,
+            'total_refinement_iterations': 0,
+        }
 
         for turn in negotiation_turns:
             negotiation = turn.get('negotiation')
@@ -451,64 +456,47 @@ class UnifiedLogger:
             if negotiation.get('negotiation_mode') == 'parallel':
                 # Process each group's negotiation data
                 for group_data in negotiation.get('groups', []):
-                    self._process_single_negotiation_metrics(
-                        group_data,
-                        total_validations_ref=[total_validations],
-                        approvals_ref=[approvals],
-                        rejections_ref=[rejections],
-                        alternatives_suggested_ref=[alternatives_suggested],
-                        total_refinement_iterations_ref=[total_refinement_iterations]
-                    )
+                    self._process_single_negotiation_metrics(group_data, metrics)
             else:
                 # Single negotiation mode (legacy)
-                self._process_single_negotiation_metrics(
-                    negotiation,
-                    total_validations_ref=[total_validations],
-                    approvals_ref=[approvals],
-                    rejections_ref=[rejections],
-                    alternatives_suggested_ref=[alternatives_suggested],
-                    total_refinement_iterations_ref=[total_refinement_iterations]
-                )
+                self._process_single_negotiation_metrics(negotiation, metrics)
 
-        disagreement_rate = rejections / total_validations if total_validations > 0 else 0.0
+        total_validations = metrics['total_validations']
+        disagreement_rate = metrics['rejections'] / total_validations if total_validations > 0 else 0.0
 
         return {
-            'total_validations': total_validations,
-            'approvals': approvals,
-            'rejections': rejections,
-            'alternatives_suggested': alternatives_suggested,
-            'total_refinement_iterations': total_refinement_iterations,
+            'total_validations': metrics['total_validations'],
+            'approvals': metrics['approvals'],
+            'rejections': metrics['rejections'],
+            'alternatives_suggested': metrics['alternatives_suggested'],
+            'total_refinement_iterations': metrics['total_refinement_iterations'],
             'disagreement_rate': round(disagreement_rate, 3)
         }
 
     def _process_single_negotiation_metrics(
         self,
         negotiation: Dict,
-        total_validations_ref: List[int],
-        approvals_ref: List[int],
-        rejections_ref: List[int],
-        alternatives_suggested_ref: List[int],
-        total_refinement_iterations_ref: List[int]
+        metrics: Dict[str, int],
     ):
-        """Process metrics for a single negotiation (helper method using pass-by-reference)"""
+        """Process metrics for a single negotiation and update shared counters."""
         hmas2 = negotiation.get('hmas2_stages', {})
 
         # Count agent validations
         validations = hmas2.get('agent_validations', {})
         for agent_id, val_data in validations.items():
-            total_validations_ref[0] += 1
+            metrics['total_validations'] += 1
             val_result = val_data.get('validation_result', {})
             if isinstance(val_result, dict):
                 if val_result.get('valid', False):
-                    approvals_ref[0] += 1
+                    metrics['approvals'] += 1
                 else:
-                    rejections_ref[0] += 1
+                    metrics['rejections'] += 1
                 if val_data.get('alternative_suggested'):
-                    alternatives_suggested_ref[0] += 1
+                    metrics['alternatives_suggested'] += 1
 
         # Count refinement iterations
         refinement = hmas2.get('refinement_loop', {})
-        total_refinement_iterations_ref[0] += refinement.get('total_iterations', 0)
+        metrics['total_refinement_iterations'] += refinement.get('total_iterations', 0)
     
     # Recursive conversion to JSON-serializable format
     def _to_json_safe(self, obj: Any, visited: Optional[set] = None) -> Any:

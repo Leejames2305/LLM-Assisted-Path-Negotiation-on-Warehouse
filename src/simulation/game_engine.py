@@ -9,7 +9,7 @@ import random
 import threading
 import time
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional, Union
 from colorama import init, Fore, Back, Style
 
 from ..map_generator import WarehouseMap, CellType
@@ -33,7 +33,9 @@ class GameEngine:
         self.warehouse_map = WarehouseMap(width, height)
         self.agents = {}
         self.central_negotiator = CentralNegotiator()
-        self.parallel_negotiator_manager = ParallelNegotiatorManager()
+        self.parallel_negotiator_manager = ParallelNegotiatorManager(
+            enable_spatial_hints=self.central_negotiator.enable_spatial_hints
+        )
         self.conflict_detector = ConflictDetector(width, height)
         self.pathfinder = SimplePathfinder(width, height)
 
@@ -94,8 +96,8 @@ class GameEngine:
 
         # Async mode: live display window and tick counter
         self._async_tick: int = 0
-        self._async_fig = None
-        self._async_ax = None
+        self._async_fig: Optional[Any] = None
+        self._async_ax: Optional[Any] = None
 
         # Truly-async execution: background LLM negotiation infrastructure
         # tick_interval controls display refresh rate (seconds)
@@ -652,14 +654,8 @@ class GameEngine:
 
             # Use parallel or single negotiation based on configuration
             if self.use_parallel_negotiation:
-                resolution, neg_data_list = self._negotiate_parallel_conflicts(conflict_info, forced_moves)
-                # Handle both single and multiple negotiation logs
-                if isinstance(neg_data_list, list):
-                    # Parallel negotiation returns list
-                    self._current_negotiation_data = neg_data_list
-                else:
-                    # Single negotiation returns dict
-                    self._current_negotiation_data = neg_data_list
+                resolution, negotiation_data = self._negotiate_parallel_conflicts(conflict_info, forced_moves)
+                self._current_negotiation_data = negotiation_data
             else:
                 resolution, neg_data = self._negotiate_conflicts(conflict_info, forced_moves)
                 self._current_negotiation_data = neg_data
@@ -682,12 +678,8 @@ class GameEngine:
 
                     # Use parallel or single negotiation based on configuration
                     if self.use_parallel_negotiation:
-                        resolution, neg_data_list = self._negotiate_parallel_conflicts(normal_conflict_info, normal_moves)
-                        # Handle both single and multiple negotiation logs
-                        if isinstance(neg_data_list, list):
-                            self._current_negotiation_data = neg_data_list
-                        else:
-                            self._current_negotiation_data = neg_data_list
+                        resolution, negotiation_data = self._negotiate_parallel_conflicts(normal_conflict_info, normal_moves)
+                        self._current_negotiation_data = negotiation_data
                     else:
                         resolution, neg_data = self._negotiate_conflicts(normal_conflict_info, normal_moves)
                         self._current_negotiation_data = neg_data
@@ -1047,7 +1039,9 @@ class GameEngine:
                 num='Async Simulation — Live View'
             )
             try:
-                self._async_fig.canvas.manager.set_window_title('Async Simulation — Live View')
+                manager = getattr(self._async_fig.canvas, 'manager', None)
+                if manager is not None and hasattr(manager, 'set_window_title'):
+                    manager.set_window_title('Async Simulation — Live View')
             except Exception:
                 pass
             print("🖥️  Live async display window opened")
@@ -1058,7 +1052,7 @@ class GameEngine:
 
     def _update_async_display(self) -> None:
         """Redraw the live matplotlib window with the current simulation state."""
-        if self.silent_mode or self._async_fig is None:
+        if self.silent_mode or self._async_fig is None or self._async_ax is None:
             return
         try:
             import matplotlib.pyplot as plt
@@ -1149,8 +1143,9 @@ class GameEngine:
         if self._async_fig is not None:
             try:
                 import matplotlib.pyplot as plt
-                self._async_fig.canvas.manager.set_window_title(
-                    'Async Simulation — Complete (close to exit)')
+                manager = getattr(self._async_fig.canvas, 'manager', None)
+                if manager is not None and hasattr(manager, 'set_window_title'):
+                    manager.set_window_title('Async Simulation — Complete (close to exit)')
                 plt.ioff()
                 plt.show(block=False)
             except Exception:
@@ -1286,11 +1281,19 @@ class GameEngine:
         return normal_path
 
     # Negotiate conflicts using parallel negotiators for independent groups
-    def _negotiate_parallel_conflicts(self, conflict_info: Dict, planned_moves: Dict) -> Tuple[Dict, Optional[List[Dict]]]:
+    def _negotiate_parallel_conflicts(
+        self,
+        conflict_info: Dict,
+        planned_moves: Dict
+    ) -> Tuple[Dict, Optional[Union[Dict, List[Dict]]]]:
         """
         Handle parallel conflict negotiation by grouping conflicts and resolving them simultaneously.
         Returns (merged_resolution, list_of_negotiation_logs)
         """
+        # Keep parallel negotiators aligned with runtime central-negotiator configuration
+        # (e.g., benchmark code toggles central spatial hints directly).
+        self.parallel_negotiator_manager.enable_spatial_hints = self.central_negotiator.enable_spatial_hints
+
         if not self.silent_mode:
             print("🔄 Initiating PARALLEL conflict negotiation...")
 
@@ -1679,12 +1682,14 @@ class GameEngine:
                     continue
                 
                 next_pos = path[start_index]
+                failure_reason = ''
                 
                 # Handle "waiting in place" moves (when next_pos == current_pos)
                 if next_pos == agent.position:
                     # This is a "wait" move - agent should stay in current position
                     print(f"⏸️  Agent {agent_id}: Waiting at {agent.position}")
                     success = True  # Waiting is always successful
+                    failure_reason = 'wait'
                 else:
                     # Normal move to different position
                     map_state = self.warehouse_map.get_state_dict()

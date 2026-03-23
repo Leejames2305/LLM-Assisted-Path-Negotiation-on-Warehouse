@@ -7,7 +7,6 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple, Optional, Callable
-from datetime import datetime
 from .central_negotiator import CentralNegotiator
 
 logger = logging.getLogger(__name__)
@@ -138,7 +137,18 @@ class ParallelNegotiatorManager:
             results_by_index = {}
             for future in as_completed(futures):
                 group_index, resolution, log_data = future.result()
-                results_by_index[group_index] = (resolution, log_data)
+                group_index = futures[future]
+                try:
+                    _, resolution, log_data = future.result()
+                except Exception as exc:
+                    logger.exception(
+                        "Parallel negotiation for group %d failed with exception", group_index
+                    )
+                    resolution = {}
+                    log_data = {
+                        "group_index": group_index,
+                        "error": str(exc),
+                    }
 
         # Sort results by group index to maintain order
         for i in range(num_groups):
