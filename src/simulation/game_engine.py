@@ -1379,6 +1379,10 @@ class GameEngine:
 
         # Step 5: Merge resolutions
         merged_resolution = self.parallel_negotiator_manager.merge_resolutions(resolutions)
+        merged_resolution = self._apply_sequential_astar_fallback_for_missing_actions(
+            merged_resolution,
+            conflict_info.get('conflicting_agents', [])
+        )
 
         # Track negotiation time
         negotiation_end_time = time.time()
@@ -1505,6 +1509,11 @@ class GameEngine:
                 'reasoning': 'Negotiation failed to resolve after max refinement iterations',
                 'refinement_history': refinement_history
             }, neg_data
+
+        resolution = self._apply_sequential_astar_fallback_for_missing_actions(
+            resolution,
+            conflict_info.get('conflicting_agents', [])
+        )
         
         # Build negotiation log data for unified logger
         # Extract agent validations from refinement history or resolution
@@ -1521,6 +1530,71 @@ class GameEngine:
             resolution['refinement_history'] = refinement_history
         
         return resolution, neg_data
+
+    # Fill missing negotiated actions with a deterministic sequential A* retry.
+    def _apply_sequential_astar_fallback_for_missing_actions(
+        self,
+        resolution: Dict,
+        conflicting_agents: List[int]
+    ) -> Dict:
+        if not resolution or not conflicting_agents:
+            return resolution
+
+        if 'agent_actions' in resolution and isinstance(resolution.get('agent_actions'), dict):
+            agent_actions = resolution['agent_actions']
+        else:
+            # Normalize top-level numeric keys into agent_actions for consistent handling.
+            normalized_actions = {
+                str(k): v for k, v in resolution.items()
+                if isinstance(k, int) or (isinstance(k, str) and k.isdigit())
+            }
+            non_action_fields = {
+                k: v for k, v in resolution.items()
+                if not (isinstance(k, int) or (isinstance(k, str) and k.isdigit()))
+            }
+            resolution = dict(non_action_fields)
+            resolution['agent_actions'] = normalized_actions
+            agent_actions = resolution['agent_actions']
+
+        missing_agent_ids = [
+            aid for aid in conflicting_agents
+            if str(aid) not in agent_actions
+        ]
+
+        if not missing_agent_ids:
+            return resolution
+
+        retry_paths = self._get_sequential_planned_moves(set(missing_agent_ids))
+
+        for agent_id in missing_agent_ids:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                continue
+
+            fallback_path = retry_paths.get(agent_id)
+            if not fallback_path:
+                fallback_path = agent.planned_path if agent.planned_path else [agent.position]
+            if not fallback_path:
+                fallback_path = [agent.position]
+
+            serializable_path = [
+                [int(pos[0]), int(pos[1])] if isinstance(pos, (list, tuple)) and len(pos) >= 2 else pos
+                for pos in fallback_path
+            ]
+
+            agent_actions[str(agent_id)] = {
+                'action': 'wait' if len(serializable_path) <= 1 else 'move',
+                'path': serializable_path,
+                'reasoning': 'sequential_a_star_retry_for_missing_negotiation_action'
+            }
+
+        existing_reasoning = resolution.get('reasoning', '')
+        fallback_note = (
+            f"Applied sequential A* retry for agents with missing LLM actions: {missing_agent_ids}"
+        )
+        resolution['reasoning'] = f"{existing_reasoning} {fallback_note}".strip()
+
+        return resolution
     
     # Build structured negotiation log data
     def _build_negotiation_log_data(

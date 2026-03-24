@@ -6,6 +6,7 @@ Uses powerful model for complex reasoning and negotiation with iterative refinem
 import json
 import os
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple, Optional, Callable
 from datetime import datetime
@@ -298,8 +299,9 @@ class CentralNegotiator:
 
             if agent_action is None:
                 return agent_id, {
-                    "valid": False,
-                    "reason": "No action provided for this agent",
+                    "valid": True,
+                    "reason": "No action provided by LLM; retry sequential A* fallback",
+                    "fallback_required": True,
                     "alternative": {"action": "wait", "reason": "not_in_plan"}
                 }
 
@@ -688,35 +690,136 @@ class CentralNegotiator:
     
     # Parse LLM response with truncation handling
     def _parse_negotiation_response(self, response: str) -> Dict:
-        # Try to extract JSON from response
-        response = response.strip()
-        
-        # Look for JSON in the response
-        start_idx = response.find('{')
-        end_idx = response.rfind('}') + 1
-        
-        if start_idx != -1 and end_idx > start_idx:
-            json_str = response[start_idx:end_idx]
-            try:
-                result = json.loads(json_str)
-                return result
-            except json.JSONDecodeError:
-                # Try to recover from truncated JSON
-                recovered_json = self._attempt_json_recovery(json_str)
-                if recovered_json:
-                    return recovered_json
-        elif start_idx != -1:
-            # No closing brace found at all — still attempt recovery on the full JSON portion
-            recovered_json = self._attempt_json_recovery(response[start_idx:])
-            if recovered_json:
-                return recovered_json
-        
-        # If all parsing fails, create a simple resolution
+        if not isinstance(response, str):
+            return self._create_safe_wait_resolution("Non-string LLM response")
+
+        text = response.strip()
+        if not text:
+            return self._create_safe_wait_resolution("Empty LLM response")
+
+        # Try full-response JSON parse first.
+        direct = self._try_parse_json_dict(text)
+        if direct is not None and self._is_negotiation_payload(direct):
+            return direct
+
+        # Try fenced code blocks and broad object extraction next.
+        for candidate in self._extract_json_candidates(text):
+            parsed = self._try_parse_json_dict(candidate)
+            if parsed is not None and self._is_negotiation_payload(parsed):
+                return parsed
+
+        # As a last attempt, try truncated recovery from each likely object start.
+        for candidate in self._extract_json_candidates(text):
+            recovered = self._attempt_json_recovery(candidate)
+            if recovered and self._is_negotiation_payload(recovered):
+                return recovered
+
+        # Support alternate format where top-level keys are agent IDs.
+        agent_only = self._try_parse_agent_actions_only(text)
+        if agent_only is not None:
+            return agent_only
+
+        return self._create_safe_wait_resolution("Failed to parse LLM JSON response")
+
+    def _is_negotiation_payload(self, payload: Dict) -> bool:
+        if not isinstance(payload, dict) or not payload:
+            return False
+
+        if 'resolution' in payload or 'agent_actions' in payload:
+            return True
+
+        return False
+
+    def _try_parse_agent_actions_only(self, text: str) -> Optional[Dict]:
+        start_idx = text.find('{')
+        if start_idx == -1:
+            return None
+
+        root_candidate = text[start_idx:].strip()
+        parsed = self._try_parse_json_dict(root_candidate)
+        if parsed and self._looks_like_agent_action_map(parsed):
+            return parsed
+
+        recovered = self._attempt_json_recovery(root_candidate)
+        if recovered and self._looks_like_agent_action_map(recovered):
+            return recovered
+
+        return None
+
+    def _looks_like_agent_action_map(self, payload: Dict) -> bool:
+        if not isinstance(payload, dict) or not payload:
+            return False
+
+        numeric_keys = [key for key in payload.keys() if str(key).isdigit()]
+        if len(numeric_keys) != len(payload):
+            return False
+
+        for key in numeric_keys:
+            value = payload.get(key)
+            if not isinstance(value, dict):
+                return False
+            if 'action' not in value:
+                return False
+
+        return True
+
+    def _create_safe_wait_resolution(self, reason: str) -> Dict:
         return {
             "resolution": "wait",
             "agent_actions": {},
-            "reasoning": "Failed LLM response, default to wait"
+            "reasoning": reason
         }
+
+    def _try_parse_json_dict(self, text: str) -> Optional[Dict]:
+        stripped = text.strip()
+        if not stripped:
+            return None
+
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict):
+                return parsed
+            return None
+        except json.JSONDecodeError:
+            pass
+
+        # If the text has extra commentary around JSON, slice likely object bounds.
+        start_idx = stripped.find('{')
+        end_idx = stripped.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            try:
+                parsed = json.loads(stripped[start_idx:end_idx + 1])
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    def _extract_json_candidates(self, response: str) -> List[str]:
+        candidates: List[str] = []
+
+        # Capture fenced blocks first; LLMs often wrap JSON as ```json ... ```.
+        fenced_blocks = re.findall(r"```(?:json)?\s*(.*?)```", response, flags=re.IGNORECASE | re.DOTALL)
+        for block in fenced_blocks:
+            block = block.strip()
+            if block:
+                candidates.append(block)
+
+        # Add broad object slices from every opening brace.
+        # Limit starts to avoid pathological scans on huge responses.
+        starts = [idx for idx, ch in enumerate(response) if ch == '{']
+        for idx in starts[:32]:
+            candidates.append(response[idx:].strip())
+
+        # De-duplicate while preserving order.
+        unique_candidates: List[str] = []
+        seen = set()
+        for candidate in candidates:
+            if candidate not in seen:
+                unique_candidates.append(candidate)
+                seen.add(candidate)
+
+        return unique_candidates
     
     # Attempt to recover from truncated JSON using stack-based bracket matching.
     def _attempt_json_recovery(self, json_str: str) -> Optional[Dict]:
@@ -749,6 +852,7 @@ class CentralNegotiator:
                 elif char in ('}', ']'):
                     if stack and stack[-1] == char:
                         stack.pop()
+                    # Skip mismatched closers to keep recovery conservative.
             
             # Close any open string literal
             if in_string:
@@ -758,17 +862,20 @@ class CentralNegotiator:
                     fixed_json = fixed_json[:-1]
                 fixed_json += '"'
             
-            # Remove a trailing comma that may now be exposed before the close tokens
+            # Remove trailing comma patterns before closing tokens.
+            fixed_json = re.sub(r',\s*([}\]])', r'\1', fixed_json)
             stripped = fixed_json.rstrip()
-            if stripped and stripped[-1] == ',':
+            if stripped.endswith(','):
                 fixed_json = stripped[:-1]
             
             # Append the closing tokens in reverse push order
             fixed_json += ''.join(reversed(stack))
             
             result = json.loads(fixed_json)
-            print(f"🔧 Recovery successful: {fixed_json[:100]}...")
-            return result
+            if isinstance(result, dict):
+                print(f"🔧 Recovery successful: {fixed_json[:100]}...")
+                return result
+            return None
             
         except json.JSONDecodeError:
             return None
