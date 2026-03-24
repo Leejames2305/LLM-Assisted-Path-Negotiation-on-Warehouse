@@ -340,9 +340,8 @@ class GameEngine:
             # Path doesn't start with current position, prepend it
             normalized_candidate_path = [agent.position] + path
 
-        # Get all other agents' planned paths and normalize them
-        # IMPORTANT: include stationary agents (with no planned_path) as occupied at their
-        # current position so deadlock A* reroutes do not step into completed/idle agents.
+        # Get all other agents' planned paths and normalize them.
+        # Include stationary agents as occupied at their current position.
         other_agents_paths = {}
         for aid, other_agent in self.agents.items():
             if aid == agent_id:
