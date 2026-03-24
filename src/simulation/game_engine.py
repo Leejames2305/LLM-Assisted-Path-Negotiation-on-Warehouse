@@ -76,6 +76,8 @@ class GameEngine:
         self.successful_deliveries = 0
         self.agent_paths = {}  # Track total path length per agent
         self.initial_agent_positions = {}  # For path efficiency calculation
+        self.initial_agent_box_positions = {}  # Initial box position per agent
+        self.initial_agent_target_positions = {}  # Target position per agent
         
         # Benchmark mode controls
         self.stop_requested = False  # External signal to stop simulation
@@ -131,6 +133,11 @@ class GameEngine:
                 if box_id in self.warehouse_map.boxes:
                     box_pos = self.warehouse_map.boxes[box_id]
                     agent.set_target(box_pos)  # First go to the box
+                    # Record initial box position for path efficiency calculation
+                    self.initial_agent_box_positions[agent_id] = box_pos
+                target_id = self.warehouse_map.agent_goals.get(agent_id)
+                if target_id is not None and target_id in self.warehouse_map.targets:
+                    self.initial_agent_target_positions[agent_id] = self.warehouse_map.targets[target_id]
             
             # Initialize metrics tracking for this agent
             self.initial_agent_positions[agent_id] = agent.position
@@ -555,6 +562,9 @@ class GameEngine:
 
             # Update the targets dictionary
             self.warehouse_map.targets[target_id] = new_target_pos
+
+            # Keep the target position used for path efficiency calculation in sync
+            self.initial_agent_target_positions[agent_id] = new_target_pos
 
             # Redirect the agent if it is currently carrying its box toward the old target
             agent = self.agents[agent_id]
@@ -1814,6 +1824,8 @@ class GameEngine:
                 else:
                     # Track failed moves for deadlock detection
                     self.failed_move_counts[agent_id] = self.failed_move_counts.get(agent_id, 0) + 1
+                    # Count failed moves (safety check violations) towards collision rate
+                    self.collision_count += 1
                     
                     # IMPORTANT: Track actual move failures for stagnation detection
                     if agent_id not in self.agent_failed_move_history:
@@ -2182,9 +2194,17 @@ class GameEngine:
         collision_rate = self.collision_count / total_turns if total_turns > 0 else 0
         
         # Calculate path efficiency
-        # Optimal path would be straight line distance from start to end
+        # Optimal path is the A* shortest route: start -> box -> target
         total_actual_path = 0
         total_optimal_path = 0
+        
+        # Build wall set for pathfinding
+        walls: set[tuple[int, int]] = set()
+        grid = self.warehouse_map.grid
+        for y in range(len(grid)):
+            for x in range(len(grid[y])):
+                if grid[y][x] == '#':
+                    walls.add((x, y))
         
         for agent_id, agent in self.agents.items():
             if agent_id in self.agent_paths and len(self.agent_paths[agent_id]) > 0:
@@ -2193,11 +2213,23 @@ class GameEngine:
                 actual_path = max(actual_path, 0)
                 total_actual_path += actual_path
                 
-                # Optimal path (Manhattan distance from start to end)
+                # Optimal path via A*: start -> box -> target
                 start_pos = self.initial_agent_positions.get(agent_id, self.agent_paths[agent_id][0])
-                end_pos = self.agent_paths[agent_id][-1]
+                box_pos = self.initial_agent_box_positions.get(agent_id)
+                target_pos = self.initial_agent_target_positions.get(agent_id)
                 
-                optimal_distance = abs(start_pos[0] - end_pos[0]) + abs(start_pos[1] - end_pos[1])
+                if box_pos and target_pos:
+                    path_to_box = self.pathfinder.find_path(start_pos, box_pos, walls)
+                    path_to_target = self.pathfinder.find_path(box_pos, target_pos, walls)
+                    optimal_distance = max(0, len(path_to_box) - 1) + max(0, len(path_to_target) - 1)
+                elif box_pos:
+                    path_to_box = self.pathfinder.find_path(start_pos, box_pos, walls)
+                    optimal_distance = max(0, len(path_to_box) - 1)
+                else:
+                    # Fallback to Manhattan distance if no goal info available
+                    end_pos = self.agent_paths[agent_id][-1]
+                    optimal_distance = abs(start_pos[0] - end_pos[0]) + abs(start_pos[1] - end_pos[1])
+                
                 total_optimal_path += optimal_distance
         
         path_efficiency = (total_optimal_path / total_actual_path * 100) if total_actual_path > 0 else 100

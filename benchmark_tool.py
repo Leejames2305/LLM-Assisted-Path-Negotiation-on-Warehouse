@@ -500,6 +500,7 @@ def run_single_round(
     print(f"{'='*60}{Style.RESET_ALL}")
     
     status = 'success'
+    game_engine = None
     
     try:
         # Create game engine
@@ -594,6 +595,14 @@ def run_single_round(
         print(f"\n{Fore.RED}❌ Round {round_num} ERROR: {e}{Style.RESET_ALL}")
         import traceback
         traceback.print_exc()
+        
+        # Save whatever log data was collected before the failure
+        if game_engine is not None:
+            try:
+                log_filename = f"sim_log_round_{round_num}.json"
+                game_engine.save_simulation_log_to_path(output_dir, log_filename)
+            except Exception:
+                pass
         
         return RoundResult(
             round_num=round_num,
@@ -812,11 +821,12 @@ def prompt_for_random_map_generation(seed: int, num_agents: int) -> Optional[Dic
         
         walkable = get_walkable_cells(grid)
         total_cells = width * height
-        wall_cells = sum(row.count('#') for row in grid)
+        # Only count internal walls (exclude outer perimeter) to match user-specified percentage
+        internal_wall_cells = actual_walls
         
         print(f"\n{Fore.CYAN}Map Statistics:{Style.RESET_ALL}")
         print(f"  Total cells: {total_cells}")
-        print(f"  Wall cells: {wall_cells} ({wall_cells/total_cells*100:.1f}%)")
+        print(f"  Wall cells (internal): {internal_wall_cells} ({internal_wall_cells/max_internal_cells*100:.1f}%)")
         print(f"  Internal walls placed: {actual_walls} (requested: {wall_count})")
         print(f"  Walkable cells: {len(walkable)} (minimum needed: {min_walkable})")
         
@@ -930,6 +940,7 @@ def run_lifelong_round(
     print(f"🔁 LIFELONG ROUND {round_num}/{config.num_rounds}")
     print(f"{'='*60}{Style.RESET_ALL}")
 
+    game_engine = None
     try:
         layout_dims = layout['dimensions']
         num_agents = len(layout['agents'])
@@ -1001,6 +1012,15 @@ def run_lifelong_round(
         print(f"\n{Fore.RED}❌ Lifelong round {round_num} ERROR: {e}{Style.RESET_ALL}")
         import traceback
         traceback.print_exc()
+        
+        # Save whatever log data was collected before the failure
+        if game_engine is not None:
+            try:
+                log_filename = f"lifelong_log_round_{round_num}.json"
+                game_engine.save_simulation_log_to_path(output_dir, log_filename)
+            except Exception:
+                pass
+        
         return LifelongRoundResult(
             round_num=round_num,
             status='failed',
@@ -1146,6 +1166,7 @@ def run_async_round(
     print(f"⚡ ASYNC ROUND {round_num}/{config.num_rounds}")
     print(f"{'='*60}{Style.RESET_ALL}")
 
+    game_engine = None
     try:
         layout_dims = layout['dimensions']
         num_agents = len(layout['agents'])
@@ -1224,6 +1245,15 @@ def run_async_round(
         print(f"\n{Fore.RED}❌ Async round {round_num} ERROR: {e}{Style.RESET_ALL}")
         import traceback
         traceback.print_exc()
+        
+        # Save whatever log data was collected before the failure
+        if game_engine is not None:
+            try:
+                log_filename = f"async_log_round_{round_num}.json"
+                game_engine.save_simulation_log_to_path(output_dir, log_filename)
+            except Exception:
+                pass
+        
         return AsyncRoundResult(
             round_num=round_num,
             status='failed',
