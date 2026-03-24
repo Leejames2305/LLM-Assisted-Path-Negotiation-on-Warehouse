@@ -340,10 +340,14 @@ class GameEngine:
             # Path doesn't start with current position, prepend it
             normalized_candidate_path = [agent.position] + path
 
-        # Get all other agents' planned paths and normalize them
+        # Get all other agents' planned paths and normalize them.
+        # Include stationary agents as occupied at their current position.
         other_agents_paths = {}
         for aid, other_agent in self.agents.items():
-            if aid != agent_id and hasattr(other_agent, 'planned_path') and other_agent.planned_path:
+            if aid == agent_id:
+                continue
+
+            if hasattr(other_agent, 'planned_path') and other_agent.planned_path:
                 other_path = other_agent.planned_path
                 # Normalize: ensure path starts with agent's current position
                 if other_path and other_path[0] != other_agent.position:
@@ -351,7 +355,11 @@ class GameEngine:
                     normalized_other_path = [other_agent.position] + other_path
                 else:
                     normalized_other_path = other_path
-                other_agents_paths[aid] = normalized_other_path
+            else:
+                # Agent has no planned path, treat as stationary on its current position
+                normalized_other_path = [other_agent.position]
+
+            other_agents_paths[aid] = normalized_other_path
 
         # If no other agents have paths, no conflict possible
         if not other_agents_paths:
