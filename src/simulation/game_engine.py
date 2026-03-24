@@ -563,6 +563,9 @@ class GameEngine:
             # Update the targets dictionary
             self.warehouse_map.targets[target_id] = new_target_pos
 
+            # Keep the target position used for path efficiency calculation in sync
+            self.initial_agent_target_positions[agent_id] = new_target_pos
+
             # Redirect the agent if it is currently carrying its box toward the old target
             agent = self.agents[agent_id]
             if agent.carrying_box and agent.target_position == old_target_pos:
