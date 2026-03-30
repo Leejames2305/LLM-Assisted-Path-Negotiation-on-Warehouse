@@ -17,6 +17,7 @@ from ..agents import RobotAgent
 from ..llm.central_negotiator import CentralNegotiator
 from ..llm.parallel_negotiator_manager import ParallelNegotiatorManager
 from ..navigation import ConflictDetector, SimplePathfinder
+from ..navigation.planners import MultiAgentPlanner, create_multi_agent_planner
 from ..logging import UnifiedLogger
 
 # Initialize colorama for colored terminal output
@@ -44,6 +45,15 @@ class GameEngine:
         )
         self.conflict_detector = ConflictDetector(width, height)
         self.pathfinder = SimplePathfinder(width, height)
+        self.path_planner_mode = os.getenv('PATH_PLANNER_MODE', 'astar')
+        self.multi_agent_planner: MultiAgentPlanner = create_multi_agent_planner(
+            mode=self.path_planner_mode,
+            pathfinder=self.pathfinder,
+            width=width,
+            height=height,
+            min_time_horizon=self._MIN_TIME_HORIZON,
+            grid_horizon_multiplier=self._GRID_HORIZON_MULTIPLIER,
+        )
 
         # Enable parallel negotiation mode (can be disabled for benchmarking)
         self.use_parallel_negotiation = os.getenv('USE_PARALLEL_NEGOTIATION', 'true').lower() == 'true'
@@ -167,6 +177,7 @@ class GameEngine:
                                 print(f"📦 Agent {agent_id}: Ready to deliver to {target_pos}")
         
         # Initial pathfinding
+        print(f"🧭 Planner backend: {self.multi_agent_planner.get_backend_name()}")
         self._plan_initial_paths()
         
         # Initialize unified logger with scenario data
@@ -174,6 +185,7 @@ class GameEngine:
             self.logger.initialize({
                 'type': 'interactive_simulation',
                 'simulation_mode': self.simulation_mode,
+                'path_planner_mode': self.multi_agent_planner.get_backend_name(),
                 'difficulty': self.difficulty,
                 'map_size': [self.warehouse_map.width, self.warehouse_map.height],
                 'grid': self.warehouse_map.grid.tolist(),
@@ -206,10 +218,7 @@ class GameEngine:
     # Plan initial paths for all agents
     def _plan_initial_paths(self):
         print("Planning initial paths for all agents...")
-        
-        for agent_id, agent in self.agents.items():
-            map_state = self.warehouse_map.get_state_dict()
-            path = agent.plan_path(map_state)
+        self._replan_with_reservations()
     
     # Detect when agents have failed moves for multiple turns
     def detect_stagnation_conflicts(self) -> Dict:
@@ -240,21 +249,21 @@ class GameEngine:
 
                 # Try to find a valid path using A* pathfinding
                 if not self.silent_mode:
-                    print(f"🔍 Agent {aid}: Attempting A* pathfinding to resolve stuck state...")
+                    print(f"🔍 Agent {aid}: Attempting planner pathfinding to resolve stuck state...")
                 try:
-                    fresh_path = agent.plan_path(map_state)
+                    fresh_path = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid}).get(aid, [])
 
                     if fresh_path and len(fresh_path) > 0:
                         # Check if this path conflicts with other agents' paths
                         path_has_conflict = self._check_path_conflicts_with_others(aid, fresh_path)
 
                         if not path_has_conflict:
-                            # A* found a valid non-conflicting path, use it
+                            # Planner found a valid non-conflicting path, use it
                             agent.planned_path = fresh_path
                             agent._has_negotiated_path = False
                             a_star_resolved.append(aid)
                             if not self.silent_mode:
-                                print(f"✅ Agent {aid}: A* resolved stuck state with {len(fresh_path)}-step path")
+                                print(f"✅ Agent {aid}: Planner resolved stuck state with {len(fresh_path)}-step path")
 
                             # Clear failed move history for this agent
                             if aid in self.agent_failed_move_history:
@@ -262,29 +271,29 @@ class GameEngine:
                             if aid in self.failed_move_counts:
                                 self.failed_move_counts[aid] = 0
                         else:
-                            # A* path conflicts with other agents, needs LLM
+                            # Planner path conflicts with other agents, needs LLM
                             if not self.silent_mode:
-                                print(f"⚠️  Agent {aid}: A* path conflicts with other agents, needs LLM negotiation")
+                                print(f"⚠️  Agent {aid}: Planner path conflicts with other agents, needs LLM negotiation")
                             agents_needing_llm.append(aid)
                     else:
-                        # A* could not find a path, needs LLM
+                        # Planner could not find a path, needs LLM
                         if not self.silent_mode:
-                            print(f"⚠️  Agent {aid}: A* could not find valid path, needs LLM negotiation")
+                            print(f"⚠️  Agent {aid}: Planner could not find valid path, needs LLM negotiation")
                         agents_needing_llm.append(aid)
                 except Exception as e:
                     if not self.silent_mode:
-                        print(f"⚠️  Agent {aid}: A* pathfinding failed: {e}, needs LLM negotiation")
+                        print(f"⚠️  Agent {aid}: Planner pathfinding failed: {e}, needs LLM negotiation")
                     agents_needing_llm.append(aid)
 
-            # Report A* resolution results
+            # Report planner resolution results
             if a_star_resolved:
                 if not self.silent_mode:
-                    print(f"🎯 A* successfully resolved {len(a_star_resolved)} stuck agent(s): {a_star_resolved}")
+                    print(f"🎯 Planner successfully resolved {len(a_star_resolved)} stuck agent(s): {a_star_resolved}")
 
-            # If all agents were resolved by A*, no LLM negotiation needed
+            # If all agents were resolved by planner, no LLM negotiation needed
             if not agents_needing_llm:
                 if not self.silent_mode:
-                    print(f"✅ All stagnant agents resolved by A* pathfinding!")
+                    print(f"✅ All stagnant agents resolved by planner pathfinding!")
                 return {'has_conflicts': False}
 
             # Only trigger LLM for agents that A* could not resolve
@@ -301,7 +310,7 @@ class GameEngine:
                 # If path is empty or agent has target, try to calculate a fresh path
                 if not current_path and agent.target_position:
                     try:
-                        fresh_path = agent.plan_path(map_state)
+                        fresh_path = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid}).get(aid, [])
                         if fresh_path:
                             current_path = fresh_path
                             if not self.silent_mode:
@@ -403,21 +412,21 @@ class GameEngine:
 
                 # Try to find a valid path using A* pathfinding
                 if not self.silent_mode:
-                    print(f"🔍 Agent {aid}: Attempting A* pathfinding to resolve deadlock...")
+                    print(f"🔍 Agent {aid}: Attempting planner pathfinding to resolve deadlock...")
                 try:
-                    fresh_path = agent.plan_path(map_state)
+                    fresh_path = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid}).get(aid, [])
 
                     if fresh_path and len(fresh_path) > 0:
                         # Check if this path conflicts with other agents' paths
                         path_has_conflict = self._check_path_conflicts_with_others(aid, fresh_path)
 
                         if not path_has_conflict:
-                            # A* found a valid non-conflicting path, use it
+                            # Planner found a valid non-conflicting path, use it
                             agent.planned_path = fresh_path
                             agent._has_negotiated_path = False
                             a_star_resolved.append(aid)
                             if not self.silent_mode:
-                                print(f"✅ Agent {aid}: A* resolved deadlock with {len(fresh_path)}-step path")
+                                print(f"✅ Agent {aid}: Planner resolved deadlock with {len(fresh_path)}-step path")
 
                             # Clear failed move history for this agent
                             if aid in self.agent_failed_move_history:
@@ -425,29 +434,29 @@ class GameEngine:
                             if aid in self.failed_move_counts:
                                 self.failed_move_counts[aid] = 0
                         else:
-                            # A* path conflicts with other agents, needs LLM
+                            # Planner path conflicts with other agents, needs LLM
                             if not self.silent_mode:
-                                print(f"⚠️  Agent {aid}: A* path conflicts with other agents, needs LLM negotiation")
+                                print(f"⚠️  Agent {aid}: Planner path conflicts with other agents, needs LLM negotiation")
                             agents_needing_llm.append(aid)
                     else:
-                        # A* could not find a path, needs LLM
+                        # Planner could not find a path, needs LLM
                         if not self.silent_mode:
-                            print(f"⚠️  Agent {aid}: A* could not find valid path, needs LLM negotiation")
+                            print(f"⚠️  Agent {aid}: Planner could not find valid path, needs LLM negotiation")
                         agents_needing_llm.append(aid)
                 except Exception as e:
                     if not self.silent_mode:
-                        print(f"⚠️  Agent {aid}: A* pathfinding failed: {e}, needs LLM negotiation")
+                        print(f"⚠️  Agent {aid}: Planner pathfinding failed: {e}, needs LLM negotiation")
                     agents_needing_llm.append(aid)
 
-            # Report A* resolution results
+            # Report planner resolution results
             if a_star_resolved:
                 if not self.silent_mode:
-                    print(f"🎯 A* successfully resolved {len(a_star_resolved)} deadlocked agent(s): {a_star_resolved}")
+                    print(f"🎯 Planner successfully resolved {len(a_star_resolved)} deadlocked agent(s): {a_star_resolved}")
 
-            # If all agents were resolved by A*, no LLM negotiation needed
+            # If all agents were resolved by planner, no LLM negotiation needed
             if not agents_needing_llm:
                 if not self.silent_mode:
-                    print(f"✅ All deadlocked agents resolved by A* pathfinding!")
+                    print(f"✅ All deadlocked agents resolved by planner pathfinding!")
                 return {'has_conflicts': False}
 
             # Only trigger LLM for agents that A* could not resolve
@@ -1189,89 +1198,17 @@ class GameEngine:
 
     # Plan paths sequentially; each next agent avoids previous agents at specific turns
     def _get_sequential_planned_moves(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
-        planned_moves: Dict[int, List[Tuple[int, int]]] = {}
-
-        if agent_ids is None:
-            candidate_ids = set(self.agents.keys())
-        else:
-            candidate_ids = set(agent_ids)
-
-        active_ids = []
-        for aid in sorted(candidate_ids):
-            agent = self.agents.get(aid)
-            if agent and (not agent.is_waiting) and agent.target_position:
-                active_ids.append(aid)
-
-        if not active_ids:
-            return planned_moves
-
         map_state = self.warehouse_map.get_state_dict()
-        grid = map_state.get('grid', [])
-        walls = set()
-        for y, row in enumerate(grid):
-            for x, cell in enumerate(row):
-                if cell == '#':
-                    walls.add((x, y))
-
-        # Reservation tables built only from already-planned agents.
-        reserved_positions_by_turn: Dict[int, set] = {}
-        reserved_edges_by_turn: Dict[int, set] = {}
-
-        # Use a scalable planning-time horizon based on map size.
-        planning_time_horizon = max(
-            self._MIN_TIME_HORIZON,
-            self.width * self.height * self._GRID_HORIZON_MULTIPLIER
-        )
-
-        for agent_id in active_ids:
-            agent = self.agents[agent_id]
-
-            has_negotiated_path = (
-                hasattr(agent, '_has_negotiated_path') and
-                getattr(agent, '_has_negotiated_path', False) and
-                agent.planned_path and
-                len(agent.planned_path) > 1
-            )
-
-            if has_negotiated_path:
-                path = agent.planned_path.copy()
-            else:
-                path = self.pathfinder.find_path_with_time_constraints(
-                    start=agent.position,
-                    goal=agent.target_position,
-                    walls=walls,
-                    reserved_positions_by_turn=reserved_positions_by_turn,
-                    reserved_edges_by_turn=reserved_edges_by_turn,
-                    max_time_steps=planning_time_horizon,
-                )
-
-                if not path:
-                    # Fallback to normal planner (without time constraints) if
-                    # time-aware planning finds no solution within the horizon.
-                    # If this also fails, the agent is omitted from planned_moves
-                    # and handled by subsequent conflict/deadlock logic.
-                    path = self._plan_normal_path(agent, map_state)
-
-                agent.planned_path = path
-                if hasattr(agent, '_has_negotiated_path'):
-                    agent._has_negotiated_path = False
-
-            if not path:
-                continue
-
-            planned_moves[agent_id] = path.copy()
-
-            for turn_idx, pos in enumerate(path):
-                reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
-                if turn_idx > 0:
-                    prev = path[turn_idx - 1]
-                    reserved_edges_by_turn.setdefault(turn_idx - 1, set()).add((prev, pos))
-
-        return planned_moves
+        subset_ids = set(agent_ids) if agent_ids is not None else None
+        return self.multi_agent_planner.plan_all(self.agents, map_state, subset_ids)
 
     # Replan paths with reservation-based sequential A* and refresh agent path buffers
     def _replan_with_reservations(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
-        planned_moves = self._get_sequential_planned_moves(agent_ids)
+        map_state = self.warehouse_map.get_state_dict()
+        if agent_ids is None:
+            planned_moves = self.multi_agent_planner.plan_all(self.agents, map_state, None)
+        else:
+            planned_moves = self.multi_agent_planner.replan_subset(self.agents, map_state, set(agent_ids))
         for agent_id, path in planned_moves.items():
             if agent_id in self.agents:
                 self.agents[agent_id].planned_path = path.copy()
