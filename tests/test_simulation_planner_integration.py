@@ -4,6 +4,8 @@ Integration-style simulation tests for planner backends and fallback behavior.
 
 import os
 import sys
+from unittest.mock import patch
+import numpy as np
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -29,7 +31,7 @@ def _build_engine_with_simple_layout(planner_mode: str = "astar") -> GameEngine:
             os.environ["PATH_PLANNER_MODE"] = prev_mode
 
     warehouse = WarehouseMap(width=6, height=6)
-    warehouse.grid = __import__('numpy').array(_empty_grid(6, 6), dtype=str)
+    warehouse.grid = np.array(_empty_grid(6, 6), dtype=str)
     warehouse.agents = {1: (1, 1), 2: (4, 1)}
     warehouse.boxes = {1: (1, 2), 2: (4, 2)}
     warehouse.targets = {1: (1, 4), 2: (4, 4)}
@@ -87,9 +89,8 @@ def test_stagnation_uses_llm_only_when_planner_cannot_find_path():
             return {}
         return original_replan_subset(agents, map_state, agent_ids)
 
-    engine.multi_agent_planner.replan_subset = controlled_replan_subset  # type: ignore
-
-    conflict = engine.detect_stagnation_conflicts()
+    with patch.object(engine.multi_agent_planner, "replan_subset", side_effect=controlled_replan_subset):
+        conflict = engine.detect_stagnation_conflicts()
 
     assert conflict['has_conflicts'] is True
     assert 2 in conflict['conflicting_agents']
