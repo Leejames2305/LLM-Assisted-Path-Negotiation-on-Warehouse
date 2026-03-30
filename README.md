@@ -5,6 +5,7 @@ This projects propose the use of A* + LLM (Hybrid-Feedback setup) to resolve pat
 ## 🚀 Features
 - **A-star Path Finding**: Agents uses A* for quick navigation
 - **Pluggable MAPF Backend**: Select planner from `.env` with `PATH_PLANNER_MODE=astar|LNS2`
+  - `LNS2` backend follows the MAPF-LNS2 loop shape: initial solution → destroy subset heuristic → repair subset → evaluate/accept → iterate
 - **Real-time Conflict Detection**: Identifies path conflicts and triggers LLM negotiation
 - **LLM Negotiation Framework (Hybrid)**: LLM reasoning negotiation with feedback
   - Central LLM (SOTA Model) for complex conflict negotiation

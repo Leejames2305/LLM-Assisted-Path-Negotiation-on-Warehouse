@@ -1,5 +1,5 @@
 """
-Tests for pluggable multi-agent planner backend selection and behavior.
+Tests for planner backend selection and subset repair behavior.
 """
 
 import os
@@ -35,7 +35,7 @@ def test_lns2_mode_uses_lns2_backend():
             os.environ['PATH_PLANNER_MODE'] = previous
 
 
-def test_replan_with_reservations_updates_subset_only():
+def test_replan_subset_updates_subset_only():
     engine = GameEngine(width=6, height=6, num_agents=2)
     engine.agents = {
         1: RobotAgent(agent_id=1, initial_position=(1, 1), target_position=(1, 4)),
