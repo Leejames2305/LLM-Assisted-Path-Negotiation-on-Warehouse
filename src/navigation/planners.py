@@ -1,5 +1,14 @@
 """
 Pluggable multi-agent path planners.
+
+MAPF-LNS2 porting references used for this module:
+- https://raw.githubusercontent.com/Jiaoyang-Li/MAPF-LNS2/master/src/LNS.cpp
+  - run(), getInitialSolution(), chooseDestroyHeuristicbyALNS(),
+    generateNeighborByRandomWalk(), generateNeighborByIntersection()
+- https://raw.githubusercontent.com/Jiaoyang-Li/MAPF-LNS2/master/inc/LNS.h
+  - destroy_heuristic enum, solver fields, LNS loop structure
+- https://raw.githubusercontent.com/Jiaoyang-Li/MAPF-LNS2/master/inc/BasicLNS.h
+  - adaptive-LNS weight controls and neighborhood bookkeeping
 """
 
 import os
@@ -222,7 +231,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
 
 class LNS2Planner(MultiAgentPlanner):
-    """Python port structure based on MAPF-LNS2 `LNS` run loop."""
+    """Python port structure based on MAPF-LNS2 `LNS` run loop in `src/LNS.cpp`."""
     # Sentinel used when a solution is missing; kept large so any valid solution wins.
     _INFINITE_COST = 10**9
     # Penalize unresolved conflicts heavily relative to per-step path cost.
@@ -398,6 +407,7 @@ class LNS2Planner(MultiAgentPlanner):
         solution: Dict[int, List[Tuple[int, int]]],
         agents: Dict[int, object],
     ) -> Set[int]:
+        # Mirrors chooseDestroyHeuristicbyALNS() in MAPF-LNS2/src/LNS.cpp.
         if self.alns:
             total = sum(self.destroy_weights)
             threshold = self.random.random() * total
@@ -452,7 +462,7 @@ class LNS2Planner(MultiAgentPlanner):
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
     ) -> Dict[int, List[Tuple[int, int]]]:
-        # MAPF-LNS2 flow: getInitialSolution() first.
+        # MAPF-LNS2 flow: getInitialSolution() first (see LNS::getInitialSolution).
         initial_solution = self.base_planner.plan_all(agents, map_state, agent_ids)
         if not initial_solution:
             return {}
@@ -460,7 +470,7 @@ class LNS2Planner(MultiAgentPlanner):
         best_solution = {aid: path.copy() for aid, path in initial_solution.items()}
         best_cost = self._solution_cost(best_solution)
 
-        # MAPF-LNS2 flow: iterative destroy/repair/evaluate loop.
+        # MAPF-LNS2 flow: iterative destroy/repair/evaluate loop (see LNS::run).
         for _ in range(self.iterations):
             subset = self._choose_destroy_subset(best_solution, agents)
             if not subset:
