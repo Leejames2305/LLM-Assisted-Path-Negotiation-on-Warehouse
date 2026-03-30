@@ -215,6 +215,8 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
 class LNS2Planner(MultiAgentPlanner):
     """LNS2-style planner: initial solution + destroy/repair iterative improvements."""
+    _INFINITE_COST = 10**9
+    _CONFLICT_PENALTY_WEIGHT = 100
 
     def __init__(
         self,
@@ -241,10 +243,10 @@ class LNS2Planner(MultiAgentPlanner):
 
     def _solution_cost(self, paths: Dict[int, List[Tuple[int, int]]], current_turn: int = 0) -> int:
         if not paths:
-            return 10**9
+            return self._INFINITE_COST
         base_cost = sum(max(0, len(path) - 1) for path in paths.values())
         conflict_info = self.conflict_detector.detect_path_conflicts(paths, current_turn)
-        conflict_penalty = len(conflict_info.get('conflict_points', [])) * 100
+        conflict_penalty = len(conflict_info.get('conflict_points', [])) * self._CONFLICT_PENALTY_WEIGHT
         return base_cost + conflict_penalty
 
     def _select_destroy_subset(self, solution: Dict[int, List[Tuple[int, int]]]) -> Set[int]:

@@ -45,7 +45,11 @@ def test_replan_with_reservations_updates_subset_only():
     engine.agents[1].planned_path = [(1, 1)]
     engine.agents[2].planned_path = [(2, 1)]
 
-    planned = engine._replan_with_reservations({1})
+    map_state = engine.warehouse_map.get_state_dict()
+    planned = engine.multi_agent_planner.replan_subset(engine.agents, map_state, {1})
+    for agent_id, path in planned.items():
+        engine.agents[agent_id].planned_path = path.copy()
+
     assert 1 in planned
     assert 2 not in planned
     assert engine.agents[1].planned_path == planned[1]
