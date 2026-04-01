@@ -84,6 +84,7 @@ class UnifiedLogger:
         self.log_data['scenario'] = {
             'type': scenario_data.get('type', 'simulation'),
             'simulation_mode': mode,
+            'path_planner_mode': scenario_data.get('path_planner_mode', 'astar'),
             'difficulty': scenario_data.get('difficulty', 0.0),
             'map_size': scenario_data.get('map_size', [0, 0]),
             'grid': scenario_data.get('grid', []),

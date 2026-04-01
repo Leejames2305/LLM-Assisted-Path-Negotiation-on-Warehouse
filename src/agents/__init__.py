@@ -23,6 +23,7 @@ class RobotAgent:
         self.is_waiting = False
         self.wait_turns_remaining = 0
         self.priority = 1
+        self._has_negotiated_path = False
     
     # Set the agent's target position
     def set_target(self, target_position: Tuple[int, int]):

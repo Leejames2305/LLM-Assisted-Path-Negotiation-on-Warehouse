@@ -3,8 +3,11 @@ Conflict Detection and Basic Pathfinding
 """
 
 import heapq
-from typing import List, Tuple, Set, Dict, Optional
+from typing import List, Tuple, Set, Dict, Optional, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from .path_table import PathTable
 
 class ConflictDetector:
     def __init__(self, map_width: int = 8, map_height: int = 6):
@@ -277,7 +280,8 @@ class SimplePathfinder:
         walls: Set[Tuple[int, int]],
         reserved_positions_by_turn: Optional[Dict[int, Set[Tuple[int, int]]]] = None,
         reserved_edges_by_turn: Optional[Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]]] = None,
-        max_time_steps: Optional[int] = None
+        max_time_steps: Optional[int] = None,
+        path_table: Optional['PathTable'] = None,
     ) -> List[Tuple[int, int]]:
         if start == goal:
             return [start]
@@ -335,15 +339,19 @@ class SimplePathfinder:
             reserved_edges = reserved_edges_by_turn.get(current_t, set())
 
             for neighbor in get_neighbors(current_pos):
-                # Vertex conflict: cannot occupy a reserved position at next turn
-                if neighbor in reserved_next_positions:
-                    continue
+                if path_table is not None:
+                    if path_table.constrained(current_pos, neighbor, next_t):
+                        continue
+                else:
+                    # Vertex conflict: cannot occupy a reserved position at next turn
+                    if neighbor in reserved_next_positions:
+                        continue
 
                 # Edge swap conflict: if another agent moves from current_pos to
                 # neighbor at this turn, this agent cannot simultaneously swap
                 # by moving from neighbor to current_pos.
-                if (neighbor, current_pos) in reserved_edges:
-                    continue
+                    if (neighbor, current_pos) in reserved_edges:
+                        continue
 
                 next_state = (neighbor, next_t)
                 tentative_g = current_g + 1
