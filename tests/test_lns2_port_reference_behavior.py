@@ -109,21 +109,16 @@ def test_lns2_returns_partial_success_when_conflicts_remain():
     map_state = _build_open_map_state()
 
     # Force conflict metric to remain non-zero to verify best-effort status.
-    original_detect = planner.conflict_detector.detect_path_conflicts
+    original_conflict_count = planner._conflict_count
 
-    def fake_detect(_paths, _current_turn=0):
-        return {
-            'has_conflicts': True,
-            'conflict_points': [(2, 2)],
-            'conflicting_agents': [1, 2],
-            'conflict_turns': [0],
-        }
+    def fake_conflict_count(_paths, _current_turn=0, _path_table=None):
+        return 1
 
-    planner.conflict_detector.detect_path_conflicts = fake_detect
+    planner._conflict_count = fake_conflict_count
     try:
         result = planner.plan_all(agents, map_state, None)
     finally:
-        planner.conflict_detector.detect_path_conflicts = original_detect
+        planner._conflict_count = original_conflict_count
 
     assert result.status == PLANNER_STATUS_PARTIAL_SUCCESS
     assert result.solutions
@@ -216,3 +211,34 @@ def test_lns2_replan_subset_falls_back_to_astar_when_minicbs_fails():
 
     assert result.status == PLANNER_STATUS_SUCCESS
     assert result.solutions == expected
+
+
+def test_lns2_randomwalk_chain_expands_beyond_seed_collisions():
+    planner = _make_lns2("randomwalk")
+    planner.destroy_ratio = 1.0
+    planner.randomwalk_samples_per_agent = 10
+    planner.randomwalk_max_expansions = 10
+
+    agents = {
+        1: RobotAgent(agent_id=1, initial_position=(0, 0), target_position=(2, 0)),
+        2: RobotAgent(agent_id=2, initial_position=(1, 1), target_position=(2, 1)),
+        3: RobotAgent(agent_id=3, initial_position=(2, 2), target_position=(2, 1)),
+    }
+    solution = {
+        1: [(0, 0), (1, 0), (2, 0)],
+        2: [(1, 1), (1, 0), (1, 1), (2, 1)],
+        3: [(2, 2), (2, 1), (1, 1), (2, 1)],
+    }
+    table, _ = planner._build_solution_path_table(solution)
+
+    original_seed_picker = planner._find_most_delayed_agent
+    planner._find_most_delayed_agent = lambda _sol, _agents: 1
+    try:
+        subset = planner._select_randomwalk_subset(solution, agents, table)
+    finally:
+        planner._find_most_delayed_agent = original_seed_picker
+
+    # Agent 1 conflicts with 2, and 2 further conflicts with 3 in later timesteps.
+    assert 1 in subset
+    assert 2 in subset
+    assert 3 in subset

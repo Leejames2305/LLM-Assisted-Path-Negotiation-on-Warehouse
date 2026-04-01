@@ -19,6 +19,21 @@ class PathTable:
         self._agent_edge_keys: Dict[int, List[EdgeKey]] = defaultdict(list)
         self._agent_goal_location: Dict[int, Location] = {}
 
+    def clear(self) -> None:
+        self._vertex_agents.clear()
+        self._edge_agents.clear()
+        self._goal_arrival_time.clear()
+        self._agent_vertex_keys.clear()
+        self._agent_edge_keys.clear()
+        self._agent_goal_location.clear()
+
+    def build_from_paths(self, paths: Dict[int, List[Location]], hold_until: Optional[int] = None) -> None:
+        self.clear()
+        if hold_until is None:
+            hold_until = max((len(path) - 1 for path in paths.values() if path), default=0)
+        for agent_id, path in paths.items():
+            self.insert_path(agent_id, path, hold_until=hold_until)
+
     def insert_path(
         self,
         agent_id: int,
@@ -122,3 +137,52 @@ class PathTable:
                 conflicts.add(other)
 
         return conflicts
+
+    def get_conflict_points(self) -> List[Tuple[Location, int]]:
+        return [
+            (loc, timestep)
+            for (loc, timestep), agents in self._vertex_agents.items()
+            if len(agents) > 1
+        ]
+
+    def get_conflicting_agents_set(self) -> Set[int]:
+        conflicting: Set[int] = set()
+
+        for agents in self._vertex_agents.values():
+            if len(agents) > 1:
+                conflicting.update(agents)
+
+        seen_pairs: Set[Tuple[Location, Location, int]] = set()
+        for (start_loc, end_loc, timestep), agents in self._edge_agents.items():
+            if start_loc == end_loc:
+                continue
+            reverse_key = (end_loc, start_loc, timestep)
+            if reverse_key in seen_pairs:
+                continue
+            reverse_agents = self._edge_agents.get(reverse_key)
+            if reverse_agents:
+                conflicting.update(agents)
+                conflicting.update(reverse_agents)
+                seen_pairs.add((start_loc, end_loc, timestep))
+                seen_pairs.add(reverse_key)
+
+        return conflicting
+
+    def conflict_count(self) -> int:
+        vertex_conflicts = sum(1 for agents in self._vertex_agents.values() if len(agents) > 1)
+
+        edge_conflicts = 0
+        seen_pairs: Set[Tuple[Location, Location, int]] = set()
+        for (start_loc, end_loc, timestep), agents in self._edge_agents.items():
+            if start_loc == end_loc:
+                continue
+            reverse_key = (end_loc, start_loc, timestep)
+            if reverse_key in seen_pairs:
+                continue
+            reverse_agents = self._edge_agents.get(reverse_key)
+            if reverse_agents and agents:
+                edge_conflicts += 1
+                seen_pairs.add((start_loc, end_loc, timestep))
+                seen_pairs.add(reverse_key)
+
+        return vertex_conflicts + edge_conflicts

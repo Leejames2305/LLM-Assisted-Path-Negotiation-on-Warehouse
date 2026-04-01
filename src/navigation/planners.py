@@ -14,6 +14,7 @@ MAPF-LNS2 porting references used for this module:
 import os
 import random
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -326,6 +327,8 @@ class LNS2Planner(MultiAgentPlanner):
         repair_backend: str = "minicbs",
         minicbs_max_nodes: int = 128,
         low_level_backend: str = "astar",
+        randomwalk_samples_per_agent: int = 4,
+        randomwalk_max_expansions: int = 64,
     ):
         self.base_planner = base_planner
         self.width = width
@@ -338,6 +341,8 @@ class LNS2Planner(MultiAgentPlanner):
         self.destroy_ratio_step = min(max(destroy_ratio_step, 0.01), 0.3)
         self.repair_backend = (repair_backend or "minicbs").strip().lower()
         self.low_level_backend = (low_level_backend or "astar").strip().lower()
+        self.randomwalk_samples_per_agent = max(1, randomwalk_samples_per_agent)
+        self.randomwalk_max_expansions = max(1, randomwalk_max_expansions)
         self.conflict_detector = ConflictDetector(width, height)
         self.random = random.Random(seed)
         self.destroy_strategy = (destroy_strategy or "randomwalk").strip().lower()
@@ -370,19 +375,42 @@ class LNS2Planner(MultiAgentPlanner):
     def _path_cost(self, path: List[Tuple[int, int]]) -> int:
         return max(0, len(path) - 1)
 
-    def _conflict_count(self, paths: Dict[int, List[Tuple[int, int]]], current_turn: int = 0) -> int:
+    def _build_solution_path_table(
+        self,
+        paths: Dict[int, List[Tuple[int, int]]],
+    ) -> Tuple[PathTable, int]:
+        table = PathTable()
+        if not paths:
+            return table, 0
+        horizon = max((len(path) - 1 for path in paths.values() if path), default=0)
+        table.build_from_paths(paths, hold_until=horizon)
+        return table, horizon
+
+    def _conflict_count(
+        self,
+        paths: Dict[int, List[Tuple[int, int]]],
+        current_turn: int = 0,
+        path_table: Optional[PathTable] = None,
+    ) -> int:
+        del current_turn
         if not paths:
             return self._INFINITE_COST
-        conflict_info = self.conflict_detector.detect_path_conflicts(paths, current_turn)
-        return len(conflict_info.get('conflict_points', []))
+        table = path_table
+        if table is None:
+            table, _ = self._build_solution_path_table(paths)
+        return table.conflict_count()
 
     def _soc_cost(self, paths: Dict[int, List[Tuple[int, int]]]) -> int:
         if not paths:
             return self._INFINITE_COST
         return sum(self._path_cost(path) for path in paths.values())
 
-    def _solution_metrics(self, paths: Dict[int, List[Tuple[int, int]]]) -> Tuple[int, int]:
-        return self._conflict_count(paths, 0), self._soc_cost(paths)
+    def _solution_metrics(
+        self,
+        paths: Dict[int, List[Tuple[int, int]]],
+        path_table: Optional[PathTable] = None,
+    ) -> Tuple[int, int]:
+        return self._conflict_count(paths, 0, path_table), self._soc_cost(paths)
 
     def _agent_delay(
         self,
@@ -470,12 +498,12 @@ class LNS2Planner(MultiAgentPlanner):
             return set()
 
         subset_size = max(1, int(len(solution) * self.destroy_ratio))
-        conflict_info = self.conflict_detector.detect_path_conflicts(solution, 0)
-        conflict_points = conflict_info.get('conflict_points', [])
+        solution_table, _ = self._build_solution_path_table(solution)
+        conflict_points = solution_table.get_conflict_points()
         if not conflict_points:
             return self._select_random_agents_subset(solution)
 
-        pivot = self.random.choice(conflict_points)
+        pivot, _ = self.random.choice(conflict_points)
         selected = {
             aid for aid, path in solution.items()
             if pivot in path
@@ -490,6 +518,7 @@ class LNS2Planner(MultiAgentPlanner):
         self,
         solution: Dict[int, List[Tuple[int, int]]],
         agents: Dict[int, RobotAgent],
+        path_table: Optional[PathTable] = None,
     ) -> Set[int]:
         if not solution:
             return set()
@@ -498,34 +527,48 @@ class LNS2Planner(MultiAgentPlanner):
         if seed_agent is None:
             return self._select_random_agents_subset(solution)
 
-        selected: Set[int] = {seed_agent}
-        seed_path = solution.get(seed_agent, [])
-        if not seed_path:
-            return self._select_random_agents_subset(solution)
+        if path_table is None:
+            path_table, _ = self._build_solution_path_table(solution)
 
-        for _ in range(self._RANDOMWALK_EXPANSION_ATTEMPTS):
-            if len(selected) >= subset_size:
-                break
-            t = self.random.randrange(len(seed_path))
-            loc = seed_path[t]
-            prev_loc = seed_path[t - 1] if t > 0 else loc
-            for aid, path in solution.items():
-                if aid in selected:
-                    continue
-                if t < len(path):
-                    pos_t = path[t]
-                    prev_t = path[t - 1] if t > 0 else path[t]
-                else:
-                    pos_t = path[-1] if path else None
-                    prev_t = path[-1] if path else None
-                if pos_t is None:
-                    continue
-                vertex_conflict = pos_t == loc
-                edge_conflict = t > 0 and prev_t == loc and pos_t == prev_loc
-                if vertex_conflict or edge_conflict:
-                    selected.add(aid)
+        selected: Set[int] = {seed_agent}
+        frontier = deque([seed_agent])
+        expansions = 0
+
+        while frontier and len(selected) < subset_size and expansions < self.randomwalk_max_expansions:
+            current_agent = frontier.popleft()
+            current_path = solution.get(current_agent, [])
+            if not current_path:
+                continue
+
+            if len(current_path) <= self.randomwalk_samples_per_agent:
+                sampled_timesteps = list(range(len(current_path)))
+            else:
+                sampled_timesteps = self.random.sample(
+                    list(range(len(current_path))),
+                    k=self.randomwalk_samples_per_agent,
+                )
+
+            for timestep in sampled_timesteps:
+                curr_loc = current_path[timestep]
+                prev_loc = current_path[timestep - 1] if timestep > 0 else curr_loc
+                conflicting = path_table.get_conflicting_agents(
+                    current_agent,
+                    prev_loc,
+                    curr_loc,
+                    timestep,
+                )
+
+                for other_agent in conflicting:
+                    if other_agent not in solution or other_agent in selected:
+                        continue
+                    selected.add(other_agent)
+                    frontier.append(other_agent)
+                    if len(selected) >= subset_size:
+                        break
                 if len(selected) >= subset_size:
                     break
+
+            expansions += 1
 
         if len(selected) < subset_size:
             remaining = [aid for aid in solution.keys() if aid not in selected]
@@ -537,6 +580,7 @@ class LNS2Planner(MultiAgentPlanner):
         self,
         solution: Dict[int, List[Tuple[int, int]]],
         agents: Dict[int, RobotAgent],
+        path_table: Optional[PathTable] = None,
     ) -> Set[int]:
         # Mirrors chooseDestroyHeuristicbyALNS() in MAPF-LNS2/src/LNS.cpp.
         if self.alns:
@@ -561,7 +605,7 @@ class LNS2Planner(MultiAgentPlanner):
             return self._select_intersection_subset(solution)
         if chosen_strategy == self._DESTROY_RANDOMAGENTS:
             return self._select_random_agents_subset(solution)
-        return self._select_randomwalk_subset(solution, agents)
+        return self._select_randomwalk_subset(solution, agents, path_table)
 
     def _repair_subset(
         self,
@@ -647,7 +691,8 @@ class LNS2Planner(MultiAgentPlanner):
             if not candidate:
                 continue
 
-            candidate_conflicts, candidate_soc = self._solution_metrics(candidate)
+            candidate_table, _ = self._build_solution_path_table(candidate)
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate, candidate_table)
             if (
                 candidate_conflicts < best_conflicts
                 or (candidate_conflicts == best_conflicts and candidate_soc < best_soc)
@@ -656,8 +701,7 @@ class LNS2Planner(MultiAgentPlanner):
                 best_conflicts = candidate_conflicts
                 best_soc = candidate_soc
 
-            conflict_info = self.conflict_detector.detect_path_conflicts(candidate, 0)
-            previous_conflicting_agents = set(conflict_info.get('conflicting_agents', []))
+            previous_conflicting_agents = candidate_table.get_conflicting_agents_set()
 
             if candidate_conflicts == 0 and len(candidate) == len(ordered_agent_ids):
                 break
@@ -694,7 +738,8 @@ class LNS2Planner(MultiAgentPlanner):
 
         self._reset_tabu(len(initial_solution))
         best_solution = {aid: path.copy() for aid, path in initial_solution.items()}
-        best_conflicts, best_soc = self._solution_metrics(best_solution)
+        best_table, _ = self._build_solution_path_table(best_solution)
+        best_conflicts, best_soc = self._solution_metrics(best_solution, best_table)
 
         phase1_iterations = max(1, int(self.iterations * self.phase1_ratio))
         phase2_iterations = max(0, self.iterations - phase1_iterations)
@@ -702,7 +747,7 @@ class LNS2Planner(MultiAgentPlanner):
 
         # Phase 1: reduce conflict count C (best-effort).
         for _ in range(phase1_iterations):
-            subset = self._choose_destroy_subset(best_solution, agents)
+            subset = self._choose_destroy_subset(best_solution, agents, best_table)
             if not subset:
                 stalled_iterations += 1
                 continue
@@ -721,11 +766,13 @@ class LNS2Planner(MultiAgentPlanner):
 
             new_subset_cost = sum(self._path_cost(path) for path in repaired_subset.values())
             candidate_solution = self._merge_solution(best_solution, repaired_subset)
-            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution)
+            candidate_table, _ = self._build_solution_path_table(candidate_solution)
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution, candidate_table)
             self._update_adaptive_weights(old_subset_cost, new_subset_cost, len(subset))
 
             if self._accept_phase_one(candidate_conflicts, candidate_soc, best_conflicts, best_soc):
                 best_solution = candidate_solution
+                best_table = candidate_table
                 best_conflicts = candidate_conflicts
                 best_soc = candidate_soc
                 stalled_iterations = 0
@@ -737,7 +784,7 @@ class LNS2Planner(MultiAgentPlanner):
 
         # Phase 2: optimize SOC S while preserving best-achieved C.
         for _ in range(phase2_iterations):
-            subset = self._choose_destroy_subset(best_solution, agents)
+            subset = self._choose_destroy_subset(best_solution, agents, best_table)
             if not subset:
                 continue
 
@@ -746,9 +793,11 @@ class LNS2Planner(MultiAgentPlanner):
                 continue
 
             candidate_solution = self._merge_solution(best_solution, repaired_subset)
-            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution)
+            candidate_table, _ = self._build_solution_path_table(candidate_solution)
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution, candidate_table)
             if candidate_conflicts == best_conflicts and candidate_soc < best_soc:
                 best_solution = candidate_solution
+                best_table = candidate_table
                 best_conflicts = candidate_conflicts
                 best_soc = candidate_soc
 
@@ -798,6 +847,8 @@ def create_multi_agent_planner(
         repair_backend = os.getenv('LNS2_REPAIR_BACKEND', 'minicbs')
         minicbs_max_nodes = int(os.getenv('LNS2_MINICBS_MAX_NODES', '128'))
         low_level_backend = os.getenv('LNS2_LOW_LEVEL_BACKEND', 'astar').strip().lower()
+        randomwalk_samples_per_agent = int(os.getenv('LNS2_RW_SAMPLES_PER_AGENT', '4'))
+        randomwalk_max_expansions = int(os.getenv('LNS2_RW_MAX_EXPANSIONS', '64'))
         if low_level_backend not in {'astar', 'sipp'}:
             low_level_backend = 'astar'
         base.low_level_backend = low_level_backend
@@ -816,5 +867,7 @@ def create_multi_agent_planner(
             repair_backend=repair_backend,
             minicbs_max_nodes=minicbs_max_nodes,
             low_level_backend=low_level_backend,
+            randomwalk_samples_per_agent=randomwalk_samples_per_agent,
+            randomwalk_max_expansions=randomwalk_max_expansions,
         )
     return base

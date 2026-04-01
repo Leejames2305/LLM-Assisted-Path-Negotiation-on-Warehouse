@@ -30,3 +30,23 @@ def test_path_table_target_hold_conflict_and_delete():
 
     table.delete_path(1)
     assert not table.constrained((1, 1), (1, 2), 4)
+
+
+def test_path_table_bulk_build_and_conflict_helpers():
+    table = PathTable()
+    paths = {
+        1: [(0, 0), (1, 0), (2, 0)],
+        2: [(2, 0), (1, 0), (0, 0)],
+        3: [(2, 2), (2, 1), (1, 1), (2, 1)],
+    }
+    table.build_from_paths(paths)
+
+    points = table.get_conflict_points()
+    assert points
+    assert ((1, 0), 1) in points
+
+    conflicting_agents = table.get_conflicting_agents_set()
+    assert 1 in conflicting_agents
+    assert 2 in conflicting_agents
+
+    assert table.conflict_count() > 0
