@@ -14,10 +14,26 @@ MAPF-LNS2 porting references used for this module:
 import os
 import random
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from ..agents import RobotAgent
 from . import ConflictDetector, SimplePathfinder
+from .minicbs import MiniCBSRepair
+from .path_table import PathTable
+from .sipp import SIPPLowLevelSolver
+
+PLANNER_STATUS_SUCCESS = "success"
+PLANNER_STATUS_PARTIAL_SUCCESS = "partial_success"
+PLANNER_STATUS_FAILED_NO_SOLUTION = "failed_no_solution"
+
+
+@dataclass
+class PlannerResult:
+    """Minimal planner result contract."""
+
+    solutions: Dict[int, List[Tuple[int, int]]]
+    status: str
 
 
 class MultiAgentPlanner(ABC):
@@ -29,7 +45,7 @@ class MultiAgentPlanner(ABC):
         agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
-    ) -> Dict[int, List[Tuple[int, int]]]:
+    ) -> PlannerResult:
         pass
 
     @abstractmethod
@@ -38,7 +54,7 @@ class MultiAgentPlanner(ABC):
         agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Set[int],
-    ) -> Dict[int, List[Tuple[int, int]]]:
+    ) -> PlannerResult:
         pass
 
     @abstractmethod
@@ -60,12 +76,15 @@ class AStarReservationPlanner(MultiAgentPlanner):
         height: int,
         min_time_horizon: int,
         grid_horizon_multiplier: int,
+        low_level_backend: str = "astar",
     ):
         self.pathfinder = pathfinder
         self.width = width
         self.height = height
         self.min_time_horizon = min_time_horizon
         self.grid_horizon_multiplier = grid_horizon_multiplier
+        self.low_level_backend = (low_level_backend or "astar").strip().lower()
+        self.sipp_solver = SIPPLowLevelSolver(pathfinder)
 
     def get_backend_name(self) -> str:
         return "astar"
@@ -99,6 +118,32 @@ class AStarReservationPlanner(MultiAgentPlanner):
                 active_ids.append(aid)
         return active_ids
 
+    def _infer_status(self, requested_count: int, solved_count: int) -> str:
+        if requested_count == 0:
+            return PLANNER_STATUS_SUCCESS
+        if solved_count == 0:
+            return PLANNER_STATUS_FAILED_NO_SOLUTION
+        if solved_count < requested_count:
+            return PLANNER_STATUS_PARTIAL_SUCCESS
+        return PLANNER_STATUS_SUCCESS
+
+    def plan_with_order(
+        self,
+        agents: Dict[int, RobotAgent],
+        map_state: Dict,
+        ordered_agent_ids: List[int],
+    ) -> Dict[int, List[Tuple[int, int]]]:
+        if not ordered_agent_ids:
+            return {}
+        return self._plan_with_fixed_reservations(
+            agents,
+            map_state,
+            ordered_agent_ids,
+            reserved_positions_by_turn={},
+            reserved_edges_by_turn={},
+            path_table=PathTable(),
+        )
+
     def _plan_with_fixed_reservations(
         self,
         agents: Dict[int, RobotAgent],
@@ -106,11 +151,13 @@ class AStarReservationPlanner(MultiAgentPlanner):
         planned_agent_ids: List[int],
         reserved_positions_by_turn: Dict[int, Set[Tuple[int, int]]],
         reserved_edges_by_turn: Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]],
+        path_table: Optional[PathTable] = None,
         existing_planned_moves: Optional[Dict[int, List[Tuple[int, int]]]] = None,
     ) -> Dict[int, List[Tuple[int, int]]]:
         planned_moves: Dict[int, List[Tuple[int, int]]] = {}
         if existing_planned_moves:
             planned_moves.update(existing_planned_moves)
+        path_table = path_table or PathTable()
 
         walls = self._extract_walls(map_state)
         planning_time_horizon = max(
@@ -133,14 +180,24 @@ class AStarReservationPlanner(MultiAgentPlanner):
             if has_negotiated_path:
                 path = agent.planned_path.copy()
             else:
-                path = self.pathfinder.find_path_with_time_constraints(
-                    start=agent.position,
-                    goal=goal,
-                    walls=walls,
-                    reserved_positions_by_turn=reserved_positions_by_turn,
-                    reserved_edges_by_turn=reserved_edges_by_turn,
-                    max_time_steps=planning_time_horizon,
-                )
+                if self.low_level_backend == "sipp":
+                    path = self.sipp_solver.find_path(
+                        start=agent.position,
+                        goal=goal,
+                        walls=walls,
+                        path_table=path_table,
+                        max_time_steps=planning_time_horizon,
+                    )
+                else:
+                    path = self.pathfinder.find_path_with_time_constraints(
+                        start=agent.position,
+                        goal=goal,
+                        walls=walls,
+                        reserved_positions_by_turn=reserved_positions_by_turn,
+                        reserved_edges_by_turn=reserved_edges_by_turn,
+                        max_time_steps=planning_time_horizon,
+                        path_table=path_table,
+                    )
 
                 if not path:
                     other_positions = {
@@ -164,6 +221,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
                 continue
 
             planned_moves[agent_id] = path.copy()
+            path_table.insert_path(agent_id, path, hold_until=planning_time_horizon)
             for turn_idx, pos in enumerate(path):
                 reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
                 if turn_idx > 0:
@@ -177,33 +235,37 @@ class AStarReservationPlanner(MultiAgentPlanner):
         agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
-    ) -> Dict[int, List[Tuple[int, int]]]:
+    ) -> PlannerResult:
         active_ids = self._ordered_active_ids(agents, agent_ids)
         if not active_ids:
-            return {}
-        return self._plan_with_fixed_reservations(
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_SUCCESS)
+        planned = self._plan_with_fixed_reservations(
             agents,
             map_state,
             active_ids,
             reserved_positions_by_turn={},
             reserved_edges_by_turn={},
+            path_table=PathTable(),
         )
+        status = self._infer_status(len(active_ids), len(planned))
+        return PlannerResult(solutions=planned, status=status)
 
     def replan_subset(
         self,
         agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Set[int],
-    ) -> Dict[int, List[Tuple[int, int]]]:
+    ) -> PlannerResult:
         if not agent_ids:
-            return {}
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_SUCCESS)
 
         subset_ids = self._ordered_active_ids(agents, set(agent_ids))
         if not subset_ids:
-            return {}
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_FAILED_NO_SOLUTION)
 
         reserved_positions_by_turn: Dict[int, Set[Tuple[int, int]]] = {}
         reserved_edges_by_turn: Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]] = {}
+        path_table = PathTable()
 
         # Seed reservation tables with existing paths from non-replanned active agents.
         reservation_horizon = max(
@@ -214,6 +276,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
             if aid in subset_ids or agent.is_waiting or not agent.target_position:
                 continue
             existing_path = agent.planned_path if agent.planned_path else [agent.position]
+            path_table.insert_path(aid, existing_path, hold_until=reservation_horizon)
             for turn_idx, pos in enumerate(existing_path):
                 reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
                 if turn_idx > 0:
@@ -230,16 +293,17 @@ class AStarReservationPlanner(MultiAgentPlanner):
             subset_ids,
             reserved_positions_by_turn=reserved_positions_by_turn,
             reserved_edges_by_turn=reserved_edges_by_turn,
+            path_table=path_table,
         )
-        return {aid: replanned[aid] for aid in subset_ids if aid in replanned}
+        filtered = {aid: replanned[aid] for aid in subset_ids if aid in replanned}
+        status = self._infer_status(len(subset_ids), len(filtered))
+        return PlannerResult(solutions=filtered, status=status)
 
 
 class LNS2Planner(MultiAgentPlanner):
     """Python port structure based on MAPF-LNS2 `LNS` run loop in `src/LNS.cpp`."""
     # Sentinel used when a solution is missing; kept large so any valid solution wins.
     _INFINITE_COST = 10**9
-    # Penalize unresolved conflicts heavily relative to per-step path cost.
-    _CONFLICT_PENALTY_WEIGHT = 100
     # Match MAPF-LNS2's bounded repeated random-walk attempts when expanding neighborhood.
     _RANDOMWALK_EXPANSION_ATTEMPTS = 10
     _DESTROY_RANDOMAGENTS = "randomagents"
@@ -255,15 +319,35 @@ class LNS2Planner(MultiAgentPlanner):
         destroy_ratio: float = 0.35,
         seed: int = 0,
         destroy_strategy: str = "randomwalk",
+        phase1_ratio: float = 0.7,
+        max_init_retries: int = 3,
+        adaptive_stall_iterations: int = 3,
+        destroy_ratio_step: float = 0.1,
+        repair_backend: str = "minicbs",
+        minicbs_max_nodes: int = 128,
+        low_level_backend: str = "astar",
     ):
         self.base_planner = base_planner
         self.width = width
         self.height = height
         self.iterations = max(1, iterations)
         self.destroy_ratio = min(max(destroy_ratio, 0.1), 0.8)
+        self.phase1_ratio = min(max(phase1_ratio, 0.1), 0.9)
+        self.max_init_retries = max(1, max_init_retries)
+        self.adaptive_stall_iterations = max(1, adaptive_stall_iterations)
+        self.destroy_ratio_step = min(max(destroy_ratio_step, 0.01), 0.3)
+        self.repair_backend = (repair_backend or "minicbs").strip().lower()
+        self.low_level_backend = (low_level_backend or "astar").strip().lower()
         self.conflict_detector = ConflictDetector(width, height)
         self.random = random.Random(seed)
         self.destroy_strategy = (destroy_strategy or "randomwalk").strip().lower()
+        self.minicbs_repair = MiniCBSRepair(
+            width=width,
+            height=height,
+            min_time_horizon=base_planner.min_time_horizon,
+            grid_horizon_multiplier=base_planner.grid_horizon_multiplier,
+            max_nodes=minicbs_max_nodes,
+        )
 
         # Adaptive-LNS controls (mirrors MAPF-LNS2 Adaptive destroy mode)
         self.alns = self.destroy_strategy == "adaptive"
@@ -271,6 +355,11 @@ class LNS2Planner(MultiAgentPlanner):
         self.decay_factor = 0.01
         self.reaction_factor = 0.01
         self.selected_neighbor = 0
+
+        # RandomWalk-style tabu memory for repeated troublemaker selection.
+        self._tabu_list: List[int] = []
+        self._tabu_set: Set[int] = set()
+        self._tabu_tenure = 5
 
     def get_backend_name(self) -> str:
         return "LNS2"
@@ -281,13 +370,19 @@ class LNS2Planner(MultiAgentPlanner):
     def _path_cost(self, path: List[Tuple[int, int]]) -> int:
         return max(0, len(path) - 1)
 
-    def _solution_cost(self, paths: Dict[int, List[Tuple[int, int]]], current_turn: int = 0) -> int:
+    def _conflict_count(self, paths: Dict[int, List[Tuple[int, int]]], current_turn: int = 0) -> int:
         if not paths:
             return self._INFINITE_COST
-        base_cost = sum(self._path_cost(path) for path in paths.values())
         conflict_info = self.conflict_detector.detect_path_conflicts(paths, current_turn)
-        conflict_penalty = len(conflict_info.get('conflict_points', [])) * self._CONFLICT_PENALTY_WEIGHT
-        return base_cost + conflict_penalty
+        return len(conflict_info.get('conflict_points', []))
+
+    def _soc_cost(self, paths: Dict[int, List[Tuple[int, int]]]) -> int:
+        if not paths:
+            return self._INFINITE_COST
+        return sum(self._path_cost(path) for path in paths.values())
+
+    def _solution_metrics(self, paths: Dict[int, List[Tuple[int, int]]]) -> Tuple[int, int]:
+        return self._conflict_count(paths, 0), self._soc_cost(paths)
 
     def _agent_delay(
         self,
@@ -302,7 +397,25 @@ class LNS2Planner(MultiAgentPlanner):
         start = path[0]
         target = agent.target_position
         heuristic = abs(start[0] - target[0]) + abs(start[1] - target[1])
-        return max(0, self._path_cost(path) - heuristic)
+        waits = 0
+        for idx in range(1, len(path)):
+            if path[idx] == path[idx - 1]:
+                waits += 1
+        return max(0, self._path_cost(path) - heuristic) + waits
+
+    def _reset_tabu(self, agent_count: int) -> None:
+        self._tabu_tenure = max(5, agent_count // 4)
+        self._tabu_list = []
+        self._tabu_set = set()
+
+    def _mark_tabu(self, agent_id: int) -> None:
+        if agent_id in self._tabu_set:
+            return
+        self._tabu_set.add(agent_id)
+        self._tabu_list.append(agent_id)
+        while len(self._tabu_list) > self._tabu_tenure:
+            expired = self._tabu_list.pop(0)
+            self._tabu_set.discard(expired)
 
     def _find_most_delayed_agent(
         self,
@@ -312,12 +425,26 @@ class LNS2Planner(MultiAgentPlanner):
         best_agent: Optional[int] = None
         best_delay = -1
         for aid in solution.keys():
+            if aid in self._tabu_set:
+                continue
             delay = self._agent_delay(aid, solution, agents)
             if delay > best_delay:
                 best_delay = delay
                 best_agent = aid
+
+        if best_agent is None:
+            # Reset tabu when all candidates are blocked and retry once.
+            self._tabu_set.clear()
+            self._tabu_list.clear()
+            for aid in solution.keys():
+                delay = self._agent_delay(aid, solution, agents)
+                if delay > best_delay:
+                    best_delay = delay
+                    best_agent = aid
+
         if best_delay <= 0:
             return None
+        self._mark_tabu(best_agent)
         return best_agent
 
     def _select_random_agents_subset(self, solution: Dict[int, List[Tuple[int, int]]]) -> Set[int]:
@@ -436,6 +563,27 @@ class LNS2Planner(MultiAgentPlanner):
             return self._select_random_agents_subset(solution)
         return self._select_randomwalk_subset(solution, agents)
 
+    def _repair_subset(
+        self,
+        agents: Dict[int, RobotAgent],
+        map_state: Dict,
+        subset: Set[int],
+    ) -> Dict[int, List[Tuple[int, int]]]:
+        if self.repair_backend == "minicbs":
+            repaired = self.minicbs_repair.replan_subset(agents, map_state, subset)
+            if repaired:
+                return repaired
+        return self.base_planner.replan_subset(agents, map_state, subset).solutions
+
+    def _infer_status(self, requested_count: int, solved_count: int) -> str:
+        if requested_count == 0:
+            return PLANNER_STATUS_SUCCESS
+        if solved_count == 0:
+            return PLANNER_STATUS_FAILED_NO_SOLUTION
+        if solved_count < requested_count:
+            return PLANNER_STATUS_PARTIAL_SUCCESS
+        return PLANNER_STATUS_SUCCESS
+
     def _merge_solution(
         self,
         base_solution: Dict[int, List[Tuple[int, int]]],
@@ -460,55 +608,165 @@ class LNS2Planner(MultiAgentPlanner):
                 (1.0 - self.decay_factor) * self.destroy_weights[self.selected_neighbor]
             )
 
+    def _reorder_for_retry(
+        self,
+        ordered_agent_ids: List[int],
+        previous_conflicting_agents: Set[int],
+    ) -> List[int]:
+        shuffled = ordered_agent_ids.copy()
+        self.random.shuffle(shuffled)
+        if not previous_conflicting_agents:
+            return shuffled
+
+        front = [aid for aid in shuffled if aid in previous_conflicting_agents]
+        back = [aid for aid in shuffled if aid not in previous_conflicting_agents]
+        return front + back
+
+    def _get_initial_solution(
+        self,
+        agents: Dict[int, RobotAgent],
+        map_state: Dict,
+        agent_ids: Optional[Set[int]],
+    ) -> Dict[int, List[Tuple[int, int]]]:
+        ordered_agent_ids = self.base_planner._ordered_active_ids(agents, agent_ids)
+        if not ordered_agent_ids:
+            return {}
+
+        best_solution: Dict[int, List[Tuple[int, int]]] = {}
+        best_conflicts = self._INFINITE_COST
+        best_soc = self._INFINITE_COST
+        previous_conflicting_agents: Set[int] = set()
+
+        for attempt in range(self.max_init_retries):
+            if attempt == 0:
+                order = ordered_agent_ids
+            else:
+                order = self._reorder_for_retry(ordered_agent_ids, previous_conflicting_agents)
+
+            candidate = self.base_planner.plan_with_order(agents, map_state, order)
+            if not candidate:
+                continue
+
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate)
+            if (
+                candidate_conflicts < best_conflicts
+                or (candidate_conflicts == best_conflicts and candidate_soc < best_soc)
+            ):
+                best_solution = {aid: path.copy() for aid, path in candidate.items()}
+                best_conflicts = candidate_conflicts
+                best_soc = candidate_soc
+
+            conflict_info = self.conflict_detector.detect_path_conflicts(candidate, 0)
+            previous_conflicting_agents = set(conflict_info.get('conflicting_agents', []))
+
+            if candidate_conflicts == 0 and len(candidate) == len(ordered_agent_ids):
+                break
+
+        return best_solution
+
+    def _accept_phase_one(
+        self,
+        candidate_conflicts: int,
+        candidate_soc: int,
+        best_conflicts: int,
+        best_soc: int,
+    ) -> bool:
+        if candidate_conflicts < best_conflicts:
+            return True
+        if candidate_conflicts > best_conflicts:
+            return False
+        if candidate_soc <= best_soc:
+            return True
+        # Allow limited exploration when C stays unchanged.
+        allowance = max(1, int(best_soc * 0.05))
+        return candidate_soc <= best_soc + allowance
+
     def plan_all(
         self,
         agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
-    ) -> Dict[int, List[Tuple[int, int]]]:
-        # MAPF-LNS2 flow: getInitialSolution() first (see LNS::getInitialSolution).
-        initial_solution = self.base_planner.plan_all(agents, map_state, agent_ids)
+    ) -> PlannerResult:
+        # Robust initial solution: randomized priority retries with conflict-aware reseeding.
+        initial_solution = self._get_initial_solution(agents, map_state, agent_ids)
         if not initial_solution:
-            return {}
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_FAILED_NO_SOLUTION)
 
+        self._reset_tabu(len(initial_solution))
         best_solution = {aid: path.copy() for aid, path in initial_solution.items()}
-        best_cost = self._solution_cost(best_solution)
+        best_conflicts, best_soc = self._solution_metrics(best_solution)
 
-        # MAPF-LNS2 flow: iterative destroy/repair/evaluate loop (see LNS::run).
-        for _ in range(self.iterations):
+        phase1_iterations = max(1, int(self.iterations * self.phase1_ratio))
+        phase2_iterations = max(0, self.iterations - phase1_iterations)
+        stalled_iterations = 0
+
+        # Phase 1: reduce conflict count C (best-effort).
+        for _ in range(phase1_iterations):
             subset = self._choose_destroy_subset(best_solution, agents)
             if not subset:
+                stalled_iterations += 1
                 continue
 
             old_subset_cost = sum(
                 self._path_cost(best_solution.get(aid, []))
                 for aid in subset
             )
-            repaired_subset = self.base_planner.replan_subset(agents, map_state, subset)
+            repaired_subset = self._repair_subset(agents, map_state, subset)
             if not repaired_subset:
+                stalled_iterations += 1
+                if stalled_iterations >= self.adaptive_stall_iterations:
+                    self.destroy_ratio = min(0.8, self.destroy_ratio + self.destroy_ratio_step)
+                    stalled_iterations = 0
                 continue
 
             new_subset_cost = sum(self._path_cost(path) for path in repaired_subset.values())
             candidate_solution = self._merge_solution(best_solution, repaired_subset)
-            candidate_cost = self._solution_cost(candidate_solution)
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution)
             self._update_adaptive_weights(old_subset_cost, new_subset_cost, len(subset))
 
-            # MAPF-LNS2 acceptance follows local replan improvement and global evaluation.
-            if new_subset_cost <= old_subset_cost and candidate_cost <= best_cost:
+            if self._accept_phase_one(candidate_conflicts, candidate_soc, best_conflicts, best_soc):
                 best_solution = candidate_solution
-                best_cost = candidate_cost
+                best_conflicts = candidate_conflicts
+                best_soc = candidate_soc
+                stalled_iterations = 0
+            else:
+                stalled_iterations += 1
+                if stalled_iterations >= self.adaptive_stall_iterations:
+                    self.destroy_ratio = min(0.8, self.destroy_ratio + self.destroy_ratio_step)
+                    stalled_iterations = 0
 
-        return best_solution
+        # Phase 2: optimize SOC S while preserving best-achieved C.
+        for _ in range(phase2_iterations):
+            subset = self._choose_destroy_subset(best_solution, agents)
+            if not subset:
+                continue
+
+            repaired_subset = self._repair_subset(agents, map_state, subset)
+            if not repaired_subset:
+                continue
+
+            candidate_solution = self._merge_solution(best_solution, repaired_subset)
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution)
+            if candidate_conflicts == best_conflicts and candidate_soc < best_soc:
+                best_solution = candidate_solution
+                best_conflicts = candidate_conflicts
+                best_soc = candidate_soc
+
+        status = PLANNER_STATUS_SUCCESS if best_conflicts == 0 else PLANNER_STATUS_PARTIAL_SUCCESS
+        return PlannerResult(solutions=best_solution, status=status)
 
     def replan_subset(
         self,
         agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Set[int],
-    ) -> Dict[int, List[Tuple[int, int]]]:
+    ) -> PlannerResult:
         if not agent_ids:
-            return {}
-        return self.base_planner.replan_subset(agents, map_state, set(agent_ids))
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_SUCCESS)
+        ordered_subset = self.base_planner._ordered_active_ids(agents, set(agent_ids))
+        repaired_subset = self._repair_subset(agents, map_state, set(agent_ids))
+        status = self._infer_status(len(ordered_subset), len(repaired_subset))
+        return PlannerResult(solutions=repaired_subset, status=status)
 
 
 def create_multi_agent_planner(
@@ -526,12 +784,23 @@ def create_multi_agent_planner(
         height=height,
         min_time_horizon=min_time_horizon,
         grid_horizon_multiplier=grid_horizon_multiplier,
+        low_level_backend="astar",
     )
     if normalized == "lns2":
         iterations = int(os.getenv('LNS2_MAX_ITERATIONS', '8'))
         destroy_ratio = float(os.getenv('LNS2_DESTROY_RATIO', '0.35'))
         seed = int(os.getenv('LNS2_RANDOM_SEED', '0'))
         destroy_strategy = os.getenv('LNS2_DESTROY_STRATEGY', 'randomwalk')
+        phase1_ratio = float(os.getenv('LNS2_PHASE1_RATIO', '0.7'))
+        max_init_retries = int(os.getenv('LNS2_MAX_INIT_RETRIES', '3'))
+        adaptive_stall_iterations = int(os.getenv('LNS2_ADAPTIVE_STALL_ITERS', '3'))
+        destroy_ratio_step = float(os.getenv('LNS2_DESTROY_RATIO_STEP', '0.1'))
+        repair_backend = os.getenv('LNS2_REPAIR_BACKEND', 'minicbs')
+        minicbs_max_nodes = int(os.getenv('LNS2_MINICBS_MAX_NODES', '128'))
+        low_level_backend = os.getenv('LNS2_LOW_LEVEL_BACKEND', 'astar').strip().lower()
+        if low_level_backend not in {'astar', 'sipp'}:
+            low_level_backend = 'astar'
+        base.low_level_backend = low_level_backend
         return LNS2Planner(
             base_planner=base,
             width=width,
@@ -540,5 +809,12 @@ def create_multi_agent_planner(
             destroy_ratio=destroy_ratio,
             seed=seed,
             destroy_strategy=destroy_strategy,
+            phase1_ratio=phase1_ratio,
+            max_init_retries=max_init_retries,
+            adaptive_stall_iterations=adaptive_stall_iterations,
+            destroy_ratio_step=destroy_ratio_step,
+            repair_backend=repair_backend,
+            minicbs_max_nodes=minicbs_max_nodes,
+            low_level_backend=low_level_backend,
         )
     return base

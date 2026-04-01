@@ -251,7 +251,8 @@ class GameEngine:
                 if not self.silent_mode:
                     print(f"🔍 Agent {aid}: Attempting planner pathfinding to resolve stuck state...")
                 try:
-                    fresh_path = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid}).get(aid, [])
+                    replan_result = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid})
+                    fresh_path = replan_result.solutions.get(aid, [])
 
                     if fresh_path and len(fresh_path) > 0:
                         # Check if this path conflicts with other agents' paths
@@ -310,7 +311,8 @@ class GameEngine:
                 # If path is empty or agent has target, try to calculate a fresh path
                 if not current_path and agent.target_position:
                     try:
-                        fresh_path = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid}).get(aid, [])
+                        replan_result = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid})
+                        fresh_path = replan_result.solutions.get(aid, [])
                         if fresh_path:
                             current_path = fresh_path
                             if not self.silent_mode:
@@ -414,7 +416,8 @@ class GameEngine:
                 if not self.silent_mode:
                     print(f"🔍 Agent {aid}: Attempting planner pathfinding to resolve deadlock...")
                 try:
-                    fresh_path = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid}).get(aid, [])
+                    replan_result = self.multi_agent_planner.replan_subset(self.agents, map_state, {aid})
+                    fresh_path = replan_result.solutions.get(aid, [])
 
                     if fresh_path and len(fresh_path) > 0:
                         # Check if this path conflicts with other agents' paths
@@ -1200,15 +1203,16 @@ class GameEngine:
     def _get_sequential_planned_moves(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
         map_state = self.warehouse_map.get_state_dict()
         subset_ids = set(agent_ids) if agent_ids is not None else None
-        return self.multi_agent_planner.plan_all(self.agents, map_state, subset_ids)
+        plan_result = self.multi_agent_planner.plan_all(self.agents, map_state, subset_ids)
+        return plan_result.solutions
 
     # Replan paths with reservation-based sequential A* and refresh agent path buffers
     def _replan_with_reservations(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
         map_state = self.warehouse_map.get_state_dict()
         if agent_ids is None:
-            planned_moves = self.multi_agent_planner.plan_all(self.agents, map_state, None)
+            planned_moves = self.multi_agent_planner.plan_all(self.agents, map_state, None).solutions
         else:
-            planned_moves = self.multi_agent_planner.replan_subset(self.agents, map_state, set(agent_ids))
+            planned_moves = self.multi_agent_planner.replan_subset(self.agents, map_state, set(agent_ids)).solutions
         for agent_id, path in planned_moves.items():
             if agent_id in self.agents:
                 self.agents[agent_id].planned_path = path.copy()
