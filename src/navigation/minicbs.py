@@ -197,9 +197,15 @@ class MiniCBSRepair:
     ) -> PathTable:
         table = PathTable()
         for aid, agent in agents.items():
-            if aid in replanned_ids or agent.is_waiting or not agent.target_position:
+            if aid in replanned_ids:
                 continue
-            existing_path = agent.planned_path if agent.planned_path else [agent.position]
+
+            # Pinned/finished agents stay in place and must remain hard constraints.
+            if agent.is_waiting or not agent.target_position:
+                existing_path = [agent.position]
+            else:
+                existing_path = agent.planned_path if agent.planned_path else [agent.position]
+
             table.insert_path(aid, existing_path, hold_until=horizon)
         return table
 

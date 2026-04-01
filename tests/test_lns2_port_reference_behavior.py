@@ -39,6 +39,17 @@ def _build_open_map_state(width: int = 6, height: int = 6) -> dict:
     }
 
 
+def _build_map_state_with_agents(agent_positions: dict, width: int = 6, height: int = 6) -> dict:
+    grid = [['.' for _ in range(width)] for _ in range(height)]
+    return {
+        'grid': grid,
+        'agents': dict(agent_positions),
+        'boxes': {},
+        'targets': {},
+        'agent_goals': {},
+    }
+
+
 def _make_lns2(strategy: str = "randomwalk") -> LNS2Planner:
     base = AStarReservationPlanner(
         pathfinder=SimplePathfinder(6, 6),
@@ -242,3 +253,38 @@ def test_lns2_randomwalk_chain_expands_beyond_seed_collisions():
     assert 1 in subset
     assert 2 in subset
     assert 3 in subset
+
+
+def test_lns2_plan_all_treats_finished_agents_as_static_obstacles():
+    planner = _make_lns2("randomwalk")
+    agents = {
+        1: RobotAgent(agent_id=1, initial_position=(2, 1), target_position=None),
+        2: RobotAgent(agent_id=2, initial_position=(1, 1), target_position=(3, 1)),
+    }
+    map_state = _build_map_state_with_agents({1: (2, 1), 2: (1, 1)})
+
+    result = planner.plan_all(agents, map_state, None)
+    path = result.solutions.get(2, [])
+
+    assert result.status == PLANNER_STATUS_SUCCESS
+    assert path
+    assert path[-1] == (3, 1)
+    assert (2, 1) not in path[1:]
+
+
+def test_lns2_subset_replan_treats_finished_agents_as_static_obstacles():
+    planner = _make_lns2("randomwalk")
+    planner.repair_backend = "minicbs"
+    agents = {
+        1: RobotAgent(agent_id=1, initial_position=(2, 1), target_position=None),
+        2: RobotAgent(agent_id=2, initial_position=(1, 1), target_position=(3, 1)),
+    }
+    map_state = _build_map_state_with_agents({1: (2, 1), 2: (1, 1)})
+
+    result = planner.replan_subset(agents, map_state, {2})
+    path = result.solutions.get(2, [])
+
+    assert result.status == PLANNER_STATUS_SUCCESS
+    assert path
+    assert path[-1] == (3, 1)
+    assert (2, 1) not in path[1:]

@@ -93,6 +93,12 @@ class AStarReservationPlanner(MultiAgentPlanner):
     def supports_dynamic_repair(self) -> bool:
         return True
 
+    def _planning_horizon(self) -> int:
+        return max(
+            self.min_time_horizon,
+            self.width * self.height * self.grid_horizon_multiplier,
+        )
+
     def _extract_walls(self, map_state: Dict) -> Set[Tuple[int, int]]:
         grid = map_state.get('grid', [])
         walls = set()
@@ -118,6 +124,58 @@ class AStarReservationPlanner(MultiAgentPlanner):
             if agent and (not agent.is_waiting) and agent.target_position:
                 active_ids.append(aid)
         return active_ids
+
+    def _reserve_path(
+        self,
+        agent_id: int,
+        path: List[Tuple[int, int]],
+        reservation_horizon: int,
+        reserved_positions_by_turn: Dict[int, Set[Tuple[int, int]]],
+        reserved_edges_by_turn: Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]],
+        path_table: PathTable,
+    ) -> None:
+        if not path:
+            return
+
+        path_table.insert_path(agent_id, path, hold_until=reservation_horizon)
+        for turn_idx, pos in enumerate(path):
+            reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
+            if turn_idx > 0:
+                prev = path[turn_idx - 1]
+                reserved_edges_by_turn.setdefault(turn_idx - 1, set()).add((prev, pos))
+
+        final_pos = path[-1]
+        for turn_idx in range(len(path), reservation_horizon + 1):
+            reserved_positions_by_turn.setdefault(turn_idx, set()).add(final_pos)
+
+    def _seed_static_reservations(
+        self,
+        agents: Dict[int, RobotAgent],
+        planned_agent_ids: List[int],
+        reservation_horizon: int,
+        reserved_positions_by_turn: Dict[int, Set[Tuple[int, int]]],
+        reserved_edges_by_turn: Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]],
+        path_table: PathTable,
+    ) -> None:
+        planned_set = set(planned_agent_ids)
+        for aid, agent in agents.items():
+            if aid in planned_set:
+                continue
+
+            # Pinned/finished agents become stay-in-place reservations.
+            if agent.is_waiting or not agent.target_position:
+                existing_path = [agent.position]
+            else:
+                existing_path = agent.planned_path if agent.planned_path else [agent.position]
+
+            self._reserve_path(
+                aid,
+                existing_path,
+                reservation_horizon,
+                reserved_positions_by_turn,
+                reserved_edges_by_turn,
+                path_table,
+            )
 
     def _infer_status(self, requested_count: int, solved_count: int) -> str:
         if requested_count == 0:
@@ -161,9 +219,14 @@ class AStarReservationPlanner(MultiAgentPlanner):
         path_table = path_table or PathTable()
 
         walls = self._extract_walls(map_state)
-        planning_time_horizon = max(
-            self.min_time_horizon,
-            self.width * self.height * self.grid_horizon_multiplier,
+        planning_time_horizon = self._planning_horizon()
+        self._seed_static_reservations(
+            agents,
+            planned_agent_ids,
+            planning_time_horizon,
+            reserved_positions_by_turn,
+            reserved_edges_by_turn,
+            path_table,
         )
 
         for agent_id in planned_agent_ids:
@@ -222,12 +285,14 @@ class AStarReservationPlanner(MultiAgentPlanner):
                 continue
 
             planned_moves[agent_id] = path.copy()
-            path_table.insert_path(agent_id, path, hold_until=planning_time_horizon)
-            for turn_idx, pos in enumerate(path):
-                reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
-                if turn_idx > 0:
-                    prev = path[turn_idx - 1]
-                    reserved_edges_by_turn.setdefault(turn_idx - 1, set()).add((prev, pos))
+            self._reserve_path(
+                agent_id,
+                path,
+                planning_time_horizon,
+                reserved_positions_by_turn,
+                reserved_edges_by_turn,
+                path_table,
+            )
 
         return planned_moves
 
@@ -264,37 +329,13 @@ class AStarReservationPlanner(MultiAgentPlanner):
         if not subset_ids:
             return PlannerResult(solutions={}, status=PLANNER_STATUS_FAILED_NO_SOLUTION)
 
-        reserved_positions_by_turn: Dict[int, Set[Tuple[int, int]]] = {}
-        reserved_edges_by_turn: Dict[int, Set[Tuple[Tuple[int, int], Tuple[int, int]]]] = {}
-        path_table = PathTable()
-
-        # Seed reservation tables with existing paths from non-replanned active agents.
-        reservation_horizon = max(
-            self.min_time_horizon,
-            self.width * self.height * self.grid_horizon_multiplier,
-        )
-        for aid, agent in agents.items():
-            if aid in subset_ids or agent.is_waiting or not agent.target_position:
-                continue
-            existing_path = agent.planned_path if agent.planned_path else [agent.position]
-            path_table.insert_path(aid, existing_path, hold_until=reservation_horizon)
-            for turn_idx, pos in enumerate(existing_path):
-                reserved_positions_by_turn.setdefault(turn_idx, set()).add(pos)
-                if turn_idx > 0:
-                    prev = existing_path[turn_idx - 1]
-                    reserved_edges_by_turn.setdefault(turn_idx - 1, set()).add((prev, pos))
-            if existing_path:
-                final_pos = existing_path[-1]
-                for turn_idx in range(len(existing_path), reservation_horizon + 1):
-                    reserved_positions_by_turn.setdefault(turn_idx, set()).add(final_pos)
-
         replanned = self._plan_with_fixed_reservations(
             agents,
             map_state,
             subset_ids,
-            reserved_positions_by_turn=reserved_positions_by_turn,
-            reserved_edges_by_turn=reserved_edges_by_turn,
-            path_table=path_table,
+            reserved_positions_by_turn={},
+            reserved_edges_by_turn={},
+            path_table=PathTable(),
         )
         filtered = {aid: replanned[aid] for aid in subset_ids if aid in replanned}
         status = self._infer_status(len(subset_ids), len(filtered))
@@ -378,13 +419,72 @@ class LNS2Planner(MultiAgentPlanner):
     def _build_solution_path_table(
         self,
         paths: Dict[int, List[Tuple[int, int]]],
+        hold_until: Optional[int] = None,
+        static_paths: Optional[Dict[int, List[Tuple[int, int]]]] = None,
     ) -> Tuple[PathTable, int]:
         table = PathTable()
-        if not paths:
+        combined_paths: Dict[int, List[Tuple[int, int]]] = {}
+        if static_paths:
+            for aid, path in static_paths.items():
+                if path:
+                    combined_paths[aid] = path
+        for aid, path in paths.items():
+            if path:
+                combined_paths[aid] = path
+
+        if not combined_paths:
             return table, 0
-        horizon = max((len(path) - 1 for path in paths.values() if path), default=0)
-        table.build_from_paths(paths, hold_until=horizon)
+
+        horizon = hold_until
+        if horizon is None:
+            horizon = max((len(path) - 1 for path in combined_paths.values() if path), default=0)
+        table.build_from_paths(combined_paths, hold_until=horizon)
         return table, horizon
+
+    def _build_static_paths(
+        self,
+        agents: Dict[int, RobotAgent],
+        solution_agent_ids: Set[int],
+    ) -> Dict[int, List[Tuple[int, int]]]:
+        static_paths: Dict[int, List[Tuple[int, int]]] = {}
+        for aid, agent in agents.items():
+            if aid in solution_agent_ids:
+                continue
+
+            if agent.is_waiting or not agent.target_position:
+                static_paths[aid] = [agent.position]
+            else:
+                static_paths[aid] = agent.planned_path if agent.planned_path else [agent.position]
+        return static_paths
+
+    def _apply_subset_delta(
+        self,
+        path_table: PathTable,
+        baseline_solution: Dict[int, List[Tuple[int, int]]],
+        repaired_subset: Dict[int, List[Tuple[int, int]]],
+        planning_horizon: int,
+    ) -> Dict[int, List[Tuple[int, int]]]:
+        previous_paths: Dict[int, List[Tuple[int, int]]] = {}
+        for aid, new_path in repaired_subset.items():
+            old_path = baseline_solution.get(aid, [])
+            previous_paths[aid] = old_path.copy()
+            path_table.delete_path(aid)
+            if new_path:
+                path_table.insert_path(aid, new_path, hold_until=planning_horizon)
+        return previous_paths
+
+    def _rollback_subset_delta(
+        self,
+        path_table: PathTable,
+        previous_paths: Dict[int, List[Tuple[int, int]]],
+        repaired_subset: Dict[int, List[Tuple[int, int]]],
+        planning_horizon: int,
+    ) -> None:
+        for aid in repaired_subset.keys():
+            path_table.delete_path(aid)
+        for aid, old_path in previous_paths.items():
+            if old_path:
+                path_table.insert_path(aid, old_path, hold_until=planning_horizon)
 
     def _conflict_count(
         self,
@@ -670,9 +770,10 @@ class LNS2Planner(MultiAgentPlanner):
         self,
         agents: Dict[int, RobotAgent],
         map_state: Dict,
-        agent_ids: Optional[Set[int]],
+        ordered_agent_ids: List[int],
+        static_paths: Dict[int, List[Tuple[int, int]]],
+        planning_horizon: int,
     ) -> Dict[int, List[Tuple[int, int]]]:
-        ordered_agent_ids = self.base_planner._ordered_active_ids(agents, agent_ids)
         if not ordered_agent_ids:
             return {}
 
@@ -691,7 +792,11 @@ class LNS2Planner(MultiAgentPlanner):
             if not candidate:
                 continue
 
-            candidate_table, _ = self._build_solution_path_table(candidate)
+            candidate_table, _ = self._build_solution_path_table(
+                candidate,
+                hold_until=planning_horizon,
+                static_paths=static_paths,
+            )
             candidate_conflicts, candidate_soc = self._solution_metrics(candidate, candidate_table)
             if (
                 candidate_conflicts < best_conflicts
@@ -731,14 +836,31 @@ class LNS2Planner(MultiAgentPlanner):
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
     ) -> PlannerResult:
+        ordered_agent_ids = self.base_planner._ordered_active_ids(agents, agent_ids)
+        if not ordered_agent_ids:
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_SUCCESS)
+
+        run_horizon = self.base_planner._planning_horizon()
+        static_paths = self._build_static_paths(agents, set(ordered_agent_ids))
+
         # Robust initial solution: randomized priority retries with conflict-aware reseeding.
-        initial_solution = self._get_initial_solution(agents, map_state, agent_ids)
+        initial_solution = self._get_initial_solution(
+            agents,
+            map_state,
+            ordered_agent_ids,
+            static_paths,
+            run_horizon,
+        )
         if not initial_solution:
             return PlannerResult(solutions={}, status=PLANNER_STATUS_FAILED_NO_SOLUTION)
 
         self._reset_tabu(len(initial_solution))
         best_solution = {aid: path.copy() for aid, path in initial_solution.items()}
-        best_table, _ = self._build_solution_path_table(best_solution)
+        best_table, _ = self._build_solution_path_table(
+            best_solution,
+            hold_until=run_horizon,
+            static_paths=static_paths,
+        )
         best_conflicts, best_soc = self._solution_metrics(best_solution, best_table)
 
         phase1_iterations = max(1, int(self.iterations * self.phase1_ratio))
@@ -766,17 +888,27 @@ class LNS2Planner(MultiAgentPlanner):
 
             new_subset_cost = sum(self._path_cost(path) for path in repaired_subset.values())
             candidate_solution = self._merge_solution(best_solution, repaired_subset)
-            candidate_table, _ = self._build_solution_path_table(candidate_solution)
-            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution, candidate_table)
+            previous_paths = self._apply_subset_delta(
+                best_table,
+                best_solution,
+                repaired_subset,
+                run_horizon,
+            )
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution, best_table)
             self._update_adaptive_weights(old_subset_cost, new_subset_cost, len(subset))
 
             if self._accept_phase_one(candidate_conflicts, candidate_soc, best_conflicts, best_soc):
                 best_solution = candidate_solution
-                best_table = candidate_table
                 best_conflicts = candidate_conflicts
                 best_soc = candidate_soc
                 stalled_iterations = 0
             else:
+                self._rollback_subset_delta(
+                    best_table,
+                    previous_paths,
+                    repaired_subset,
+                    run_horizon,
+                )
                 stalled_iterations += 1
                 if stalled_iterations >= self.adaptive_stall_iterations:
                     self.destroy_ratio = min(0.8, self.destroy_ratio + self.destroy_ratio_step)
@@ -793,13 +925,24 @@ class LNS2Planner(MultiAgentPlanner):
                 continue
 
             candidate_solution = self._merge_solution(best_solution, repaired_subset)
-            candidate_table, _ = self._build_solution_path_table(candidate_solution)
-            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution, candidate_table)
+            previous_paths = self._apply_subset_delta(
+                best_table,
+                best_solution,
+                repaired_subset,
+                run_horizon,
+            )
+            candidate_conflicts, candidate_soc = self._solution_metrics(candidate_solution, best_table)
             if candidate_conflicts == best_conflicts and candidate_soc < best_soc:
                 best_solution = candidate_solution
-                best_table = candidate_table
                 best_conflicts = candidate_conflicts
                 best_soc = candidate_soc
+            else:
+                self._rollback_subset_delta(
+                    best_table,
+                    previous_paths,
+                    repaired_subset,
+                    run_horizon,
+                )
 
         status = PLANNER_STATUS_SUCCESS if best_conflicts == 0 else PLANNER_STATUS_PARTIAL_SUCCESS
         return PlannerResult(solutions=best_solution, status=status)
