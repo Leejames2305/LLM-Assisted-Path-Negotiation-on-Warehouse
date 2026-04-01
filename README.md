@@ -1,11 +1,10 @@
 # LLM-Assisted Multi-Robot Navigation Negotiation in Warehouse Environments
 
-This projects propose the use of A* + LLM (Hybrid-Feedback setup) to resolve path conflict issues in a simulated warehouse
+This projects propose the use of MAPF + LLM (Hybrid-Feedback setup) to resolve path conflict issues in a simulated warehouse
 
 ## 🚀 Features
-- **A-star Path Finding**: Agents uses A* for quick navigation
-- **Pluggable MAPF Backend**: Select planner from `.env` with `PATH_PLANNER_MODE=astar|LNS2`
-  - `LNS2` backend follows the MAPF-LNS2 loop shape: initial solution → destroy subset heuristic → repair subset → evaluate/accept → iterate
+- **Pluggable MAPF Backend**: 
+  Either A* or LNS2 as MAPF algorithm
 - **Real-time Conflict Detection**: Identifies path conflicts and triggers LLM negotiation
 - **LLM Negotiation Framework (Hybrid)**: LLM reasoning negotiation with feedback
   - Central LLM (SOTA Model) for complex conflict negotiation
