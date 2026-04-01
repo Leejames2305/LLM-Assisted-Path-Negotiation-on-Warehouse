@@ -12,6 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.agents import RobotAgent
 from src.map_generator import WarehouseMap
+from src.navigation.planners import PLANNER_STATUS_FAILED_NO_SOLUTION, PlannerResult
 from src.simulation.game_engine import GameEngine
 
 
@@ -86,7 +87,7 @@ def test_stagnation_uses_llm_only_when_planner_cannot_find_path():
 
     def controlled_replan_subset(agents, map_state, agent_ids):
         if 2 in agent_ids:
-            return {}
+            return PlannerResult(solutions={}, status=PLANNER_STATUS_FAILED_NO_SOLUTION)
         return original_replan_subset(agents, map_state, agent_ids)
 
     with patch.object(engine.multi_agent_planner, "replan_subset", side_effect=controlled_replan_subset):
