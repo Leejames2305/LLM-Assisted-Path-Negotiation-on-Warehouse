@@ -343,7 +343,7 @@ class SimplePathfinder:
                     if path_table.constrained(current_pos, neighbor, next_t):
                         continue
                 else:
-                # Vertex conflict: cannot occupy a reserved position at next turn
+                    # Vertex conflict: cannot occupy a reserved position at next turn
                     if neighbor in reserved_next_positions:
                         continue
 
