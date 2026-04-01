@@ -16,6 +16,7 @@ import random
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple
 
+from ..agents import RobotAgent
 from . import ConflictDetector, SimplePathfinder
 
 
@@ -25,7 +26,7 @@ class MultiAgentPlanner(ABC):
     @abstractmethod
     def plan_all(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
     ) -> Dict[int, List[Tuple[int, int]]]:
@@ -34,7 +35,7 @@ class MultiAgentPlanner(ABC):
     @abstractmethod
     def replan_subset(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Set[int],
     ) -> Dict[int, List[Tuple[int, int]]]:
@@ -83,7 +84,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
     def _ordered_active_ids(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         agent_ids: Optional[Set[int]],
     ) -> List[int]:
         if agent_ids is None:
@@ -100,7 +101,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
     def _plan_with_fixed_reservations(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         planned_agent_ids: List[int],
         reserved_positions_by_turn: Dict[int, Set[Tuple[int, int]]],
@@ -119,6 +120,9 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
         for agent_id in planned_agent_ids:
             agent = agents[agent_id]
+            goal = agent.target_position
+            if goal is None:
+                continue
             has_negotiated_path = (
                 hasattr(agent, '_has_negotiated_path')
                 and getattr(agent, '_has_negotiated_path', False)
@@ -131,7 +135,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
             else:
                 path = self.pathfinder.find_path_with_time_constraints(
                     start=agent.position,
-                    goal=agent.target_position,
+                    goal=goal,
                     walls=walls,
                     reserved_positions_by_turn=reserved_positions_by_turn,
                     reserved_edges_by_turn=reserved_edges_by_turn,
@@ -146,7 +150,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
                     }
                     path = self.pathfinder.find_path_with_obstacles(
                         start=agent.position,
-                        goal=agent.target_position,
+                        goal=goal,
                         walls=walls,
                         agent_positions=other_positions,
                         exclude_agent=agent_id,
@@ -170,7 +174,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
     def plan_all(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
     ) -> Dict[int, List[Tuple[int, int]]]:
@@ -187,7 +191,7 @@ class AStarReservationPlanner(MultiAgentPlanner):
 
     def replan_subset(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Set[int],
     ) -> Dict[int, List[Tuple[int, int]]]:
@@ -289,7 +293,7 @@ class LNS2Planner(MultiAgentPlanner):
         self,
         agent_id: int,
         solution: Dict[int, List[Tuple[int, int]]],
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
     ) -> int:
         path = solution.get(agent_id, [])
         agent = agents.get(agent_id)
@@ -303,7 +307,7 @@ class LNS2Planner(MultiAgentPlanner):
     def _find_most_delayed_agent(
         self,
         solution: Dict[int, List[Tuple[int, int]]],
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
     ) -> Optional[int]:
         best_agent: Optional[int] = None
         best_delay = -1
@@ -358,7 +362,7 @@ class LNS2Planner(MultiAgentPlanner):
     def _select_randomwalk_subset(
         self,
         solution: Dict[int, List[Tuple[int, int]]],
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
     ) -> Set[int]:
         if not solution:
             return set()
@@ -405,7 +409,7 @@ class LNS2Planner(MultiAgentPlanner):
     def _choose_destroy_subset(
         self,
         solution: Dict[int, List[Tuple[int, int]]],
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
     ) -> Set[int]:
         # Mirrors chooseDestroyHeuristicbyALNS() in MAPF-LNS2/src/LNS.cpp.
         if self.alns:
@@ -458,7 +462,7 @@ class LNS2Planner(MultiAgentPlanner):
 
     def plan_all(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Optional[Set[int]] = None,
     ) -> Dict[int, List[Tuple[int, int]]]:
@@ -498,7 +502,7 @@ class LNS2Planner(MultiAgentPlanner):
 
     def replan_subset(
         self,
-        agents: Dict[int, object],
+        agents: Dict[int, RobotAgent],
         map_state: Dict,
         agent_ids: Set[int],
     ) -> Dict[int, List[Tuple[int, int]]]:
