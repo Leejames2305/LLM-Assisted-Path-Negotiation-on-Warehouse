@@ -18,9 +18,10 @@ This project proposes the use of MAPF + LLM (Hybrid-Feedback setup) to resolve p
 1. **Clone the repository**:
 
 2. **Install dependencies**:
-   ```cmd
-   pip install -r requirements.txt
-   ```
+
+    a) Typical python setup: `pip install -r requirements.txt` OR
+    
+    b) UV setup: `uv init` then `uv add -r requirement.txt`
 
 3. **Configure environment**:
    Rename `.env.example` to `.env` and add your OpenRouter API key:
@@ -33,22 +34,18 @@ This project proposes the use of MAPF + LLM (Hybrid-Feedback setup) to resolve p
 ## 🎮 Usage
 
 Run the simulation:
-```cmd
-python main.py
-```
+
+  - `python main.py` OR `uv run main.py`
+
 Run the benchmark tool:
-```cmd
-python benchmark_tool.py
-```
+  - `python benchmark_tool.py` OR `uv run benchmark_tool.py`
+
 Run the map editor:
-```cmd
-python -m src.tools.layout_editor
-```
+  - `python -m src.tools.layout_editor` OR `uv run python -m src.tools.layout_editor`
 
 Run the visualization on logged files:
-```cmd
-python visualization.py logs/sim_log....
-```
+  - `python visualization.py logs/sim_log....json` OR `uv run visualization.py logs/sim_log....json`
+
 
 ## 📄 Docs
 Additional documentations are located at [here](docs/Basics.md)

@@ -12,18 +12,17 @@ To set up the development environment for the first time, follow these steps:
 ## Running of the simulation engine
 To run the simulation engine locally during agent-assisted development, use the following command in project directory:
 
-| Command                                        | Purpose                                            |
-| -----------------------------------------------| -------------------------------------------------- |
-| `python main.py`                               | Run the simulation                                 |
-| `python -m src.tools.layout_editor`            | Run the map editor tools                           |
-| `python visualization.py logs/sim_log....`     | Run the visualization tools on logged files        |
+| Command                                                                                             | Purpose                                            |
+| ----------------------------------------------------------------------------------------------------| -------------------------------------------------- |
+| `python main.py` OR `uv run main.py`                                                                | Run the simulation                                 |
+| `python -m src.tools.layout_editor` OR `uv run python -m src.tools.layout_editor`                   | Run the map editor tools                           |
+| `python visualization.py logs/sim_log....json` OR `uv run visualization.py logs/sim_log....json`    | Run the visualization tools on logged files        |
 
 ## Testing instructions
-Since the project uses OpenRouter API calls when the simulation is running, it will takes time to get response from the API. Wait for the response before proceeding to the next step in the simulation.
+Since the project uses OpenRouter API calls when the simulation is running, and API keys aren't provided, do a mock request/response instead.
 
 This project doesn't have automated tests yet. When making changes, please manually test the following scenarios:
-* Always use `main.py` to run the main simulation engine.
-* Load up `s_shaped` map to forcefully trigger LLM API calls.
+* Use both `main.py` and `benchmark_tool.py` to test the functionality of the simulation.
 * Checks for basic functionalities, including:
   - Agent navigation and pathfinding.
   - Game engine able to end without errors.

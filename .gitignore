@@ -33,3 +33,8 @@ ENV/
 .idea/
 *.swp
 *.swo
+
+# uv
+.python-version
+pyproject.toml
+uv.lock
