@@ -1,0 +1,6 @@
+Round,Status,CSR,Makespan_s,CollisionRate,PathEfficiency,TokenCost,AvgResolutionTime_ms,TotalTurns,TotalNegotiations,TotalCollisions
+1,success,100.0,87.35,0.22,100,0,0,41,0,9
+2,success,100.0,152.85,0.182,100,5633,30257.61,77,1,14
+3,timeout,0.0,652.51,1.75,100,16048,203323.0,4,3,7
+4,success,100.0,59.98,0.145,100,0,0,55,0,8
+5,success,100.0,32.5,0.028,100,0,0,36,0,1
