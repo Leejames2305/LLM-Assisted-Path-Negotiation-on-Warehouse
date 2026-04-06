@@ -1,0 +1,99 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-04-06T23:07:11.428380",
+    "layout_name": "random_22x22",
+    "config": {
+      "num_agents": 32,
+      "num_rounds": 5,
+      "time_limit_seconds": 600,
+      "seed": 42,
+      "spatial_hints_enabled": true,
+      "difficulty": 0.5
+    }
+  },
+  "overall_results": {
+    "total_rounds": 5,
+    "successful_rounds": 0,
+    "timeout_rounds": 5,
+    "failed_rounds": 0,
+    "success_rate": 0.0
+  },
+  "average_metrics": {
+    "avg_csr": 0.0,
+    "avg_makespan_seconds": 0.0,
+    "avg_collision_rate": 3.87,
+    "avg_path_efficiency": 100.0,
+    "total_tokens_used": 150704,
+    "avg_tokens_per_round": 30140.8,
+    "avg_resolution_time_ms": 204333.966,
+    "avg_turns_per_round": 4.6,
+    "avg_negotiations_per_round": 4.4
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 640.97,
+      "collision_rate": 1.5,
+      "path_efficiency": 100,
+      "total_tokens_used": 91511,
+      "avg_conflict_resolution_time_ms": 305937.37,
+      "total_turns": 2,
+      "total_negotiations": 2,
+      "total_collisions": 3
+    },
+    {
+      "round_num": 2,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 936.11,
+      "collision_rate": 4.333,
+      "path_efficiency": 100,
+      "total_tokens_used": 11611,
+      "avg_conflict_resolution_time_ms": 175782.23,
+      "total_turns": 6,
+      "total_negotiations": 5,
+      "total_collisions": 26
+    },
+    {
+      "round_num": 3,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 638.53,
+      "collision_rate": 2.667,
+      "path_efficiency": 100,
+      "total_tokens_used": 27534,
+      "avg_conflict_resolution_time_ms": 97876.23,
+      "total_turns": 6,
+      "total_negotiations": 6,
+      "total_collisions": 16
+    },
+    {
+      "round_num": 4,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 1018.34,
+      "collision_rate": 7.6,
+      "path_efficiency": 100,
+      "total_tokens_used": 4053,
+      "avg_conflict_resolution_time_ms": 195838.5,
+      "total_turns": 5,
+      "total_negotiations": 5,
+      "total_collisions": 38
+    },
+    {
+      "round_num": 5,
+      "status": "timeout",
+      "cooperative_success_rate": 0.0,
+      "makespan_seconds": 1054.29,
+      "collision_rate": 3.25,
+      "path_efficiency": 100,
+      "total_tokens_used": 15995,
+      "avg_conflict_resolution_time_ms": 246235.5,
+      "total_turns": 4,
+      "total_negotiations": 4,
+      "total_collisions": 13
+    }
+  ]
+}
