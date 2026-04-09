@@ -20,9 +20,11 @@ def _empty_grid(width: int, height: int):
     return [['.' for _ in range(width)] for _ in range(height)]
 
 
-def _build_engine_with_simple_layout(planner_mode: str = "astar") -> GameEngine:
+def _build_engine_with_simple_layout(planner_mode: str = "astar", disable_llm: bool = False) -> GameEngine:
     prev_mode = os.environ.get("PATH_PLANNER_MODE")
+    prev_disable_llm = os.environ.get("DISABLE_LLM_NEGOTIATION")
     os.environ["PATH_PLANNER_MODE"] = planner_mode
+    os.environ["DISABLE_LLM_NEGOTIATION"] = "true" if disable_llm else "false"
     try:
         engine = GameEngine(width=6, height=6, num_agents=2)
     finally:
@@ -30,6 +32,10 @@ def _build_engine_with_simple_layout(planner_mode: str = "astar") -> GameEngine:
             os.environ.pop("PATH_PLANNER_MODE", None)
         else:
             os.environ["PATH_PLANNER_MODE"] = prev_mode
+        if prev_disable_llm is None:
+            os.environ.pop("DISABLE_LLM_NEGOTIATION", None)
+        else:
+            os.environ["DISABLE_LLM_NEGOTIATION"] = prev_disable_llm
 
     warehouse = WarehouseMap(width=6, height=6)
     warehouse.grid = np.array(_empty_grid(6, 6), dtype=str)
@@ -96,3 +102,101 @@ def test_stagnation_uses_llm_only_when_planner_cannot_find_path():
     assert conflict['has_conflicts'] is True
     assert 2 in conflict['conflicting_agents']
     assert 1 not in conflict['conflicting_agents']
+
+
+def test_disable_llm_toggle_is_loaded_from_environment():
+    engine = _build_engine_with_simple_layout("astar", disable_llm=True)
+    assert engine.disable_llm_negotiation is True
+
+
+def test_turn_based_planner_no_solution_fails_immediately():
+    engine = _build_engine_with_simple_layout("astar", disable_llm=True)
+    engine.initialize_simulation()
+
+    with patch.object(
+        engine,
+        "_get_sequential_plan_result",
+        return_value=PlannerResult(solutions={}, status=PLANNER_STATUS_FAILED_NO_SOLUTION),
+    ):
+        step_ok = engine.run_simulation_step()
+
+    assert step_ok is False
+    assert engine.simulation_failed is True
+    assert engine.failure_reason == "mapf_failed_no_solution"
+
+
+def test_turn_based_disables_llm_and_fails_on_deadlock_trigger():
+    engine = _build_engine_with_simple_layout("astar", disable_llm=True)
+    engine.initialize_simulation()
+
+    fake_path = {1: [(1, 1), (1, 2)]}
+    fake_conflict = {
+        'has_conflicts': True,
+        'conflicting_agents': [1],
+        'conflict_points': [(1, 1)],
+    }
+    fake_deadlock = {
+        'has_conflicts': True,
+        'conflicting_agents': [1],
+        'conflict_points': [(1, 1)],
+        'agents': [],
+    }
+
+    with patch.object(
+        engine,
+        "_get_sequential_plan_result",
+        return_value=PlannerResult(solutions=fake_path, status="success"),
+    ), patch.object(
+        engine.conflict_detector,
+        "detect_path_conflicts",
+        return_value=fake_conflict,
+    ), patch.object(
+        engine,
+        "detect_move_failure_deadlocks",
+        return_value=fake_deadlock,
+    ), patch.object(engine, "_negotiate_conflicts") as mocked_negotiate:
+        step_ok = engine.run_simulation_step()
+
+    assert step_ok is False
+    assert engine.simulation_failed is True
+    assert engine.failure_reason == "deadlock_triggered_llm_disabled"
+    mocked_negotiate.assert_not_called()
+
+
+def test_async_disables_background_negotiation_and_fails_on_deadlock_trigger():
+    engine = _build_engine_with_simple_layout("astar", disable_llm=True)
+    engine.initialize_simulation()
+    engine.simulation_mode = "async"
+
+    fake_path = {1: [(1, 1), (1, 2)]}
+    fake_conflict = {
+        'has_conflicts': True,
+        'conflicting_agents': [1],
+        'conflict_points': [(1, 1)],
+    }
+    fake_deadlock = {
+        'has_conflicts': True,
+        'conflicting_agents': [1],
+        'conflict_points': [(1, 1)],
+        'agents': [],
+    }
+
+    with patch.object(
+        engine,
+        "_get_sequential_plan_result",
+        return_value=PlannerResult(solutions=fake_path, status="success"),
+    ), patch.object(
+        engine.conflict_detector,
+        "detect_path_conflicts",
+        return_value=fake_conflict,
+    ), patch.object(
+        engine,
+        "detect_move_failure_deadlocks",
+        return_value=fake_deadlock,
+    ), patch.object(engine, "_start_background_negotiation") as mocked_bg:
+        step_ok = engine.run_simulation_step()
+
+    assert step_ok is False
+    assert engine.simulation_failed is True
+    assert engine.failure_reason == "deadlock_triggered_llm_disabled"
+    mocked_bg.assert_not_called()

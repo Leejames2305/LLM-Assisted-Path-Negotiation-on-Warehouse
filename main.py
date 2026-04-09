@@ -24,10 +24,14 @@ def main():
     print(f"{Fore.CYAN}🤖 LLM-Assisted Multi-Robot Navigation Negotiation 🤖")
     print(f"{Fore.CYAN}=" * 60)
     print(f"{Style.RESET_ALL}")
+
+    disable_llm_negotiation = os.getenv('DISABLE_LLM_NEGOTIATION', 'false').strip().lower() == 'true'
+    if disable_llm_negotiation:
+        print(f"{Fore.YELLOW}ℹ️  LLM Negotiation disabled (planner-only mode).{Style.RESET_ALL}")
     
     # Check if API key is configured
     api_key = os.getenv('OPENROUTER_API_KEY')
-    if not api_key or api_key == 'your_openrouter_api_key_here':
+    if not disable_llm_negotiation and (not api_key or api_key == 'your_openrouter_api_key_here'):
         print(f"{Fore.RED}⚠️  WARNING: OpenRouter API key not configured!{Style.RESET_ALL}")
         print(f"Please set OPENROUTER_API_KEY in your .env file")
         print(f"Copy .env.example to .env and add your API key")
@@ -39,6 +43,8 @@ def main():
             return
         
         print(f"{Fore.YELLOW}Running in demo mode (LLM features will use fallbacks){Style.RESET_ALL}")
+    elif disable_llm_negotiation and (not api_key or api_key == 'your_openrouter_api_key_here'):
+        print(f"{Fore.YELLOW}ℹ️  OpenRouter API key not configured, continuing because planner-only mode is enabled.{Style.RESET_ALL}")
     
     # Get layout selection
     print(f"\n{Fore.CYAN}Loading Warehouse Layout...{Style.RESET_ALL}")

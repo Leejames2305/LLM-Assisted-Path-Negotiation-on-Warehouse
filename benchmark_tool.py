@@ -1382,13 +1382,16 @@ def main():
     print(f"{Fore.CYAN}{'='*60}")
     print(f"🔬 LLM Multi-Robot Navigation Benchmark Tool")
     print(f"{'='*60}{Style.RESET_ALL}")
+    disable_llm_negotiation = os.getenv('DISABLE_LLM_NEGOTIATION', 'false').strip().lower() == 'true'
     
     # Check API key
     api_key = os.getenv('OPENROUTER_API_KEY')
-    if not api_key or api_key == 'your_openrouter_api_key_here':
+    if not disable_llm_negotiation and (not api_key or api_key == 'your_openrouter_api_key_here'):
         print(f"{Fore.RED}⚠️  WARNING: OpenRouter API key not configured!{Style.RESET_ALL}")
         print("Please set OPENROUTER_API_KEY in your .env file")
         return
+    if disable_llm_negotiation:
+        print(f"{Fore.YELLOW}ℹ️ LLM Negotiation disabled (planner-only mode).{Style.RESET_ALL}")
 
     # --- Benchmark mode selection ---
     print(f"\n{Fore.CYAN}Select benchmark mode:{Style.RESET_ALL}")
@@ -1399,38 +1402,44 @@ def main():
 
     is_lifelong = bench_mode == '2'
     is_async = bench_mode == '3'
+    turn_config: Optional[BenchmarkConfig] = None
+    lifelong_config: Optional[LifelongBenchmarkConfig] = None
+    async_config: Optional[AsyncBenchmarkConfig] = None
 
     if is_lifelong:
-        config = LifelongBenchmarkConfig.from_env()
+        lifelong_config = LifelongBenchmarkConfig.from_env()
         print(f"\n{Fore.CYAN}📊 Lifelong Benchmark Configuration:{Style.RESET_ALL}")
-        print(f"   Number of Agents: {config.num_agents}")
-        print(f"   Number of Rounds: {config.num_rounds}")
-        print(f"   Duration/Round:   {config.duration_seconds}s")
-        print(f"   Random Seed:      {config.seed}")
-        print(f"   Spatial Hints:    {'Enabled' if config.spatial_hints_enabled else 'Disabled'}")
-        num_agents = config.num_agents
-        num_rounds = config.num_rounds
+        print(f"   Number of Agents: {lifelong_config.num_agents}")
+        print(f"   Number of Rounds: {lifelong_config.num_rounds}")
+        print(f"   Duration/Round:   {lifelong_config.duration_seconds}s")
+        print(f"   Random Seed:      {lifelong_config.seed}")
+        print(f"   Spatial Hints:    {'Enabled' if lifelong_config.spatial_hints_enabled else 'Disabled'}")
+        num_agents = lifelong_config.num_agents
+        num_rounds = lifelong_config.num_rounds
+        active_seed = lifelong_config.seed
     elif is_async:
-        config = AsyncBenchmarkConfig.from_env()
+        async_config = AsyncBenchmarkConfig.from_env()
         print(f"\n{Fore.CYAN}📊 Async Benchmark Configuration:{Style.RESET_ALL}")
-        print(f"   Number of Agents: {config.num_agents}")
-        print(f"   Number of Rounds: {config.num_rounds}")
-        print(f"   Time Limit/Round: {config.time_limit_seconds}s")
-        print(f"   Random Seed:      {config.seed}")
-        print(f"   Spatial Hints:    {'Enabled' if config.spatial_hints_enabled else 'Disabled'}")
-        num_agents = config.num_agents
-        num_rounds = config.num_rounds
+        print(f"   Number of Agents: {async_config.num_agents}")
+        print(f"   Number of Rounds: {async_config.num_rounds}")
+        print(f"   Time Limit/Round: {async_config.time_limit_seconds}s")
+        print(f"   Random Seed:      {async_config.seed}")
+        print(f"   Spatial Hints:    {'Enabled' if async_config.spatial_hints_enabled else 'Disabled'}")
+        num_agents = async_config.num_agents
+        num_rounds = async_config.num_rounds
+        active_seed = async_config.seed
     else:
-        config = load_benchmark_config()
-        num_agents = config.num_agents
-        num_rounds = config.num_rounds
+        turn_config = load_benchmark_config()
+        num_agents = turn_config.num_agents
+        num_rounds = turn_config.num_rounds
+        active_seed = turn_config.seed
 
         # Validate turn-based configuration
-        if config.num_agents < 1 or config.num_agents > 32:
-            print(f"{Fore.RED}❌ Invalid number of agents ({config.num_agents}). Must be 1-32.{Style.RESET_ALL}")
+        if turn_config.num_agents < 1 or turn_config.num_agents > 32:
+            print(f"{Fore.RED}❌ Invalid number of agents ({turn_config.num_agents}). Must be 1-32.{Style.RESET_ALL}")
             return
-        if config.num_rounds < 1:
-            print(f"{Fore.RED}❌ Invalid number of rounds ({config.num_rounds}). Must be >= 1.{Style.RESET_ALL}")
+        if turn_config.num_rounds < 1:
+            print(f"{Fore.RED}❌ Invalid number of rounds ({turn_config.num_rounds}). Must be >= 1.{Style.RESET_ALL}")
             return
 
         # Difficulty selection for turn-based benchmark
@@ -1440,13 +1449,13 @@ def main():
         print(f"  2. Hard — 50% of remaining goals altered randomly")
         diff_input = input(f"\n{Fore.CYAN}Difficulty (0/1/2, default 0): {Style.RESET_ALL}").strip()
         if diff_input == '1':
-            config.difficulty = 0.25
+            turn_config.difficulty = 0.25
             print(f"{Fore.GREEN}✅ Difficulty: Easy (25% goal alteration){Style.RESET_ALL}")
         elif diff_input == '2':
-            config.difficulty = 0.5
+            turn_config.difficulty = 0.5
             print(f"{Fore.GREEN}✅ Difficulty: Hard (50% goal alteration){Style.RESET_ALL}")
         else:
-            config.difficulty = 0.0
+            turn_config.difficulty = 0.0
             print(f"{Fore.GREEN}✅ Difficulty: None (no goal alteration){Style.RESET_ALL}")
 
     # Select layout or generate random map
@@ -1457,7 +1466,7 @@ def main():
     mode_choice = input(f"\n{Fore.CYAN}Select mode (1/2, default 1): {Style.RESET_ALL}").strip()
     
     if mode_choice == '2':
-        base_layout = prompt_for_random_map_generation(config.seed, num_agents)
+        base_layout = prompt_for_random_map_generation(active_seed, num_agents)
         if base_layout is None:
             print(f"{Fore.RED}Random map generation cancelled. Exiting.{Style.RESET_ALL}")
             return
@@ -1475,12 +1484,18 @@ def main():
     print(f"   Agents: {num_agents}")
     print(f"   Rounds: {num_rounds}")
     if is_lifelong:
-        print(f"   Duration/Round: {config.duration_seconds}s")
+        assert lifelong_config is not None
+        print(f"   Duration/Round: {lifelong_config.duration_seconds}s")
+    elif is_async:
+        assert async_config is not None
+        print(f"   Time Limit: {async_config.time_limit_seconds}s/round")
     else:
-        print(f"   Time Limit: {config.time_limit_seconds}s/round")
-    print(f"   Seed: {config.seed}")
+        assert turn_config is not None
+        print(f"   Time Limit: {turn_config.time_limit_seconds}s/round")
+    print(f"   Seed: {active_seed}")
     if not is_lifelong and not is_async:
-        difficulty_label = {0.0: 'None', 0.25: 'Easy (25%)', 0.5: 'Hard (50%)'}.get(config.difficulty, str(config.difficulty))
+        assert turn_config is not None
+        difficulty_label = {0.0: 'None', 0.25: 'Easy (25%)', 0.5: 'Hard (50%)'}.get(turn_config.difficulty, str(turn_config.difficulty))
         print(f"   Difficulty: {difficulty_label}")
 
     confirm = input(f"\n{Fore.CYAN}Start benchmark? (Y/n): {Style.RESET_ALL}").strip().lower()
@@ -1490,14 +1505,17 @@ def main():
 
     try:
         if is_lifelong:
+            assert lifelong_config is not None
             print(f"\n{Fore.GREEN}🚀 Starting Lifelong Benchmark...{Style.RESET_ALL}")
-            results = run_lifelong_benchmark(base_layout, config)
+            results = run_lifelong_benchmark(base_layout, lifelong_config)
         elif is_async:
+            assert async_config is not None
             print(f"\n{Fore.GREEN}🚀 Starting Async Benchmark...{Style.RESET_ALL}")
-            results = run_async_benchmark(base_layout, config)
+            results = run_async_benchmark(base_layout, async_config)
         else:
+            assert turn_config is not None
             print(f"\n{Fore.GREEN}🚀 Starting Benchmark...{Style.RESET_ALL}")
-            results = run_benchmark(base_layout, config)
+            results = run_benchmark(base_layout, turn_config)
 
         if results:
             print(f"\n{Fore.GREEN}✅ Benchmark completed with {len(results)} rounds!{Style.RESET_ALL}")

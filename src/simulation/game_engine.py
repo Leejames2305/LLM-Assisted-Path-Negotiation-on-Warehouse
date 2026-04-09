@@ -17,7 +17,11 @@ from ..agents import RobotAgent
 from ..llm.central_negotiator import CentralNegotiator
 from ..llm.parallel_negotiator_manager import ParallelNegotiatorManager
 from ..navigation import ConflictDetector, SimplePathfinder
-from ..navigation.planners import MultiAgentPlanner, create_multi_agent_planner
+from ..navigation.planners import (
+    MultiAgentPlanner,
+    PLANNER_STATUS_FAILED_NO_SOLUTION,
+    create_multi_agent_planner,
+)
 from ..logging import UnifiedLogger
 
 # Initialize colorama for colored terminal output
@@ -57,12 +61,16 @@ class GameEngine:
 
         # Enable parallel negotiation mode (can be disabled for benchmarking)
         self.use_parallel_negotiation = os.getenv('USE_PARALLEL_NEGOTIATION', 'true').lower() == 'true'
+        # Disable LLM negotiation and rely on planner-only execution.
+        self.disable_llm_negotiation = os.getenv('DISABLE_LLM_NEGOTIATION', 'false').strip().lower() == 'true'
         
         # Simulation state
         self.current_turn = 0
         self.max_turns = 100
         self.is_running = False
         self.simulation_complete = False
+        self.simulation_failed = False
+        self.failure_reason: Optional[str] = None
         
         # Deadlock detection and mitigation
         self.failed_move_counts = {}  # Track consecutive failed moves per agent
@@ -608,10 +616,19 @@ class GameEngine:
             return self._run_async_step()
         return self._run_turn_based_step()
 
+    def _mark_simulation_failed(self, reason: str) -> None:
+        self.simulation_failed = True
+        self.failure_reason = reason
+        if not self.silent_mode:
+            print(f"{Fore.RED}❌ Simulation failed: {reason}{Style.RESET_ALL}")
+
     # Run one turn-based simulation step (original logic, zero behavioural change)
     def _run_turn_based_step(self) -> bool:
         # Check for external stop request (benchmark timeout)
         if self.stop_requested:
+            return False
+
+        if self.simulation_failed:
             return False
         
         # Check for timeout if configured
@@ -648,26 +665,35 @@ class GameEngine:
         # PHASE 0: Check for stagnation (agents stuck in same position)
         stagnation_conflict = self.detect_stagnation_conflicts()
         if stagnation_conflict['has_conflicts']:
-            print(f"🚫 STAGNATION DETECTED! Forcing negotiation for stuck agents...")
-            # Force negotiation for stagnant agents
-            resolution, _ = self._negotiate_conflicts(stagnation_conflict, {})
-            self._execute_negotiated_actions(resolution)
-            
-            # Reset position history after forced resolution
-            for agent_id in stagnation_conflict['conflicting_agents']:
-                if agent_id in self.agent_position_history:
-                    self.agent_position_history[agent_id] = []
-                # Also clear failed move history after stagnation resolution
-                if agent_id in self.agent_failed_move_history:
-                    self.agent_failed_move_history[agent_id] = []
-                print(f"🧹 Agent {agent_id}: Cleared move histories after stagnation resolution")
-            
-            # Increment turn and continue
-            self.current_turn += 1
-            return True
+            if self.disable_llm_negotiation:
+                if not self.silent_mode:
+                    print("🚫 STAGNATION DETECTED! LLM negotiation is disabled, continuing with planner-only execution...")
+            else:
+                print(f"🚫 STAGNATION DETECTED! Forcing negotiation for stuck agents...")
+                # Force negotiation for stagnant agents
+                resolution, _ = self._negotiate_conflicts(stagnation_conflict, {})
+                self._execute_negotiated_actions(resolution)
+
+                # Reset position history after forced resolution
+                for agent_id in stagnation_conflict['conflicting_agents']:
+                    if agent_id in self.agent_position_history:
+                        self.agent_position_history[agent_id] = []
+                    # Also clear failed move history after stagnation resolution
+                    if agent_id in self.agent_failed_move_history:
+                        self.agent_failed_move_history[agent_id] = []
+                    print(f"🧹 Agent {agent_id}: Cleared move histories after stagnation resolution")
+
+                # Increment turn and continue
+                self.current_turn += 1
+                return True
         
         # PHASE 1: Sequential A* planning (time-aware against earlier planned agents)
-        planned_moves = self._get_sequential_planned_moves()
+        plan_result = self._get_sequential_plan_result()
+        planned_moves = plan_result.solutions
+
+        if plan_result.status == PLANNER_STATUS_FAILED_NO_SOLUTION:
+            self._mark_simulation_failed('mapf_failed_no_solution')
+            return False
 
         if not planned_moves:
             print("No agents have targets to move towards.")
@@ -691,16 +717,24 @@ class GameEngine:
             # Track collision for metrics
             self.collision_count += len(conflict_info['conflict_points'])
 
-            # Use parallel or single negotiation based on configuration
-            if self.use_parallel_negotiation:
-                resolution, negotiation_data = self._negotiate_parallel_conflicts(conflict_info, planned_moves)
-                self._current_negotiation_data = negotiation_data
+            if self.disable_llm_negotiation:
+                if not self.silent_mode:
+                    print("⚠️  LLM negotiation disabled. Executing planned moves and monitoring for deadlock...")
+                self._execute_planned_moves(planned_moves)
+                deadlock_conflict = self.detect_move_failure_deadlocks(planned_moves)
+                if deadlock_conflict['has_conflicts']:
+                    self._mark_simulation_failed('deadlock_triggered_llm_disabled')
             else:
-                resolution, neg_data = self._negotiate_conflicts(conflict_info, planned_moves)
-                self._current_negotiation_data = neg_data
+                # Use parallel or single negotiation based on configuration
+                if self.use_parallel_negotiation:
+                    resolution, negotiation_data = self._negotiate_parallel_conflicts(conflict_info, planned_moves)
+                    self._current_negotiation_data = negotiation_data
+                else:
+                    resolution, neg_data = self._negotiate_conflicts(conflict_info, planned_moves)
+                    self._current_negotiation_data = neg_data
 
-            self._execute_negotiated_actions(resolution)
-            negotiation_occurred = True
+                self._execute_negotiated_actions(resolution)
+                negotiation_occurred = True
         else:
             print(f"{Fore.GREEN}No conflicts detected. Executing planned moves...{Style.RESET_ALL}")
             self._execute_planned_moves(planned_moves)
@@ -708,9 +742,12 @@ class GameEngine:
             # PHASE 2: Check for deadlock after move execution
             deadlock_conflict = self.detect_move_failure_deadlocks(planned_moves)
             if deadlock_conflict['has_conflicts']:
-                print(f"🔥 DEADLOCK AFTER MOVES! Forcing resolution...")
-                self._force_deadlock_negotiation(deadlock_conflict['conflicting_agents'], planned_moves)
-                negotiation_occurred = True
+                if self.disable_llm_negotiation:
+                    self._mark_simulation_failed('deadlock_triggered_llm_disabled')
+                else:
+                    print(f"🔥 DEADLOCK AFTER MOVES! Forcing resolution...")
+                    self._force_deadlock_negotiation(deadlock_conflict['conflicting_agents'], planned_moves)
+                    negotiation_occurred = True
         
         # Update map with new agent positions
         self._update_map_state()
@@ -728,7 +765,7 @@ class GameEngine:
         self._display_agent_status()
         
         self.current_turn += 1
-        return not self.simulation_complete
+        return not self.simulation_complete and not self.simulation_failed
 
     def _run_async_step(self) -> bool:
         """Run one truly-async simulation tick.
@@ -740,6 +777,9 @@ class GameEngine:
         """
         # ── Guard checks ──────────────────────────────────────────────────
         if self.stop_requested:
+            return False
+
+        if self.simulation_failed:
             return False
 
         if self.timeout_seconds > 0 and self.simulation_start_time:
@@ -754,6 +794,9 @@ class GameEngine:
 
         if not self.silent_mode:
             print(f"\n{Fore.YELLOW}=== TICK {self._async_tick + 1} (ASYNC) ==={Style.RESET_ALL}")
+
+        if self.disable_llm_negotiation:
+            return self._run_async_step_without_llm()
 
         # ── Step 1: Apply completed background-negotiation results ────────
         self._apply_pending_negotiation_results()
@@ -892,6 +935,55 @@ class GameEngine:
             return False
 
         return True
+
+    def _run_async_step_without_llm(self) -> bool:
+        """Run one async tick without any LLM negotiation calls."""
+        self._apply_pending_negotiation_results()
+
+        for agent in self.agents.values():
+            agent.update_turn()
+        for agent_id, agent in self.agents.items():
+            if hasattr(agent, '_hmas2_validated'):
+                setattr(agent, '_hmas2_validated', False)
+
+        for agent_id in list(self.agents.keys()):
+            self._check_box_delivery(agent_id)
+
+        plan_result = self._get_sequential_plan_result()
+        planned_moves = plan_result.solutions
+        if plan_result.status == PLANNER_STATUS_FAILED_NO_SOLUTION:
+            self._mark_simulation_failed('mapf_failed_no_solution')
+        elif planned_moves:
+            conflict_info = self.conflict_detector.detect_path_conflicts(planned_moves, self.current_turn)
+            if conflict_info['has_conflicts']:
+                self.collision_count += len(conflict_info['conflict_points'])
+                if not self.silent_mode:
+                    print("⚠️  Async conflict detected with LLM disabled. Executing planner moves and monitoring deadlock...")
+
+            self._execute_planned_moves(planned_moves)
+            deadlock = self.detect_move_failure_deadlocks(planned_moves)
+            if deadlock['has_conflicts']:
+                self._mark_simulation_failed('deadlock_triggered_llm_disabled')
+        else:
+            if not self.silent_mode:
+                print("No free agents with targets.")
+
+        self._update_map_state()
+        self._async_tick += 1
+        self.current_turn += 1
+        self._log_async_state(negotiation_occurred=False)
+        self._update_async_display()
+
+        if self.simulation_mode == 'lifelong':
+            return not self.simulation_failed
+
+        if self._check_completion():
+            if not self.silent_mode:
+                print(f"{Fore.GREEN}🎉 All agents reached their targets!{Style.RESET_ALL}")
+            self.simulation_complete = True
+            return False
+
+        return not self.simulation_failed
 
     # ------------------------------------------------------------------ #
     #  Truly-async infrastructure: background negotiation threads          #
@@ -1201,10 +1293,13 @@ class GameEngine:
 
     # Plan paths sequentially; each next agent avoids previous agents at specific turns
     def _get_sequential_planned_moves(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
+        plan_result = self._get_sequential_plan_result(agent_ids)
+        return plan_result.solutions
+
+    def _get_sequential_plan_result(self, agent_ids: Optional[set] = None):
         map_state = self.warehouse_map.get_state_dict()
         subset_ids = set(agent_ids) if agent_ids is not None else None
-        plan_result = self.multi_agent_planner.plan_all(self.agents, map_state, subset_ids)
-        return plan_result.solutions
+        return self.multi_agent_planner.plan_all(self.agents, map_state, subset_ids)
 
     # Replan paths with reservation-based sequential A* and refresh agent path buffers
     def _replan_with_reservations(self, agent_ids: Optional[set] = None) -> Dict[int, List[Tuple[int, int]]]:
