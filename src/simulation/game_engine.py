@@ -96,6 +96,9 @@ class GameEngine:
         self.initial_agent_positions = {}  # For path efficiency calculation
         self.initial_agent_box_positions = {}  # Initial box position per agent
         self.initial_agent_target_positions = {}  # Target position per agent
+        self.total_actual_steps = 0  # Successful moves + failed move attempts
+        self.total_min_required_steps = 0  # Sum of shortest-path distances for assigned task segments
+        self._wall_positions_cache: Optional[set[tuple[int, int]]] = None
         
         # Benchmark mode controls
         self.stop_requested = False  # External signal to stop simulation
@@ -136,21 +139,36 @@ class GameEngine:
     # Initialize a new simulation
     def initialize_simulation(self):
         print(f"{Fore.CYAN}Initializing Multi-Robot Warehouse Simulation...{Style.RESET_ALL}")
+
+        # Reset path-efficiency counters for a fresh run.
+        self.total_actual_steps = 0
+        self.total_min_required_steps = 0
+        self._wall_positions_cache = None
+        self.initial_agent_positions = {}
+        self.initial_agent_box_positions = {}
+        self.initial_agent_target_positions = {}
+        self.agent_paths = {}
         
         # Note: warehouse_map is already loaded from layout in main.py
         # Verify map is properly initialized
         if not self.warehouse_map or self.warehouse_map.width == 0:
             raise ValueError("Warehouse map not properly initialized. Load a layout first.")
+
+        # Cache static walls for repeated shortest-path computations.
+        self._wall_positions_cache = self._get_wall_positions()
         
         # Initialize agents from the layout
         # Agents are already created in main.py, but set up their targets here
         for agent_id, agent in self.agents.items():
+            agent.on_move_attempt = self._record_move_attempt
+
             # Assign box to pick up (proper warehouse task: box → target)
             if agent_id in self.warehouse_map.agent_goals:
                 box_id = agent_id  # Each agent gets their own box
                 if box_id in self.warehouse_map.boxes:
                     box_pos = self.warehouse_map.boxes[box_id]
                     agent.set_target(box_pos)  # First go to the box
+                    self._accumulate_min_required_segment(agent_id, box_pos)
                     # Record initial box position for path efficiency calculation
                     self.initial_agent_box_positions[agent_id] = box_pos
                 target_id = self.warehouse_map.agent_goals.get(agent_id)
@@ -182,6 +200,7 @@ class GameEngine:
                             if target_id is not None and target_id in self.warehouse_map.targets:
                                 target_pos = self.warehouse_map.targets[target_id]
                                 agent.set_target(target_pos)
+                                self._accumulate_min_required_segment(agent_id, target_pos)
                                 print(f"📦 Agent {agent_id}: Ready to deliver to {target_pos}")
         
         # Initial pathfinding
@@ -227,6 +246,63 @@ class GameEngine:
     def _plan_initial_paths(self):
         print("Planning initial paths for all agents...")
         self._replan_with_reservations()
+
+    def _record_move_attempt(
+        self,
+        agent_id: int,
+        from_position: Tuple[int, int],
+        to_position: Tuple[int, int],
+    ) -> None:
+        """Count each attempted move (successful or failed) for efficiency metrics."""
+        self.total_actual_steps += 1
+
+    def _get_wall_positions(self) -> set[tuple[int, int]]:
+        """Get wall coordinates for shortest-path calculations."""
+        if self._wall_positions_cache is not None:
+            return self._wall_positions_cache
+
+        walls: set[tuple[int, int]] = set()
+        grid = self.warehouse_map.grid
+        for y in range(len(grid)):
+            for x in range(len(grid[y])):
+                if grid[y][x] == CellType.WALL.value:
+                    walls.add((x, y))
+
+        self._wall_positions_cache = walls
+        return walls
+
+    def _shortest_distance_with_fallback(
+        self,
+        start: Tuple[int, int],
+        goal: Tuple[int, int],
+    ) -> int:
+        """Compute segment minimum distance using A* and Manhattan fallback."""
+        if start == goal:
+            return 0
+
+        walls = self._get_wall_positions()
+        path = self.pathfinder.find_path(start, goal, walls)
+        if path:
+            return max(0, len(path) - 1)
+
+        return abs(start[0] - goal[0]) + abs(start[1] - goal[1])
+
+    def _accumulate_min_required_segment(
+        self,
+        agent_id: int,
+        goal_position: Optional[Tuple[int, int]],
+    ) -> None:
+        """Add a new required shortest-path segment when a task goal is assigned."""
+        if goal_position is None:
+            return
+        if agent_id not in self.agents:
+            return
+
+        start_position = self.agents[agent_id].position
+        self.total_min_required_steps += self._shortest_distance_with_fallback(
+            start_position,
+            goal_position,
+        )
     
     # Detect when agents have failed moves for multiple turns
     def detect_stagnation_conflicts(self) -> Dict:
@@ -598,6 +674,7 @@ class GameEngine:
             agent = self.agents[agent_id]
             if agent.carrying_box and agent.target_position == old_target_pos:
                 agent.set_target(new_target_pos)
+                self._accumulate_min_required_segment(agent_id, new_target_pos)
                 agent.planned_path = []
                 if hasattr(agent, '_has_negotiated_path'):
                     agent._has_negotiated_path = False
@@ -1909,6 +1986,7 @@ class GameEngine:
                         if target_id is not None and target_id in self.warehouse_map.targets:
                             target_pos = self.warehouse_map.targets[target_id]
                             agent.set_target(target_pos)
+                            self._accumulate_min_required_segment(agent_id, target_pos)
                             print(f"🎯 Agent {agent_id}: New target set to delivery point {target_pos}")
 
                             # Rebuild reservations and replan all active agents after target change
@@ -2001,6 +2079,7 @@ class GameEngine:
         # Point agent at the new box and reset path state
         agent = self.agents[agent_id]
         agent.set_target(box_pos)
+        self._accumulate_min_required_segment(agent_id, box_pos)
         if hasattr(agent, '_has_negotiated_path'):
             agent._has_negotiated_path = False
         agent.planned_path = []
@@ -2237,47 +2316,13 @@ class GameEngine:
         total_turns = max(self.current_turn, 1)  # Avoid division by zero
         collision_rate = self.collision_count / total_turns if total_turns > 0 else 0
         
-        # Calculate path efficiency
-        # Optimal path is the A* shortest route: start -> box -> target
-        total_actual_path = 0
-        total_optimal_path = 0
-        
-        # Build wall set for pathfinding
-        walls: set[tuple[int, int]] = set()
-        grid = self.warehouse_map.grid
-        for y in range(len(grid)):
-            for x in range(len(grid[y])):
-                if grid[y][x] == '#':
-                    walls.add((x, y))
-        
-        for agent_id, agent in self.agents.items():
-            if agent_id in self.agent_paths and len(self.agent_paths[agent_id]) > 0:
-                # Actual path length
-                actual_path = len(self.agent_paths[agent_id]) - 1  # -1 because we count edges, not nodes
-                actual_path = max(actual_path, 0)
-                total_actual_path += actual_path
-                
-                # Optimal path via A*: start -> box -> target
-                start_pos = self.initial_agent_positions.get(agent_id, self.agent_paths[agent_id][0])
-                box_pos = self.initial_agent_box_positions.get(agent_id)
-                target_pos = self.initial_agent_target_positions.get(agent_id)
-                
-                if box_pos and target_pos:
-                    path_to_box = self.pathfinder.find_path(start_pos, box_pos, walls)
-                    path_to_target = self.pathfinder.find_path(box_pos, target_pos, walls)
-                    optimal_distance = max(0, len(path_to_box) - 1) + max(0, len(path_to_target) - 1)
-                elif box_pos:
-                    path_to_box = self.pathfinder.find_path(start_pos, box_pos, walls)
-                    optimal_distance = max(0, len(path_to_box) - 1)
-                else:
-                    # Fallback to Manhattan distance if no goal info available
-                    end_pos = self.agent_paths[agent_id][-1]
-                    optimal_distance = abs(start_pos[0] - end_pos[0]) + abs(start_pos[1] - end_pos[1])
-                
-                total_optimal_path += optimal_distance
-        
-        path_efficiency = (total_optimal_path / total_actual_path * 100) if total_actual_path > 0 else 100
-        path_efficiency = min(path_efficiency, 100)  # Cap at 100%
+        # Calculate path efficiency using cumulative required-vs-actual movement.
+        if self.total_actual_steps > 0:
+            path_efficiency = (self.total_min_required_steps / self.total_actual_steps) * 100
+        elif self.total_min_required_steps == 0:
+            path_efficiency = 100
+        else:
+            path_efficiency = 0
         
         # Calculate average conflict resolution time
         avg_resolution_time_ms = 0
@@ -2298,6 +2343,8 @@ class GameEngine:
             'makespan_seconds': round(makespan_seconds, 2),
             'collision_rate': round(collision_rate, 3),
             'path_efficiency': round(path_efficiency, 2),
+            'total_actual_steps': self.total_actual_steps,
+            'total_min_required_steps': self.total_min_required_steps,
             'total_tokens_used': token_usage,
             'avg_conflict_resolution_time_ms': round(avg_resolution_time_ms, 2),
             'total_turns': total_turns,

@@ -2,7 +2,7 @@
 Robot Agent class representing individual warehouse robots
 """
 
-from typing import Tuple, List, Optional, Dict
+from typing import Callable, Tuple, List, Optional, Dict
 from ..llm.agent_validator import AgentValidator
 from ..navigation import SimplePathfinder
 
@@ -18,6 +18,7 @@ class RobotAgent:
         self.current_action = None
         self.validator = AgentValidator()
         self.pathfinder = None  # Will be initialized with map size
+        self.on_move_attempt: Optional[Callable[[int, Tuple[int, int], Tuple[int, int]], None]] = None
         
         # Agent state
         self.is_waiting = False
@@ -157,6 +158,13 @@ class RobotAgent:
         if new_position == self.position:
             print(f"✅ Agent {self.agent_id}: Staying in place (valid wait)")
             return True, None
+
+        if self.on_move_attempt is not None:
+            try:
+                self.on_move_attempt(self.agent_id, self.position, new_position)
+            except Exception:
+                # Metrics callbacks must not interfere with simulation correctness.
+                pass
         
         # Basic adjacency check
         dx = abs(new_position[0] - self.position[0])

@@ -77,6 +77,50 @@ def test_initialize_simulation_assigns_initial_paths_with_lns2_backend():
     assert engine.agents[2].planned_path[-1] == engine.agents[2].target_position
 
 
+def test_initialize_simulation_accumulates_initial_min_required_steps():
+    engine = _build_engine_with_simple_layout("astar")
+    engine.initialize_simulation()
+
+    # Each agent starts exactly one step from its assigned box.
+    assert engine.total_min_required_steps == 2
+    assert engine.total_actual_steps == 0
+
+
+def test_path_efficiency_counts_failed_attempts_in_denominator():
+    engine = _build_engine_with_simple_layout("astar")
+    engine.initialize_simulation()
+
+    # Use deterministic counters for this unit test.
+    engine.total_min_required_steps = 1
+    engine.total_actual_steps = 0
+
+    agent = engine.agents[1]
+    map_state = engine.warehouse_map.get_state_dict()
+
+    # One successful move attempt.
+    success, _ = agent.move_to((1, 2), map_state)
+    assert success is True
+
+    # One failed move attempt (non-adjacent).
+    success, _ = agent.move_to((1, 4), map_state)
+    assert success is False
+
+    metrics = engine.calculate_performance_metrics()
+    assert engine.total_actual_steps == 2
+    assert metrics['path_efficiency'] == 50.0
+
+
+def test_path_efficiency_is_not_capped_at_100_percent():
+    engine = _build_engine_with_simple_layout("astar")
+    engine.initialize_simulation()
+
+    engine.total_min_required_steps = 6
+    engine.total_actual_steps = 3
+
+    metrics = engine.calculate_performance_metrics()
+    assert metrics['path_efficiency'] == 200.0
+
+
 def test_stagnation_uses_llm_only_when_planner_cannot_find_path():
     engine = _build_engine_with_simple_layout("LNS2")
     engine.initialize_simulation()
