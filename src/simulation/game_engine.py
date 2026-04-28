@@ -673,6 +673,10 @@ class GameEngine:
             # Redirect the agent if it is currently carrying its box toward the old target
             agent = self.agents[agent_id]
             if agent.carrying_box and agent.target_position == old_target_pos:
+                # Deduct the remaining distance to the old target before adding the new one
+                remaining_old_dist = self._shortest_distance_with_fallback(agent.position, old_target_pos)
+                self.total_min_required_steps -= remaining_old_dist
+                
                 agent.set_target(new_target_pos)
                 self._accumulate_min_required_segment(agent_id, new_target_pos)
                 agent.planned_path = []
@@ -2317,9 +2321,20 @@ class GameEngine:
         collision_rate = self.collision_count / total_turns if total_turns > 0 else 0
         
         # Calculate path efficiency using cumulative required-vs-actual movement.
+        # Deduct the remaining distance of any incomplete tasks from the required steps
+        adjusted_min_steps = self.total_min_required_steps
+        for agent in self.agents.values():
+            if agent.target_position is not None:
+                # If the agent is carrying a box but hasn't reached its target, or hasn't reached its box yet
+                remaining_dist = self._shortest_distance_with_fallback(agent.position, agent.target_position)
+                adjusted_min_steps -= remaining_dist
+
+        # Prevent negative required steps in edge cases
+        adjusted_min_steps = max(0, adjusted_min_steps)
+
         if self.total_actual_steps > 0:
-            path_efficiency = (self.total_min_required_steps / self.total_actual_steps) * 100
-        elif self.total_min_required_steps == 0:
+            path_efficiency = (adjusted_min_steps / self.total_actual_steps) * 100
+        elif adjusted_min_steps == 0:
             path_efficiency = 100
         else:
             path_efficiency = 0

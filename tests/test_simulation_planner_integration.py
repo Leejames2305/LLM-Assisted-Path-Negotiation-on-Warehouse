@@ -97,6 +97,10 @@ def test_path_efficiency_counts_failed_attempts_in_denominator():
     agent = engine.agents[1]
     map_state = engine.warehouse_map.get_state_dict()
 
+    # Disable goals so the remaining distance deduction doesn't interfere with this test's explicit arithmetic
+    for ag in engine.agents.values():
+        ag.set_target(None)
+
     # One successful move attempt.
     success, _ = agent.move_to((1, 2), map_state)
     assert success is True
@@ -116,6 +120,10 @@ def test_path_efficiency_is_not_capped_at_100_percent():
 
     engine.total_min_required_steps = 6
     engine.total_actual_steps = 3
+
+    # Disable goals so the remaining distance deduction doesn't interfere with this test's explicit arithmetic
+    for ag in engine.agents.values():
+        ag.set_target(None)
 
     metrics = engine.calculate_performance_metrics()
     assert metrics['path_efficiency'] == 200.0
