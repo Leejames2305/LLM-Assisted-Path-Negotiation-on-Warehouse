@@ -1,0 +1,47 @@
+{
+  "benchmark_info": {
+    "timestamp": "2026-04-28T22:01:21.936634",
+    "layout_name": "Warehouse2020",
+    "config": {
+      "num_agents": 16,
+      "num_rounds": 1,
+      "duration_seconds": 300,
+      "seed": 42,
+      "spatial_hints_enabled": true
+    },
+    "mode": "lifelong"
+  },
+  "overall_results": {
+    "total_rounds": 1,
+    "completed_rounds": 1,
+    "failed_rounds": 0
+  },
+  "average_metrics": {
+    "avg_tasks_per_round": 11.0,
+    "avg_throughput_tasks_per_second": 0.0304,
+    "avg_throughput_tasks_per_turn": 0.2444,
+    "avg_turns_per_round": 45.0,
+    "avg_negotiations_per_round": 6.0,
+    "avg_collision_rate": 2.111,
+    "total_tokens_used": 48849,
+    "avg_tokens_per_round": 48849.0,
+    "avg_tokens_per_task": 4440.82,
+    "avg_resolution_time_ms": 87960.91
+  },
+  "per_round_results": [
+    {
+      "round_num": 1,
+      "status": "completed",
+      "total_tasks_completed": 11,
+      "throughput_tasks_per_second": 0.0304,
+      "throughput_tasks_per_turn": 0.2444,
+      "total_turns": 45,
+      "total_negotiations": 6,
+      "collision_rate": 2.111,
+      "total_tokens_used": 48849,
+      "tokens_per_task": 4440.82,
+      "avg_conflict_resolution_time_ms": 87960.91,
+      "duration_seconds": 357.56
+    }
+  ]
+}
